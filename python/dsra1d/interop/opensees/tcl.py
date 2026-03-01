@@ -95,13 +95,18 @@ def _param(layer: Layer, key: str, default: float) -> float:
 
 def _material_definition_lines(tag: int, layer: Layer, g_m_s2: float) -> list[str]:
     rho = max(layer.unit_weight_kn_m3 / g_m_s2, 1.0e-6)
+    optional_tail = " ".join(f"{val:.12g}" for val in layer.material_optional_args)
+    optional_suffix = f" {optional_tail}" if optional_tail else ""
     if layer.material == MaterialType.PM4SAND:
         dr = _param(layer, "Dr", 0.45)
         g0 = _param(layer, "G0", 600.0)
         hpo = _param(layer, "hpo", 0.53)
         return [
             f"# Layer {tag} PM4Sand calibration-ready block",
-            f"nDMaterial PM4Sand {tag} {dr:.6f} {g0:.6f} {hpo:.6f} {rho:.8f}",
+            (
+                "nDMaterial PM4Sand "
+                f"{tag} {dr:.6f} {g0:.6f} {hpo:.6f} {rho:.8f}{optional_suffix}"
+            ),
         ]
     if layer.material == MaterialType.PM4SILT:
         su = _param(layer, "Su", 35.0)
@@ -110,7 +115,10 @@ def _material_definition_lines(tag: int, layer: Layer, g_m_s2: float) -> list[st
         h_po = _param(layer, "h_po", 0.60)
         return [
             f"# Layer {tag} PM4Silt calibration-ready block",
-            f"nDMaterial PM4Silt {tag} {su:.6f} {su_rat:.6f} {g_o:.6f} {h_po:.6f} {rho:.8f}",
+            (
+                "nDMaterial PM4Silt "
+                f"{tag} {su:.6f} {su_rat:.6f} {g_o:.6f} {h_po:.6f} {rho:.8f}{optional_suffix}"
+            ),
         ]
 
     nu = _param(layer, "nu", 0.30)

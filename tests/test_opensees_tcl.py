@@ -88,6 +88,18 @@ def test_render_tcl_uses_opensees_u_p_parameters_from_config() -> None:
     assert "set okG [analyze 33 $dt]" in script
 
 
+def test_render_tcl_appends_pm4_optional_material_args() -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.profile.layers[0].material_optional_args = [101.0, 0.7, 250.0]
+    script = render_tcl(
+        cfg,
+        motion_file=Path("examples/motions/sample_motion.csv"),
+        output_dir=Path("out/test"),
+    )
+    assert "nDMaterial PM4Sand 1 0.420000 620.000000 0.550000" in script
+    assert "101 0.7 250" in script
+
+
 def test_build_element_slices_total_matches_subdivisions() -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
     layer_slices = build_layer_slices(cfg)

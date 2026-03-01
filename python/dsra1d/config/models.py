@@ -78,6 +78,7 @@ class Layer(BaseModel):
     vs_m_s: PositiveFloat
     material: MaterialType
     material_params: dict[str, float] = Field(default_factory=dict)
+    material_optional_args: list[float] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_material_params(self) -> Layer:
@@ -114,6 +115,11 @@ class Layer(BaseModel):
         for key, value in self.material_params.items():
             if not math.isfinite(value):
                 raise ValueError(f"Material parameter '{key}' must be finite.")
+        for idx, value in enumerate(self.material_optional_args):
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"material_optional_args[{idx}] for layer '{self.name}' must be finite."
+                )
         return self
 
 

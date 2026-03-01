@@ -38,6 +38,7 @@ def write_config_template(path: str | Path) -> Path:
                         "G0": 600.0,
                         "hpo": 0.53,
                     },
+                    "material_optional_args": [],
                 },
                 {
                     "name": "Layer-2",
@@ -51,6 +52,7 @@ def write_config_template(path: str | Path) -> Path:
                         "G_o": 500.0,
                         "h_po": 0.6,
                     },
+                    "material_optional_args": [],
                 },
             ]
         },

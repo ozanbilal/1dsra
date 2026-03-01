@@ -211,3 +211,31 @@ opensees:
     )
     with pytest.raises(ValueError):
         load_project_config(cfg)
+
+
+def test_non_finite_material_optional_args_rejected(tmp_path: Path) -> None:
+    cfg = tmp_path / "bad_optional_args.yml"
+    cfg.write_text(
+        """
+project_name: bad-optional-args
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+      material_optional_args: [1.0, .nan]
+analysis:
+  solver_backend: opensees
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)

@@ -54,6 +54,9 @@ u-p assembly constants are configurable per project via:
 - `gravity_steps`
 When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
+For calibration-ready experiments, you can pass extra positional PM4 arguments with:
+- `layer.material_optional_args: [ ... ]`
+These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line in order.
 PM4 validation profile can be configured via:
 - `analysis.pm4_validation_profile: basic` (presence + positivity checks)
 - `analysis.pm4_validation_profile: strict` (adds conservative range checks)

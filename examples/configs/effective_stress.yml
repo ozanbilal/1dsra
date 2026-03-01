@@ -11,6 +11,7 @@ profile:
         Dr: 0.42
         G0: 620.0
         hpo: 0.55
+      material_optional_args: []
     - name: DeepSilt
       thickness_m: 12.0
       unit_weight_kN_m3: 19.5
@@ -21,6 +22,7 @@ profile:
         Su_Rat: 0.23
         G_o: 520.0
         h_po: 0.62
+      material_optional_args: []
 boundary_condition: elastic_halfspace
 analysis:
   dt: 0.005

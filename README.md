@@ -54,6 +54,7 @@ Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 UI also includes a campaign panel (`core-es`, `core-hyst`, `opensees-parity`) with inline benchmark+verify summaries.
 UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`) for quick switching.
+UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 
 ## OpenSees Integration
 Set the OpenSees executable in config:

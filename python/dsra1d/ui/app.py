@@ -13,7 +13,8 @@ import streamlit as st
 
 from dsra1d.benchmark import run_benchmark_suite
 from dsra1d.config import load_project_config
-from dsra1d.motion import load_motion
+from dsra1d.interop.opensees import render_tcl, validate_tcl_script
+from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
 from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
 from dsra1d.verify import verify_batch
@@ -403,7 +404,7 @@ def main() -> None:
         run_dir = out_dir / selected_name
         st.session_state["run_dir"] = str(run_dir)
 
-    act1, act2, act3, act4, act5 = st.columns(5)
+    act1, act2, act3, act4, act5, act6 = st.columns(6)
 
     if act1.button("Validate Config", use_container_width=True):
         try:
@@ -462,6 +463,76 @@ def main() -> None:
 
     if act5.button("Refresh Runs", use_container_width=True):
         st.rerun()
+
+    if act6.button("Render Tcl", use_container_width=True):
+        try:
+            cfg = load_project_config(cfg_path)
+            dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+            motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
+            processed = preprocess_motion(motion, cfg.motion)
+
+            tcl_out_dir = out_dir / "tcl_preview"
+            tcl_out_dir.mkdir(parents=True, exist_ok=True)
+            motion_out = tcl_out_dir / "motion_processed.csv"
+            np.savetxt(motion_out, processed.acc, delimiter=",")
+
+            script = render_tcl(cfg, motion_file=motion_out, output_dir=tcl_out_dir)
+            validate_tcl_script(script)
+            tcl_path = tcl_out_dir / "model.tcl"
+            tcl_path.write_text(script, encoding="utf-8")
+
+            st.session_state["tcl_path"] = str(tcl_path)
+            st.session_state["tcl_motion_path"] = str(motion_out)
+            st.success(f"Tcl generated: {tcl_path}")
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.divider()
+    st.subheader("OpenSees Tcl Preview")
+    tcl_path_raw = st.session_state.get("tcl_path")
+    tcl_motion_raw = st.session_state.get("tcl_motion_path")
+    tcl_path = (
+        Path(tcl_path_raw)
+        if isinstance(tcl_path_raw, str) and tcl_path_raw
+        else out_dir / "tcl_preview" / "model.tcl"
+    )
+    tcl_motion_path = (
+        Path(tcl_motion_raw)
+        if isinstance(tcl_motion_raw, str) and tcl_motion_raw
+        else out_dir / "tcl_preview" / "motion_processed.csv"
+    )
+
+    if tcl_path.exists():
+        tcl_text = tcl_path.read_text(encoding="utf-8")
+        st.code(str(tcl_path))
+        with st.expander("model.tcl", expanded=False):
+            st.code(tcl_text, language="tcl")
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            st.download_button(
+                "Download model.tcl",
+                data=tcl_text,
+                file_name="model.tcl",
+                mime="text/plain",
+                use_container_width=True,
+            )
+        with dcol2:
+            if tcl_motion_path.exists():
+                st.download_button(
+                    "Download motion_processed.csv",
+                    data=tcl_motion_path.read_bytes(),
+                    file_name="motion_processed.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            else:
+                st.button(
+                    "Download motion_processed.csv",
+                    disabled=True,
+                    use_container_width=True,
+                )
+    else:
+        st.info("No Tcl preview yet. Use Render Tcl.")
 
     st.divider()
     st.subheader("Latest Run")

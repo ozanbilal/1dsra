@@ -140,6 +140,7 @@ Missing:
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI includes campaign controls and inline campaign summary rendering
 - Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
+- Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)

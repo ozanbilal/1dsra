@@ -391,6 +391,54 @@ opensees:
     assert "--backend auto" in result.stdout
 
 
+def test_cli_quickstart_auto_runs_and_writes_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli_main, "resolve_opensees_executable", lambda _: None)
+    out_dir = tmp_path / "quickstart"
+    result = runner.invoke(
+        app,
+        [
+            "quickstart",
+            "--out",
+            str(out_dir),
+            "--template",
+            "effective-stress-strict-plus",
+            "--backend",
+            "auto",
+        ],
+    )
+    assert result.exit_code == 0
+    summary_path = out_dir / "quickstart_summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["run_status"] == "ok"
+    assert summary["verify_ok"] is True
+    assert summary["backend"] == "mock"
+
+
+def test_cli_quickstart_config_fails_when_opensees_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli_main, "resolve_opensees_executable", lambda _: None)
+    out_dir = tmp_path / "quickstart_cfg"
+    result = runner.invoke(
+        app,
+        [
+            "quickstart",
+            "--out",
+            str(out_dir),
+            "--template",
+            "effective-stress-strict-plus",
+            "--backend",
+            "config",
+        ],
+    )
+    assert result.exit_code == 5
+
+
 def test_cli_verify_batch_passes(tmp_path: Path) -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     motion = Path("examples/motions/sample_motion.csv")

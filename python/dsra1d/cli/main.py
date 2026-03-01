@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,10 @@ def _apply_runtime_backend(
         cfg_run.opensees.executable = str(resolved)
         return cfg_run, f"opensees ({resolved})"
     return cfg_run, str(cfg_run.analysis.solver_backend)
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
 
 
 def _enforce_benchmark_strict_policy(
@@ -314,6 +319,73 @@ def run(
         print(f"[red]Run failed:[/red] {res.message}")
         raise typer.Exit(code=2)
     print(f"[green]Completed[/green]: {res.output_dir}")
+
+
+@app.command("quickstart")
+def quickstart(
+    out: Path = typer.Option(Path("out/quickstart"), "--out"),
+    template: str = typer.Option("effective-stress-strict-plus", "--template"),
+    backend: RunBackendMode = typer.Option("auto", "--backend"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
+) -> None:
+    template_to_config = {
+        "effective-stress": "effective_stress.yml",
+        "effective-stress-strict-plus": "effective_stress_strict_plus.yml",
+        "mkz-gqh-mock": "mkz_gqh_mock.yml",
+    }
+    config_name = template_to_config.get(template)
+    if config_name is None:
+        raise typer.BadParameter(
+            f"Unknown template: {template}. "
+            f"Allowed: {sorted(template_to_config)}"
+        )
+
+    repo_root = _repo_root()
+    src_config = repo_root / "examples" / "configs" / config_name
+    src_motion = repo_root / "examples" / "motions" / "sample_motion.csv"
+    if not src_config.exists():
+        raise typer.BadParameter(f"Sample config not found: {src_config}")
+    if not src_motion.exists():
+        raise typer.BadParameter(f"Sample motion not found: {src_motion}")
+
+    out.mkdir(parents=True, exist_ok=True)
+    config_out = out / "config.yml"
+    motion_out = out / "motion.csv"
+    shutil.copy2(src_config, config_out)
+    shutil.copy2(src_motion, motion_out)
+
+    cfg = load_project_config(config_out)
+    cfg, backend_note = _apply_runtime_backend(
+        cfg,
+        backend=backend,
+        opensees_executable=opensees_executable,
+    )
+    print(f"[cyan]Quickstart backend:[/cyan] {backend_note}")
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    mot = load_motion(motion_out, dt=dt, unit=cfg.motion.units)
+    res = run_analysis(cfg, mot, output_dir=out / "runs")
+    verify = verify_run(res.output_dir)
+
+    summary = {
+        "template": template,
+        "backend": str(cfg.analysis.solver_backend),
+        "backend_note": backend_note,
+        "run_id": res.run_id,
+        "run_status": res.status,
+        "run_message": res.message,
+        "run_dir": str(res.output_dir),
+        "verify_ok": verify.ok,
+    }
+    summary_path = out / "quickstart_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(f"[green]Quickstart summary:[/green] {summary_path}")
+    print(f"[green]Run directory:[/green] {res.output_dir}")
+
+    if res.status != "ok":
+        raise typer.Exit(code=2)
+    if not verify.ok:
+        print("[red]Quickstart verify failed[/red]")
+        raise typer.Exit(code=9)
 
 
 @app.command("render-tcl")

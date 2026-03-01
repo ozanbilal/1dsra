@@ -26,6 +26,7 @@ pip install -e .[dev]
 1dsra init --template effective-stress --out examples/configs/effective_stress.yml
 1dsra init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
 1dsra init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
+1dsra quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
 1dsra render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
@@ -108,7 +109,9 @@ Runtime backend mode can be overridden at execution time:
 - `--backend auto` (if config requests OpenSees but executable is missing, fallback to mock)
 - `--backend opensees` (force OpenSees, fail fast if executable missing)
 - `--backend mock` (force mock backend)
-These options are available on `run`, `batch`, and `dt-check`.
+These options are available on `run`, `batch`, `dt-check`, and `quickstart`.
+`quickstart` creates a self-contained sample run directory, executes analysis, runs verification,
+and writes `quickstart_summary.json`.
 
 Each run writes structured metadata/artifacts:
 - `run_meta.json` with backend, status, command metadata

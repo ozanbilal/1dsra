@@ -101,6 +101,7 @@ Implemented:
 - Additional benchmark guards:
   - physical ru bounds checks
   - deterministic repeat-signature checks
+  - effective-stress metric checks (`delta_u_max`, `sigma_v_eff_min`)
   - varied case matrix (`pm4sand`, `pm4silt`, mixed profile + scaling modes)
   - optional per-case Δt vs Δt/2 PSA sensitivity checks
 - Batch runner now deduplicates identical motions to prevent output collisions and redundant runs

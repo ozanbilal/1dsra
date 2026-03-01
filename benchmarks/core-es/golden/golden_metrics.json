@@ -3,6 +3,9 @@
     "checks": {
       "pga": { "expected": 0.016, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
       "ru_max": { "expected": 0.3, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
+      ,
+      "delta_u_max": { "expected": 13.5, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 31.5, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -17,6 +20,9 @@
     "checks": {
       "pga": { "expected": 0.048, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
       "ru_max": { "expected": 0.3, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
+      ,
+      "delta_u_max": { "expected": 25.65, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 59.85, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -31,6 +37,9 @@
     "checks": {
       "pga": { "expected": 0.4, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
       "ru_max": { "expected": 0.3, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
+      ,
+      "delta_u_max": { "expected": 43.8, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 102.2, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
     },
     "constraints": {
       "ru_min": 0.0,

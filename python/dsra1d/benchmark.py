@@ -16,11 +16,26 @@ from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
 
 
-def _load_case_outputs(hdf5_path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _load_case_outputs(hdf5_path: Path) -> dict[str, np.ndarray]:
     with h5py.File(hdf5_path, "r") as h5:
         acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
         ru = np.array(h5["/pwp/ru"], dtype=np.float64)
-    return acc, ru
+        delta_u = (
+            np.array(h5["/pwp/delta_u"], dtype=np.float64)
+            if "/pwp/delta_u" in h5
+            else np.array([], dtype=np.float64)
+        )
+        sigma_v_eff = (
+            np.array(h5["/pwp/sigma_v_eff"], dtype=np.float64)
+            if "/pwp/sigma_v_eff" in h5
+            else np.array([], dtype=np.float64)
+        )
+    return {
+        "surface_acc": acc,
+        "ru": ru,
+        "delta_u": delta_u,
+        "sigma_v_eff": sigma_v_eff,
+    }
 
 
 def _load_psa(hdf5_path: Path) -> np.ndarray:
@@ -28,17 +43,17 @@ def _load_psa(hdf5_path: Path) -> np.ndarray:
         return np.array(h5["/spectra/psa"], dtype=np.float64)
 
 
-def _result_signature(acc: np.ndarray, ru: np.ndarray) -> str:
+def _result_signature(series: dict[str, np.ndarray]) -> str:
     hasher = hashlib.sha1()
-    hasher.update(acc.tobytes(order="C"))
-    hasher.update(ru.tobytes(order="C"))
+    for key in sorted(series):
+        hasher.update(key.encode("utf-8"))
+        hasher.update(series[key].tobytes(order="C"))
     return hasher.hexdigest()
 
 
 def _build_check_specs(
     expected: dict[str, Any],
-    pga_actual: float,
-    ru_max_actual: float,
+    actual_metrics: dict[str, float],
 ) -> dict[str, dict[str, float]]:
     checks_raw = expected.get("checks")
     if isinstance(checks_raw, dict):
@@ -47,7 +62,7 @@ def _build_check_specs(
                 "expected": float(
                     spec.get(
                         "expected",
-                        pga_actual if name == "pga" else ru_max_actual,
+                        actual_metrics.get(name, float("nan")),
                     )
                 ),
                 "abs_tol": float(spec.get("abs_tol", 0.0)),
@@ -58,14 +73,17 @@ def _build_check_specs(
         }
 
     tolerance = float(expected.get("tolerance", 0.0))
+    pga_expected_default = actual_metrics.get("pga", float("nan"))
     return {
         "pga": {
-            "expected": float(expected.get("pga_expected", pga_actual)),
+            "expected": float(expected.get("pga_expected", pga_expected_default)),
             "abs_tol": tolerance,
             "rel_tol": 0.0,
         },
         "ru_max": {
-            "expected": float(expected.get("ru_max_expected", ru_max_actual)),
+            "expected": float(
+                expected.get("ru_max_expected", actual_metrics.get("ru_max", float("nan")))
+            ),
             "abs_tol": tolerance,
             "rel_tol": 0.0,
         },
@@ -194,18 +212,31 @@ def run_benchmark_suite(
 
         run_result, motion = _run_case(cfg, motion_path, output_dir)
         ran_count += 1
-        acc, ru = _load_case_outputs(run_result.hdf5_path)
+        series = _load_case_outputs(run_result.hdf5_path)
+        acc = series["surface_acc"]
+        ru = series["ru"]
+        delta_u = series["delta_u"]
+        sigma_v_eff = series["sigma_v_eff"]
         pga = float(np.max(np.abs(acc)))
         ru_max = float(np.max(ru))
         ru_min = float(np.min(ru))
-        signature = _result_signature(acc, ru)
+        delta_u_max = float(np.max(delta_u)) if delta_u.size > 0 else float("nan")
+        sigma_v_eff_min = float(np.min(sigma_v_eff)) if sigma_v_eff.size > 0 else float("nan")
+        actual_metrics = {
+            "pga": pga,
+            "ru_max": ru_max,
+            "ru_min": ru_min,
+            "delta_u_max": delta_u_max,
+            "sigma_v_eff_min": sigma_v_eff_min,
+        }
+        signature = _result_signature(series)
 
         expected = golden.get(case["name"], {})
-        checks = _build_check_specs(expected, pga_actual=pga, ru_max_actual=ru_max)
+        checks = _build_check_specs(expected, actual_metrics=actual_metrics)
         check_results: dict[str, dict[str, float | bool]] = {}
         all_checks_ok = True
         for name, spec in checks.items():
-            actual = pga if name == "pga" else ru_max if name == "ru_max" else float("nan")
+            actual = float(actual_metrics.get(name, float("nan")))
             if np.isnan(actual):
                 result = {
                     "actual": actual,
@@ -237,8 +268,8 @@ def run_benchmark_suite(
         signature_repeat = signature
         if deterministic:
             rerun = run_analysis(cfg, motion, output_dir)
-            acc2, ru2 = _load_case_outputs(rerun.hdf5_path)
-            signature_repeat = _result_signature(acc2, ru2)
+            series2 = _load_case_outputs(rerun.hdf5_path)
+            signature_repeat = _result_signature(series2)
             deterministic_ok = signature == signature_repeat
 
         dt_spec = expected.get("dt_sensitivity")
@@ -267,7 +298,7 @@ def run_benchmark_suite(
             "name": case["name"],
             "run_id": run_result.run_id,
             "status": run_result.status,
-            "actual": {"pga": pga, "ru_max": ru_max, "ru_min": ru_min},
+            "actual": actual_metrics,
             "expected": expected,
             "checks": check_results,
             "constraints": {

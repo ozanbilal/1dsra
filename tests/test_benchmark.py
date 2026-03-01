@@ -17,6 +17,14 @@ def test_benchmark_core_es_passes(tmp_path: Path) -> None:
     for case in cases:
         assert isinstance(case, dict)
         assert case["passed"] is True
+        actual = case["actual"]
+        assert isinstance(actual, dict)
+        assert "delta_u_max" in actual
+        assert "sigma_v_eff_min" in actual
+        checks = case["checks"]
+        assert isinstance(checks, dict)
+        assert checks["delta_u_max"]["passed"] is True
+        assert checks["sigma_v_eff_min"]["passed"] is True
         constraints = case["constraints"]
         assert isinstance(constraints, dict)
         assert constraints["ru_bounds_ok"] is True

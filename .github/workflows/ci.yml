@@ -40,3 +40,9 @@ jobs:
 
       - name: Core HYST Campaign Gate
         run: python -m dsra1d.cli.main campaign --suite core-hyst --out out/ci_bench_core_hyst --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
+
+      - name: Core Linear Campaign Gate
+        run: python -m dsra1d.cli.main campaign --suite core-linear --out out/ci_bench_core_linear --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
+
+      - name: Core EQL Campaign Gate
+        run: python -m dsra1d.cli.main campaign --suite core-eql --out out/ci_bench_core_eql --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0

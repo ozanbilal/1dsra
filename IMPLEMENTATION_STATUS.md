@@ -136,6 +136,8 @@ Missing:
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
+- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock`
+- `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
 - `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
@@ -149,6 +151,7 @@ Missing:
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI includes campaign controls and inline campaign summary rendering
 - Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
+- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock`) and run-level OpenSees executable override
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy

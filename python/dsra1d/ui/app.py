@@ -18,8 +18,12 @@ if str(PYTHON_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC_ROOT))
 
 from dsra1d.benchmark import run_benchmark_suite
-from dsra1d.config import MaterialType, load_project_config
-from dsra1d.interop.opensees import render_tcl, validate_tcl_script
+from dsra1d.config import MaterialType, ProjectConfig, load_project_config
+from dsra1d.interop.opensees import (
+    render_tcl,
+    resolve_opensees_executable,
+    validate_tcl_script,
+)
 from dsra1d.materials import (
     bounded_damping_from_reduction,
     generate_masing_loop,
@@ -128,6 +132,55 @@ def _run_benchmark_with_optional_override(
                 os.environ.pop(env_key, None)
             else:
                 os.environ[env_key] = old_value
+
+
+def _apply_runtime_backend(
+    cfg: ProjectConfig,
+    *,
+    backend_mode: str,
+    opensees_executable: str,
+) -> tuple[ProjectConfig, str]:
+    cfg_run = cfg.model_copy(deep=True)
+    exe_override = opensees_executable.strip()
+    if exe_override:
+        cfg_run.opensees.executable = exe_override
+
+    if backend_mode == "mock":
+        cfg_run.analysis.solver_backend = "mock"
+        return cfg_run, "mock (forced)"
+
+    if backend_mode == "opensees":
+        cfg_run.analysis.solver_backend = "opensees"
+        resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+        if resolved is None:
+            raise RuntimeError(
+                f"OpenSees executable not found: {cfg_run.opensees.executable}. "
+                "Use backend mode 'auto' for fallback."
+            )
+        cfg_run.opensees.executable = str(resolved)
+        return cfg_run, f"opensees ({resolved})"
+
+    if backend_mode == "auto":
+        if cfg_run.analysis.solver_backend == "opensees":
+            resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+            if resolved is None:
+                cfg_run.analysis.solver_backend = "mock"
+                return cfg_run, "mock (auto-fallback: OpenSees missing)"
+            cfg_run.opensees.executable = str(resolved)
+            return cfg_run, f"opensees ({resolved})"
+        return cfg_run, str(cfg_run.analysis.solver_backend)
+
+    # config mode
+    if cfg_run.analysis.solver_backend == "opensees":
+        resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+        if resolved is None:
+            raise RuntimeError(
+                f"OpenSees executable not found: {cfg_run.opensees.executable}. "
+                "Use backend mode 'auto' or 'mock'."
+            )
+        cfg_run.opensees.executable = str(resolved)
+        return cfg_run, f"opensees ({resolved})"
+    return cfg_run, str(cfg_run.analysis.solver_backend)
 
 
 def _annotate_verify_policy(
@@ -588,6 +641,15 @@ def main() -> None:
         "OpenSees Executable (optional)",
         "",
     )
+    run_backend_mode = st.sidebar.selectbox(
+        "Run Backend Mode",
+        options=["config", "auto", "opensees", "mock"],
+        index=1,
+    )
+    run_opensees_executable = st.sidebar.text_input(
+        "Run OpenSees Executable (optional)",
+        "",
+    )
     require_opensees = st.sidebar.checkbox(
         "Require OpenSees (parity)",
         value=(campaign_suite == "opensees-parity"),
@@ -646,6 +708,11 @@ def main() -> None:
     if act2.button("Run Analysis", type="primary", use_container_width=True):
         try:
             cfg = load_project_config(cfg_path)
+            cfg, backend_note = _apply_runtime_backend(
+                cfg,
+                backend_mode=run_backend_mode,
+                opensees_executable=run_opensees_executable,
+            )
             dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
             motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
             result = run_analysis(cfg, motion, output_dir=out_dir)
@@ -654,6 +721,7 @@ def main() -> None:
             if result.status != "ok":
                 st.error(result.message)
             else:
+                st.caption(f"Backend: {backend_note}")
                 st.success(f"Run completed: {result.output_dir}")
         except Exception as exc:
             st.error(str(exc))

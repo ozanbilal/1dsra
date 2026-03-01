@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import dsra1d.benchmark as benchmark_mod
+import dsra1d.cli.main as cli_main
 from dsra1d.cli.main import app
 from typer.testing import CliRunner
 
@@ -294,6 +295,100 @@ def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert (run_dirs[0] / "verify_report.json").exists()
+
+
+def test_cli_run_auto_fallback_to_mock_when_opensees_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = tmp_path / "opensees_missing.yml"
+    cfg.write_text(
+        """
+project_name: auto-fallback
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+motion:
+  units: m/s2
+opensees:
+  executable: OpenSees_DOES_NOT_EXIST
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_main, "resolve_opensees_executable", lambda _: None)
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            str(cfg),
+            "--motion",
+            "examples/motions/sample_motion.csv",
+            "--out",
+            str(tmp_path / "out"),
+            "--backend",
+            "auto",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "auto-fallback" in result.stdout
+
+
+def test_cli_run_config_mode_fails_when_opensees_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = tmp_path / "opensees_missing_config.yml"
+    cfg.write_text(
+        """
+project_name: config-missing
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+motion:
+  units: m/s2
+opensees:
+  executable: OpenSees_DOES_NOT_EXIST
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_main, "resolve_opensees_executable", lambda _: None)
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            str(cfg),
+            "--motion",
+            "examples/motions/sample_motion.csv",
+            "--out",
+            str(tmp_path / "out"),
+            "--backend",
+            "config",
+        ],
+    )
+    assert result.exit_code == 5
+    assert "--backend auto" in result.stdout
 
 
 def test_cli_verify_batch_passes(tmp_path: Path) -> None:

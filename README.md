@@ -30,6 +30,8 @@ pip install -e .[dev]
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
 1dsra render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
+1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
+1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
 1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
@@ -58,6 +60,7 @@ Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 UI also includes a campaign panel (`core-es`, `core-hyst`, `opensees-parity`) with inline benchmark+verify summaries.
 UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`) for quick switching.
+UI run panel includes backend mode selection (`config/auto/opensees/mock`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 UI includes MKZ/GQH curve inspector plots (`G/Gmax` and damping proxy vs strain) for quick parameter sanity checks.
 
@@ -100,6 +103,12 @@ Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 
 Use CLI `render-tcl` when you want to inspect/export OpenSees Tcl and processed motion
 without running the solver backend.
+Runtime backend mode can be overridden at execution time:
+- `--backend config` (default: use config as-is)
+- `--backend auto` (if config requests OpenSees but executable is missing, fallback to mock)
+- `--backend opensees` (force OpenSees, fail fast if executable missing)
+- `--backend mock` (force mock backend)
+These options are available on `run`, `batch`, and `dt-check`.
 
 Each run writes structured metadata/artifacts:
 - `run_meta.json` with backend, status, command metadata

@@ -5,14 +5,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 import typer
 from rich import print
 
 from dsra1d.benchmark import run_benchmark_suite
-from dsra1d.config import load_project_config, write_config_template
+from dsra1d.config import ProjectConfig, load_project_config, write_config_template
 from dsra1d.interop.opensees import render_tcl, resolve_opensees_executable, validate_tcl_script
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
@@ -20,6 +20,7 @@ from dsra1d.post import render_summary_markdown, summarize_campaign, write_repor
 from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="1DSRA CLI")
+RunBackendMode = Literal["config", "auto", "opensees", "mock"]
 
 
 def _load_json_mapping(path: Path) -> dict[str, object]:
@@ -32,6 +33,58 @@ def _load_json_mapping(path: Path) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise typer.BadParameter(f"JSON root must be object: {path}")
     return cast(dict[str, object], parsed)
+
+
+def _apply_runtime_backend(
+    cfg: ProjectConfig,
+    *,
+    backend: RunBackendMode,
+    opensees_executable: str | None,
+) -> tuple[ProjectConfig, str]:
+    cfg_run = cfg.model_copy(deep=True)
+    if opensees_executable:
+        cfg_run.opensees.executable = opensees_executable
+
+    if backend == "mock":
+        cfg_run.analysis.solver_backend = "mock"
+        return cfg_run, "mock (forced)"
+
+    if backend == "opensees":
+        cfg_run.analysis.solver_backend = "opensees"
+        resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+        if resolved is None:
+            print(
+                "[red]OpenSees executable not found:[/red] "
+                f"{cfg_run.opensees.executable}. "
+                "Use [bold]--backend auto[/bold] to fallback to mock."
+            )
+            raise typer.Exit(code=5)
+        cfg_run.opensees.executable = str(resolved)
+        return cfg_run, f"opensees ({resolved})"
+
+    if backend == "auto":
+        if cfg_run.analysis.solver_backend == "opensees":
+            resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+            if resolved is None:
+                cfg_run.analysis.solver_backend = "mock"
+                return cfg_run, "mock (auto-fallback: OpenSees missing)"
+            cfg_run.opensees.executable = str(resolved)
+            return cfg_run, f"opensees ({resolved})"
+        return cfg_run, str(cfg_run.analysis.solver_backend)
+
+    # backend == "config"
+    if cfg_run.analysis.solver_backend == "opensees":
+        resolved = resolve_opensees_executable(cfg_run.opensees.executable)
+        if resolved is None:
+            print(
+                "[red]OpenSees executable not found:[/red] "
+                f"{cfg_run.opensees.executable}. "
+                "Use [bold]--backend auto[/bold] or [bold]--backend mock[/bold]."
+            )
+            raise typer.Exit(code=5)
+        cfg_run.opensees.executable = str(resolved)
+        return cfg_run, f"opensees ({resolved})"
+    return cfg_run, str(cfg_run.analysis.solver_backend)
 
 
 def _enforce_benchmark_strict_policy(
@@ -244,8 +297,16 @@ def run(
     config: Path = typer.Option(..., "--config"),
     motion: Path = typer.Option(..., "--motion"),
     out: Path = typer.Option(Path("out"), "--out"),
+    backend: RunBackendMode = typer.Option("config", "--backend"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     cfg = load_project_config(config)
+    cfg, backend_note = _apply_runtime_backend(
+        cfg,
+        backend=backend,
+        opensees_executable=opensees_executable,
+    )
+    print(f"[cyan]Run backend:[/cyan] {backend_note}")
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     mot = load_motion(motion, dt=dt, unit=cfg.motion.units)
     res = run_analysis(cfg, mot, output_dir=out)
@@ -285,8 +346,16 @@ def batch(
     motions_dir: Path = typer.Option(..., "--motions-dir"),
     n_jobs: int = typer.Option(1, "--n-jobs"),
     out: Path = typer.Option(Path("out"), "--out"),
+    backend: RunBackendMode = typer.Option("config", "--backend"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     cfg = load_project_config(config)
+    cfg, backend_note = _apply_runtime_backend(
+        cfg,
+        backend=backend,
+        opensees_executable=opensees_executable,
+    )
+    print(f"[cyan]Batch backend:[/cyan] {backend_note}")
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     files = sorted([p for p in motions_dir.iterdir() if p.is_file()])
     if not files:
@@ -457,8 +526,16 @@ def dt_check(
     motion: Path = typer.Option(..., "--motion"),
     out: Path = typer.Option(Path("out/dt_check"), "--out"),
     threshold: float = typer.Option(0.25, "--threshold"),
+    backend: RunBackendMode = typer.Option("config", "--backend"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     cfg = load_project_config(config)
+    cfg, backend_note = _apply_runtime_backend(
+        cfg,
+        backend=backend,
+        opensees_executable=opensees_executable,
+    )
+    print(f"[cyan]dt-check backend:[/cyan] {backend_note}")
     dt_base = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     out.mkdir(parents=True, exist_ok=True)
 

@@ -28,6 +28,7 @@ pip install -e .[dev]
 1dsra init --template effective-stress --out examples/configs/effective_stress.yml
 1dsra init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
 1dsra init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
+1dsra init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
 1dsra quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
@@ -65,7 +66,7 @@ pip install -e .[ui]
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 UI also includes a campaign panel (`core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`) with inline benchmark+verify summaries.
-UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`) for quick switching.
+UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`) for quick switching.
 UI run panel includes backend mode selection (`config/auto/opensees/mock/linear/eql`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 UI includes MKZ/GQH curve inspector plots (`G/Gmax` and damping proxy vs strain) for quick parameter sanity checks.

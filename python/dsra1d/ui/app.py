@@ -622,12 +622,14 @@ def main() -> None:
     default_cfg = root / "examples" / "configs" / "effective_stress.yml"
     strict_plus_cfg = root / "examples" / "configs" / "effective_stress_strict_plus.yml"
     mkz_cfg = root / "examples" / "configs" / "mkz_gqh_mock.yml"
+    mkz_eql_cfg = root / "examples" / "configs" / "mkz_gqh_eql.yml"
     default_motion = root / "examples" / "motions" / "sample_motion.csv"
     default_out = root / "out" / "ui"
     config_presets = {
         "effective-stress": default_cfg,
         "effective-stress-strict-plus": strict_plus_cfg,
         "mkz-gqh-mock": mkz_cfg,
+        "mkz-gqh-eql": mkz_eql_cfg,
     }
 
     st.set_page_config(

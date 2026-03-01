@@ -31,6 +31,14 @@ def test_cli_init_mkz_gqh_template(tmp_path: Path) -> None:
     assert "material: gqh" in content
 
 
+def test_cli_init_mkz_gqh_eql_template(tmp_path: Path) -> None:
+    out = tmp_path / "mkz_gqh_eql.yml"
+    result = runner.invoke(app, ["init", "--template", "mkz-gqh-eql", "--out", str(out)])
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "solver_backend: eql" in content
+
+
 def test_cli_init_effective_stress_strict_plus_template(tmp_path: Path) -> None:
     out = tmp_path / "effective_stress_strict_plus.yml"
     result = runner.invoke(
@@ -475,6 +483,29 @@ def test_cli_quickstart_config_fails_when_opensees_missing(
         ],
     )
     assert result.exit_code == 5
+
+
+def test_cli_quickstart_mkz_gqh_eql_runs(tmp_path: Path) -> None:
+    out_dir = tmp_path / "quickstart_mkz_eql"
+    result = runner.invoke(
+        app,
+        [
+            "quickstart",
+            "--out",
+            str(out_dir),
+            "--template",
+            "mkz-gqh-eql",
+            "--backend",
+            "eql",
+        ],
+    )
+    assert result.exit_code == 0
+    summary_path = out_dir / "quickstart_summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["run_status"] == "ok"
+    assert summary["verify_ok"] is True
+    assert summary["backend"] == "eql"
 
 
 def test_cli_verify_batch_passes(tmp_path: Path) -> None:

@@ -138,7 +138,7 @@ Missing:
 
 - CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
-- `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
+- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, and `mkz-gqh-eql` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql`
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
@@ -158,7 +158,7 @@ Missing:
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI now shows transfer-function visualization (`|H(f)|`) when available
 - Streamlit UI includes campaign controls and inline campaign summary rendering
-- Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
+- Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`)
 - Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear/eql`) and run-level OpenSees executable override
 - Streamlit UI now visualizes transfer function (`|H(f)|`) for runs with stored spectral ratio outputs
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`

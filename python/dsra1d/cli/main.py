@@ -340,6 +340,7 @@ def quickstart(
         "effective-stress": "effective_stress.yml",
         "effective-stress-strict-plus": "effective_stress_strict_plus.yml",
         "mkz-gqh-mock": "mkz_gqh_mock.yml",
+        "mkz-gqh-eql": "mkz_gqh_eql.yml",
     }
     config_name = template_to_config.get(template)
     if config_name is None:

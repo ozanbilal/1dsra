@@ -225,6 +225,16 @@ def _mkz_gqh_mock_template() -> dict[str, Any]:
     }
 
 
+def _mkz_gqh_eql_template() -> dict[str, Any]:
+    template = _mkz_gqh_mock_template()
+    template["project_name"] = "mkz-gqh-eql-template"
+    analysis = template.get("analysis")
+    if isinstance(analysis, dict):
+        analysis["solver_backend"] = "eql"
+        analysis["dt"] = 0.005
+    return template
+
+
 def write_config_template(
     path: str | Path,
     template: str = "effective-stress",
@@ -233,6 +243,7 @@ def write_config_template(
         "effective-stress": _effective_stress_template(),
         "effective-stress-strict-plus": _effective_stress_strict_plus_template(),
         "mkz-gqh-mock": _mkz_gqh_mock_template(),
+        "mkz-gqh-eql": _mkz_gqh_eql_template(),
     }
     if template not in templates:
         valid = ", ".join(sorted(templates))

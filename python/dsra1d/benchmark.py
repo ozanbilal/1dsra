@@ -318,6 +318,16 @@ def run_benchmark_suite(
     ran_count = 0
     total_cases = len(cases)
     backend_missing_cases: list[str] = []
+    probe_available = True
+    probe_failure_reason = ""
+    probe_resolved = False
+    if suite == "opensees-parity":
+        backend_probe = report.get("backend_probe", {})
+        if isinstance(backend_probe, dict):
+            probe_available = bool(backend_probe.get("available", False))
+            probe_resolved = bool(str(backend_probe.get("resolved", "")).strip())
+            if not probe_available:
+                probe_failure_reason = str(backend_probe.get("version", "backend probe failed"))
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
@@ -330,6 +340,27 @@ def run_benchmark_suite(
         if extra_args_override and cfg.analysis.solver_backend == "opensees":
             cfg.opensees.extra_args = extra_args_override
         motion_path = suite_dir / case["motion"]
+
+        if (
+            suite == "opensees-parity"
+            and cfg.analysis.solver_backend == "opensees"
+            and (not probe_available)
+            and probe_resolved
+        ):
+            report_case = {
+                "name": case["name"],
+                "status": "skipped",
+                "reason": f"OpenSees backend probe failed: {probe_failure_reason}",
+                "passed": True,
+                "skip_kind": "probe_failed",
+            }
+            cast_cases = report["cases"]
+            if isinstance(cast_cases, list):
+                cast_cases.append(report_case)
+            skipped_count += 1
+            skipped_backend_count += 1
+            backend_missing_cases.append(str(case.get("name", "unknown")))
+            continue
 
         if cfg.analysis.solver_backend == "opensees":
             resolved = resolve_opensees_executable(cfg.opensees.executable)
@@ -474,7 +505,7 @@ def run_benchmark_suite(
     report["ran"] = ran_count
     report["total_cases"] = total_cases
     report["skipped_backend"] = skipped_backend_count
-    report["backend_ready"] = skipped_backend_count == 0
+    report["backend_ready"] = (skipped_backend_count == 0) and probe_available
     report["execution_coverage"] = (
         float(ran_count) / float(total_cases)
         if total_cases > 0

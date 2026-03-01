@@ -90,6 +90,36 @@ def test_benchmark_opensees_uses_executable_override_env(
     assert all(v == "OVERRIDE_EXE" for v in seen)
 
 
+def test_benchmark_opensees_parity_skips_on_probe_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class _Probe:
+        available = False
+        resolved = Path("/usr/bin/opensees")
+        version = "probe failed"
+        command = ("/usr/bin/opensees", "-version")
+
+    monkeypatch.setattr(
+        benchmark_mod,
+        "probe_opensees_executable",
+        lambda *_args, **_kwargs: _Probe(),
+    )
+    monkeypatch.setattr(
+        benchmark_mod,
+        "resolve_opensees_executable",
+        lambda _exe: Path("/usr/bin/opensees"),
+    )
+    report = benchmark_mod.run_benchmark_suite("opensees-parity", tmp_path)
+    assert report["all_passed"] is True
+    assert int(report["ran"]) == 0
+    assert int(report["skipped_backend"]) >= 3
+    assert report["backend_ready"] is False
+    cases = report["cases"]
+    assert isinstance(cases, list)
+    assert all(isinstance(c, dict) and c.get("skip_kind") == "probe_failed" for c in cases)
+
+
 def test_benchmark_core_hyst_passes(tmp_path: Path) -> None:
     report = run_benchmark_suite("core-hyst", tmp_path)
     assert report["all_passed"] is True

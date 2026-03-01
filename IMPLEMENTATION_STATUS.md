@@ -114,7 +114,9 @@ Implemented:
 - Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
 - Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
 - Parity workflow now publishes campaign summary into GitHub Step Summary
+- Parity suite now treats failed backend probes as backend-unavailable (`skip_kind=probe_failed`) for deterministic gating
 - Automated test coverage including TCL generation, parser robustness, fallback behavior
+- Added constitutive path-regression tests for native nonlinear MKZ/GQH hysteresis (`reload_factor` sensitivity + loop dissipation)
 - Time-step sensitivity utility command (`dt-check`) for Δt vs Δt/2 comparison
 - Additional benchmark guards:
   - physical ru bounds checks

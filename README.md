@@ -190,6 +190,8 @@ Parity benchmark JSON also includes `backend_probe`:
 - `resolved`
 - `available`
 - `version`
+When backend probe fails (resolved executable exists but probe is not runnable),
+parity cases are marked with `skip_kind=probe_failed`; `--require-opensees` will fail.
 Campaign summary JSON also includes policy evaluation blocks:
 - `policy.benchmark`
 - `policy.verify_batch`

@@ -80,6 +80,7 @@ class _ElementConstitutiveState:
     tau_prev: float = 0.0
     gamma_rev: float = 0.0
     tau_rev: float = 0.0
+    has_reversal: bool = False
 
     def _backbone(self, gamma: float) -> float:
         return _element_backbone_stress(
@@ -116,16 +117,20 @@ class _ElementConstitutiveState:
             self.gamma_rev = self.gamma_prev
             self.tau_rev = self.tau_prev
             self.direction = new_direction
+            self.has_reversal = True
 
         if self.direction == 0:
             self.direction = 1 if gamma >= self.gamma_prev else -1
 
-        # Generalized Masing-type branch update.
-        # reload_factor=2.0 -> classical Masing,
-        # reload_factor!=2.0 -> non-Masing approximation.
-        k = max(self.reload_factor, 1.0e-6)
-        shifted_gamma = (gamma - self.gamma_rev) / k
-        tau = self.tau_rev + (k * self._backbone(shifted_gamma))
+        if not self.has_reversal:
+            tau = self._backbone(gamma)
+        else:
+            # Generalized Masing-type branch update.
+            # reload_factor=2.0 -> classical Masing,
+            # reload_factor!=2.0 -> non-Masing approximation.
+            k = max(self.reload_factor, 1.0e-6)
+            shifted_gamma = (gamma - self.gamma_rev) / k
+            tau = self.tau_rev + (k * self._backbone(shifted_gamma))
 
         self.gamma_prev = gamma
         self.tau_prev = tau
@@ -251,3 +256,31 @@ def solve_nonlinear_sh_response(
     else:
         surface_acc = a_rel_hist[0, :] + acc_g
     return time, surface_acc
+
+
+def simulate_hysteretic_stress_path(
+    material: MaterialType,
+    material_params: dict[str, float],
+    strain_path: npt.ArrayLike,
+    *,
+    gmax_fallback: float,
+) -> FloatArray:
+    """Simulate stress response for a prescribed strain path using nonlinear constitutive state."""
+    gamma = np.asarray(strain_path, dtype=np.float64)
+    if gamma.size == 0:
+        raise ValueError("strain_path must contain at least one sample.")
+    if gmax_fallback <= 0.0:
+        raise ValueError("gmax_fallback must be > 0.")
+
+    reload_factor_raw = material_params.get("reload_factor", 2.0)
+    reload_factor = float(np.clip(reload_factor_raw, 0.5, 4.0))
+    state = _ElementConstitutiveState(
+        material=material,
+        params=material_params,
+        gmax_fallback=gmax_fallback,
+        reload_factor=reload_factor,
+    )
+    tau = np.zeros_like(gamma)
+    for i, g in enumerate(gamma):
+        tau[i] = state.update_stress(float(g))
+    return tau

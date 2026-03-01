@@ -87,6 +87,8 @@ def batch(
 def benchmark(
     suite: str = typer.Option("core-es", "--suite"),
     out: Path = typer.Option(Path("out/benchmarks"), "--out"),
+    fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
+    require_runs: int = typer.Option(0, "--require-runs"),
 ) -> None:
     report = run_benchmark_suite(suite=suite, output_dir=out)
     report_path = out / f"benchmark_{suite}.json"
@@ -94,6 +96,17 @@ def benchmark(
     print(f"[green]Benchmark report:[/green] {report_path}")
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
+    skipped = int(report.get("skipped", 0))
+    ran = int(report.get("ran", 0))
+    if fail_on_skip and skipped > 0:
+        print(f"[red]Benchmark strict policy failed:[/red] skipped={skipped}")
+        raise typer.Exit(code=7)
+    if ran < require_runs:
+        print(
+            "[red]Benchmark strict policy failed:[/red] "
+            f"ran={ran}, require_runs={require_runs}"
+        )
+        raise typer.Exit(code=7)
 
 
 @app.command("report")

@@ -145,7 +145,10 @@ def _evaluate_dt_sensitivity(
     }
 
 
-def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
+def run_benchmark_suite(
+    suite: str,
+    output_dir: Path,
+) -> dict[str, object]:
     if suite not in {"core-es", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
 
@@ -164,6 +167,7 @@ def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
         "all_passed": True,
     }
     skipped_count = 0
+    ran_count = 0
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
@@ -185,6 +189,7 @@ def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
                 continue
 
         run_result, motion = _run_case(cfg, motion_path, output_dir)
+        ran_count += 1
         acc, ru = _load_case_outputs(run_result.hdf5_path)
         pga = float(np.max(np.abs(acc)))
         ru_max = float(np.max(ru))
@@ -282,4 +287,5 @@ def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
             report["all_passed"] = False
 
     report["skipped"] = skipped_count
+    report["ran"] = ran_count
     return report

@@ -46,3 +46,16 @@ def read_ru(path: Path) -> tuple[np.ndarray, np.ndarray]:
         t = arr[:, 0]
         ru = arr[:, 1]
     return np.asarray(t, dtype=np.float64), np.asarray(ru, dtype=np.float64)
+
+
+def read_pwp_raw(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    if not path.exists():
+        return np.array([0.0]), np.array([0.0])
+    arr = _load_matrix(path)
+    if arr.shape[1] == 1:
+        t = np.arange(arr.shape[0], dtype=np.float64)
+        pwp = arr[:, 0]
+    else:
+        t = arr[:, 0]
+        pwp = arr[:, 1]
+    return np.asarray(t, dtype=np.float64), np.asarray(pwp, dtype=np.float64)

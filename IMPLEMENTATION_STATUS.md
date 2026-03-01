@@ -63,6 +63,9 @@ Implemented:
 - PM4Sand/PM4Silt command blocks in generated TCL
 - Layer-level material parameter plumbing via `material_params`
 - Example config includes PM4 placeholder calibration parameters
+- Effective-stress normalization outputs in result stores:
+  - HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
+  - SQLite `metrics`: `delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`
 
 Not completed:
 - Full parameter coverage and robust validation of PM4 inputs

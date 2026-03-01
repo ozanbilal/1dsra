@@ -12,6 +12,7 @@ from dsra1d.config import ProjectConfig, load_project_config
 from dsra1d.interop.opensees import (
     OpenSeesExecutionError,
     build_layer_slices,
+    read_pwp_raw,
     read_ru,
     read_surface_acc_with_time,
     render_tcl,
@@ -53,6 +54,18 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _reference_sigma_v(config: ProjectConfig) -> float:
+    total_depth = sum(layer.thickness_m for layer in config.profile.layers)
+    if total_depth <= 0.0:
+        return 1.0e-3
+    gamma_depth_sum = sum(
+        layer.unit_weight_kn_m3 * layer.thickness_m
+        for layer in config.profile.layers
+    )
+    avg_gamma = gamma_depth_sum / total_depth
+    return max(avg_gamma * total_depth * 0.5, 1.0e-3)
 
 
 def run_analysis(
@@ -127,6 +140,19 @@ def run_analysis(
         dt_default=processed.dt,
     )
     ru_t, ru = read_ru(run_dir / "pwp_ru.out")
+    sigma_v_ref = _reference_sigma_v(config)
+    pwp_raw_t, pwp_raw = read_pwp_raw(run_dir / "pwp_raw.out")
+    if (
+        pwp_raw.size == ru.size
+        and pwp_raw_t.size == ru_t.size
+        and np.allclose(pwp_raw_t, ru_t, rtol=1.0e-6, atol=1.0e-9)
+        and np.all(np.isfinite(pwp_raw))
+    ):
+        delta_u = np.asarray(pwp_raw, dtype=np.float64)
+    else:
+        delta_u = np.asarray(ru * sigma_v_ref, dtype=np.float64)
+    sigma_v_eff = np.asarray(sigma_v_ref - delta_u, dtype=np.float64)
+
     spectra = compute_spectra(acc_surface, dt=processed.dt, damping=0.05)
     time = surface_t
 
@@ -138,6 +164,9 @@ def run_analysis(
         artifacts.append(("surface_acc", str(surface_out)))
     if pwp_out.exists():
         artifacts.append(("pwp_ru", str(pwp_out)))
+    pwp_raw_out = run_dir / "pwp_raw.out"
+    if pwp_raw_out.exists():
+        artifacts.append(("pwp_raw", str(pwp_raw_out)))
     if opensees_stdout_log and opensees_stdout_log.exists():
         artifacts.append(("opensees_stdout", str(opensees_stdout_log)))
     if opensees_stderr_log and opensees_stderr_log.exists():
@@ -153,6 +182,9 @@ def run_analysis(
             acc_surface,
             ru_t,
             ru,
+            delta_u,
+            sigma_v_ref,
+            sigma_v_eff,
             spectra,
             mesh_layer_idx=np.array([s.index for s in slices], dtype=np.int64),
             mesh_z_top=np.array([s.z_top_m for s in slices], dtype=np.float64),
@@ -176,6 +208,9 @@ def run_analysis(
             spectra_data=spectra,
             ru_time=ru_t,
             ru=ru,
+            delta_u=delta_u,
+            sigma_v_ref=sigma_v_ref,
+            sigma_v_eff=sigma_v_eff,
             mesh_slices=slices,
             artifacts=artifacts,
             checksums=hdf5_checksums,

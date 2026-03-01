@@ -1,4 +1,9 @@
-from dsra1d.interop.opensees.parse import read_ru, read_surface_acc, read_surface_acc_with_time
+from dsra1d.interop.opensees.parse import (
+    read_pwp_raw,
+    read_ru,
+    read_surface_acc,
+    read_surface_acc_with_time,
+)
 from dsra1d.interop.opensees.runner import (
     OpenSeesExecutionError,
     OpenSeesRunOutput,
@@ -17,6 +22,7 @@ __all__ = [
     "OpenSeesRunOutput",
     "build_element_slices",
     "build_layer_slices",
+    "read_pwp_raw",
     "read_ru",
     "read_surface_acc",
     "read_surface_acc_with_time",

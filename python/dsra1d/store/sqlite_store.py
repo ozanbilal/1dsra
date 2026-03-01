@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS pwp_stats (
   t REAL NOT NULL,
   ru REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS pwp_effective_stats (
+  run_id TEXT NOT NULL,
+  t REAL NOT NULL,
+  delta_u REAL NOT NULL,
+  sigma_v_eff REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS artifacts (
   run_id TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -82,6 +88,9 @@ def write_sqlite(
     spectra_data: Spectra,
     ru_time: np.ndarray,
     ru: np.ndarray,
+    delta_u: np.ndarray,
+    sigma_v_ref: float,
+    sigma_v_eff: np.ndarray,
     mesh_slices: list[LayerSlice],
     artifacts: Iterable[tuple[str, str]] = (),
     checksums: Iterable[tuple[str, str]] = (),
@@ -130,6 +139,18 @@ def write_sqlite(
             "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
             (run_id, "ru_max", float(np.max(ru))),
         )
+        conn.execute(
+            "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
+            (run_id, "delta_u_max", float(np.max(delta_u))),
+        )
+        conn.execute(
+            "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
+            (run_id, "sigma_v_ref", float(sigma_v_ref)),
+        )
+        conn.execute(
+            "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
+            (run_id, "sigma_v_eff_min", float(np.min(sigma_v_eff))),
+        )
 
         conn.executemany(
             "INSERT INTO spectra(run_id, period_s, psa) VALUES (?, ?, ?)",
@@ -141,6 +162,13 @@ def write_sqlite(
         conn.executemany(
             "INSERT INTO pwp_stats(run_id, t, ru) VALUES (?, ?, ?)",
             [(run_id, float(t), float(r)) for t, r in zip(ru_time, ru, strict=True)],
+        )
+        conn.executemany(
+            "INSERT INTO pwp_effective_stats(run_id, t, delta_u, sigma_v_eff) VALUES (?, ?, ?, ?)",
+            [
+                (run_id, float(t), float(du), float(sve))
+                for t, du, sve in zip(ru_time, delta_u, sigma_v_eff, strict=True)
+            ],
         )
         conn.executemany(
             """

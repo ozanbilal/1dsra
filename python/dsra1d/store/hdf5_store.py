@@ -14,6 +14,9 @@ def write_hdf5(
     acc_surface: np.ndarray,
     ru_time: np.ndarray,
     ru: np.ndarray,
+    delta_u: np.ndarray,
+    sigma_v_ref: float,
+    sigma_v_eff: np.ndarray,
     spectra: Spectra,
     mesh_layer_idx: np.ndarray,
     mesh_z_top: np.ndarray,
@@ -32,6 +35,9 @@ def write_hdf5(
         pwp = h5.create_group("/pwp")
         pwp.create_dataset("time", data=ru_time)
         pwp.create_dataset("ru", data=ru)
+        pwp.create_dataset("delta_u", data=delta_u)
+        pwp.create_dataset("sigma_v_ref", data=np.array([sigma_v_ref], dtype=np.float64))
+        pwp.create_dataset("sigma_v_eff", data=sigma_v_eff)
 
         spec = h5.create_group("/spectra")
         spec.create_dataset("periods", data=spectra.periods)

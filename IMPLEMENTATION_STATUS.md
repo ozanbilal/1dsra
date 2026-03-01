@@ -127,12 +127,14 @@ Missing:
 ## 3. What Is Working Today
 
 - CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - CLI backend preflight: `validate --check-backend`
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI includes campaign controls and inline campaign summary rendering
+- Streamlit UI includes config preset switch (`effective-stress`, `mkz-gqh-mock`)
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)

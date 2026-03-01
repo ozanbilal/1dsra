@@ -312,8 +312,13 @@ def _render_run_outputs(run_dir: Path) -> None:
 def main() -> None:
     root = _repo_root()
     default_cfg = root / "examples" / "configs" / "effective_stress.yml"
+    mkz_cfg = root / "examples" / "configs" / "mkz_gqh_mock.yml"
     default_motion = root / "examples" / "motions" / "sample_motion.csv"
     default_out = root / "out" / "ui"
+    config_presets = {
+        "effective-stress": default_cfg,
+        "mkz-gqh-mock": mkz_cfg,
+    }
 
     st.set_page_config(
         page_title="1DSRA Studio",
@@ -327,7 +332,7 @@ def main() -> None:
         """
         <div class="hero">
           <h1>1DSRA Studio</h1>
-          <p>Run effective-stress 1D site response workflows from one control panel.</p>
+          <p>Run effective-stress and MKZ/GQH prototyping workflows from one control panel.</p>
           <span class="chip">Validate</span>
           <span class="chip">Run</span>
           <span class="chip">Benchmark</span>
@@ -338,7 +343,17 @@ def main() -> None:
     )
 
     st.sidebar.header("Run Control")
-    cfg_path = Path(st.sidebar.text_input("Config Path", str(default_cfg)))
+    if "cfg_path" not in st.session_state:
+        st.session_state["cfg_path"] = str(default_cfg)
+    preset = st.sidebar.selectbox(
+        "Config Preset",
+        options=list(config_presets.keys()),
+        index=0,
+    )
+    if st.sidebar.button("Apply Preset Config", use_container_width=True):
+        st.session_state["cfg_path"] = str(config_presets[preset])
+        st.rerun()
+    cfg_path = Path(st.sidebar.text_input("Config Path", key="cfg_path"))
     motion_path = Path(st.sidebar.text_input("Motion Path", str(default_motion)))
     out_dir = Path(st.sidebar.text_input("Output Directory", str(default_out)))
     out_dir.mkdir(parents=True, exist_ok=True)

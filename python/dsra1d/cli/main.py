@@ -79,9 +79,10 @@ def init_config(
     template: str = typer.Option("effective-stress", "--template"),
     out: Path = typer.Option(Path("examples/configs/effective_stress.yml"), "--out"),
 ) -> None:
-    if template != "effective-stress":
-        raise typer.BadParameter("Only template=effective-stress is currently supported")
-    path = write_config_template(out)
+    try:
+        path = write_config_template(out, template=template)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     print(f"[green]Template written:[/green] {path}")
 
 

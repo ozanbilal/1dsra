@@ -21,6 +21,21 @@ def test_cli_init(tmp_path: Path) -> None:
     assert out.exists()
 
 
+def test_cli_init_mkz_gqh_template(tmp_path: Path) -> None:
+    out = tmp_path / "mkz_gqh.yml"
+    result = runner.invoke(app, ["init", "--template", "mkz-gqh-mock", "--out", str(out)])
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "material: mkz" in content
+    assert "material: gqh" in content
+
+
+def test_cli_init_invalid_template_fails(tmp_path: Path) -> None:
+    out = tmp_path / "bad.yml"
+    result = runner.invoke(app, ["init", "--template", "does-not-exist", "--out", str(out)])
+    assert result.exit_code != 0
+
+
 def test_cli_dt_check(tmp_path: Path) -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     motion = Path("examples/motions/sample_motion.csv")

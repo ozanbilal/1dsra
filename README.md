@@ -23,6 +23,7 @@ source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
 
 1dsra init --template effective-stress --out examples/configs/effective_stress.yml
+1dsra init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
@@ -47,6 +48,7 @@ pip install -e .[ui]
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 UI also includes a campaign panel (`core-es` / `opensees-parity`) with inline benchmark+verify summaries.
+UI sidebar includes config presets (`effective-stress`, `mkz-gqh-mock`) for quick switching.
 
 ## OpenSees Integration
 Set the OpenSees executable in config:

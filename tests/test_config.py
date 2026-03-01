@@ -293,6 +293,71 @@ opensees:
         load_project_config(cfg)
 
 
+def test_pm4_strict_plus_rejects_extreme_permeability_ratio(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_plus_perm_ratio.yml"
+    cfg.write_text(
+        """
+project_name: strict-plus-perm-ratio
+profile:
+  layers:
+    - name: L1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+boundary_condition: elastic_halfspace
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+opensees:
+  executable: OpenSees
+  h_perm: 1.0e-2
+  v_perm: 1.0e-8
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
+def test_pm4_strict_plus_rejects_non_pm4_layer(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_plus_non_pm4.yml"
+    cfg.write_text(
+        """
+project_name: strict-plus-non-pm4
+profile:
+  layers:
+    - name: L1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+    - name: L2
+      thickness_m: 6.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 260.0
+      material: elastic
+boundary_condition: elastic_halfspace
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
 def test_opensees_u_p_parameters_must_be_positive(tmp_path: Path) -> None:
     cfg = tmp_path / "bad_up_params.yml"
     cfg.write_text(

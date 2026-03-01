@@ -274,6 +274,17 @@ class ProjectConfig(BaseModel):
                         )
 
         if is_strict_plus:
+            pm4_materials = {MaterialType.PM4SAND, MaterialType.PM4SILT}
+            non_pm4_layers = [
+                layer.name
+                for layer in self.profile.layers
+                if layer.material not in pm4_materials
+            ]
+            if non_pm4_layers:
+                raise ValueError(
+                    "strict_plus currently supports PM4-only layer stacks "
+                    f"(pm4sand/pm4silt). Non-PM4 layers: {non_pm4_layers}"
+                )
             if self.boundary_condition != BoundaryCondition.ELASTIC_HALFSPACE:
                 raise ValueError(
                     "strict_plus requires boundary_condition=elastic_halfspace "
@@ -316,6 +327,12 @@ class ProjectConfig(BaseModel):
                 raise ValueError(
                     "strict_plus OpenSees check failed: "
                     "v_perm outside [1e-8, 1e-2]."
+                )
+            perm_ratio = self.opensees.h_perm / self.opensees.v_perm
+            if not (1.0e-2 <= perm_ratio <= 1.0e2):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    f"h_perm/v_perm={perm_ratio} outside [1e-2, 1e2]."
                 )
             if not (10 <= self.opensees.gravity_steps <= 2000):
                 raise ValueError(

@@ -190,6 +190,42 @@ def test_cli_benchmark_require_opensees_fails_when_backend_missing(
     assert result.exit_code == 10
 
 
+def test_cli_benchmark_min_execution_coverage_fails_when_no_runs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _: None)
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(tmp_path / "bench"),
+            "--min-execution-coverage",
+            "0.5",
+        ],
+    )
+    assert result.exit_code == 11
+
+
+def test_cli_benchmark_min_execution_coverage_invalid_value_fails(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "core-es",
+            "--out",
+            str(tmp_path / "bench"),
+            "--min-execution-coverage",
+            "1.5",
+        ],
+    )
+    assert result.exit_code != 0
+
+
 def test_cli_benchmark_opensees_executable_option_overrides_env(
     tmp_path: Path,
     monkeypatch,
@@ -411,3 +447,26 @@ def test_cli_campaign_require_opensees_fails_when_backend_missing(
         ],
     )
     assert result.exit_code == 10
+
+
+def test_cli_campaign_min_execution_coverage_fails_when_no_runs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _: None)
+    out_dir = tmp_path / "campaign_parity_cov"
+    result = runner.invoke(
+        app,
+        [
+            "campaign",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(out_dir),
+            "--min-execution-coverage",
+            "0.5",
+            "--verify-require-runs",
+            "1",
+        ],
+    )
+    assert result.exit_code == 11

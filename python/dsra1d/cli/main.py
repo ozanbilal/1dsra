@@ -81,6 +81,30 @@ def _enforce_backend_ready_policy(
         raise typer.Exit(code=10)
 
 
+def _enforce_execution_coverage_policy(
+    report: dict[str, object],
+    *,
+    min_execution_coverage: float,
+) -> None:
+    coverage_raw = report.get("execution_coverage", 0.0)
+    if isinstance(coverage_raw, (int, float)):
+        coverage = float(coverage_raw)
+    elif isinstance(coverage_raw, str):
+        try:
+            coverage = float(coverage_raw)
+        except ValueError:
+            coverage = 0.0
+    else:
+        coverage = 0.0
+    if coverage < min_execution_coverage:
+        print(
+            "[red]Execution coverage policy failed:[/red] "
+            f"execution_coverage={coverage:.3f}, "
+            f"min_execution_coverage={min_execution_coverage:.3f}"
+        )
+        raise typer.Exit(code=11)
+
+
 def _run_benchmark_with_optional_override(
     suite: str,
     out: Path,
@@ -227,8 +251,11 @@ def benchmark(
     fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
     require_runs: int = typer.Option(0, "--require-runs"),
     require_opensees: bool = typer.Option(False, "--require-opensees"),
+    min_execution_coverage: float = typer.Option(0.0, "--min-execution-coverage"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
+    if not (0.0 <= min_execution_coverage <= 1.0):
+        raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -246,6 +273,10 @@ def benchmark(
         suite=suite,
         require_opensees=require_opensees,
     )
+    _enforce_execution_coverage_policy(
+        report,
+        min_execution_coverage=min_execution_coverage,
+    )
 
 
 @app.command("campaign")
@@ -255,11 +286,14 @@ def campaign(
     fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
     require_runs: int = typer.Option(0, "--require-runs"),
     require_opensees: bool = typer.Option(False, "--require-opensees"),
+    min_execution_coverage: float = typer.Option(0.0, "--min-execution-coverage"),
     verify_require_runs: int = typer.Option(1, "--verify-require-runs"),
     tolerance: float = typer.Option(1.0e-8, "--tolerance"),
     require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
+    if not (0.0 <= min_execution_coverage <= 1.0):
+        raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
     out.mkdir(parents=True, exist_ok=True)
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
     if not bool(report.get("all_passed", False)):
@@ -273,6 +307,10 @@ def campaign(
         report,
         suite=suite,
         require_opensees=require_opensees,
+    )
+    _enforce_execution_coverage_policy(
+        report,
+        min_execution_coverage=min_execution_coverage,
     )
 
     benchmark_path = out / f"benchmark_{suite}.json"

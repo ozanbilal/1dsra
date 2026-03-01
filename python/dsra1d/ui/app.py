@@ -136,6 +136,7 @@ def _run_campaign_bundle(
     opensees_executable: str,
     verify_require_runs: int,
     require_opensees: bool,
+    min_execution_coverage: float,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     campaign_dir.mkdir(parents=True, exist_ok=True)
     benchmark_report = _run_benchmark_with_optional_override(
@@ -157,6 +158,22 @@ def _run_campaign_bundle(
         raise RuntimeError(
             "OpenSees backend is required for parity campaign but some cases were skipped "
             f"(backend_ready={backend_ready}, skipped_backend={skipped_backend})."
+        )
+    execution_coverage_raw = benchmark_report.get("execution_coverage", 0.0)
+    if isinstance(execution_coverage_raw, (int, float)):
+        execution_coverage = float(execution_coverage_raw)
+    elif isinstance(execution_coverage_raw, str):
+        try:
+            execution_coverage = float(execution_coverage_raw)
+        except ValueError:
+            execution_coverage = 0.0
+    else:
+        execution_coverage = 0.0
+    if execution_coverage < min_execution_coverage:
+        raise RuntimeError(
+            "Execution coverage policy failed for campaign: "
+            f"execution_coverage={execution_coverage:.3f}, "
+            f"min_execution_coverage={min_execution_coverage:.3f}"
         )
     benchmark_path = campaign_dir / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(benchmark_report, indent=2), encoding="utf-8")
@@ -495,6 +512,16 @@ def main() -> None:
         "Require OpenSees (parity)",
         value=(campaign_suite == "opensees-parity"),
     )
+    min_execution_coverage = float(
+        st.sidebar.number_input(
+            "Min Execution Coverage",
+            min_value=0.0,
+            max_value=1.0,
+            value=1.0 if campaign_suite == "opensees-parity" else 0.0,
+            step=0.05,
+            format="%.2f",
+        )
+    )
     verify_require_runs = int(
         st.sidebar.number_input(
             "Verify Require Runs",
@@ -559,6 +586,7 @@ def main() -> None:
                 opensees_executable=opensees_executable,
                 verify_require_runs=verify_require_runs,
                 require_opensees=require_opensees,
+                min_execution_coverage=min_execution_coverage,
             )
             st.session_state["campaign_dir"] = str(campaign_root)
             st.success(f"Campaign completed: {campaign_root}")

@@ -135,6 +135,7 @@ Missing:
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
+- `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
 - CLI backend preflight: `validate --check-backend`

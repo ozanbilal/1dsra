@@ -37,12 +37,14 @@ pip install -e .[dev]
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
@@ -143,6 +145,8 @@ Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--require-runs <N>`
 Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
+Use execution coverage policy for campaign/benchmark suites:
+- `--min-execution-coverage <0..1>` (fails if executed case ratio is below target)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.
 Campaign summary now includes backend coverage indicators:
 - `backend_ready`

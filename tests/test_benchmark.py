@@ -64,3 +64,20 @@ def test_benchmark_opensees_uses_executable_override_env(
     assert report["all_passed"] is True
     assert seen
     assert all(v == "OVERRIDE_EXE" for v in seen)
+
+
+def test_benchmark_core_hyst_passes(tmp_path: Path) -> None:
+    report = run_benchmark_suite("core-hyst", tmp_path)
+    assert report["all_passed"] is True
+    assert int(report["skipped"]) == 0
+    assert int(report["ran"]) == 1
+    cases = report["cases"]
+    assert isinstance(cases, list)
+    assert len(cases) == 1
+    case = cases[0]
+    assert isinstance(case, dict)
+    assert case["passed"] is True
+    actual = case["actual"]
+    assert isinstance(actual, dict)
+    assert "delta_u_max" in actual
+    assert "sigma_v_eff_min" in actual

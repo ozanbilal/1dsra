@@ -30,6 +30,7 @@ pip install -e .[dev]
 1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
+1dsra benchmark --suite core-hyst --out out/benchmarks_hyst
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
@@ -47,7 +48,7 @@ pip install -e .[ui]
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
-UI also includes a campaign panel (`core-es` / `opensees-parity`) with inline benchmark+verify summaries.
+UI also includes a campaign panel (`core-es`, `core-hyst`, `opensees-parity`) with inline benchmark+verify summaries.
 UI sidebar includes config presets (`effective-stress`, `mkz-gqh-mock`) for quick switching.
 
 ## OpenSees Integration

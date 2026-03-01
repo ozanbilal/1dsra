@@ -1,0 +1,18 @@
+{
+  "hyst01": {
+    "checks": {
+      "pga": { "expected": 0.024, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.011091703590676565, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 1.9133188693917074, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 170.5866811306083, "abs_tol": 1.0e-9, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {
+      "name": "hyst01",
+      "config": "cases/hyst01.yml",
+      "motion": "cases/hyst01_motion.csv"
+    }
+  ]
+}

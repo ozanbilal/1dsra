@@ -87,15 +87,27 @@ def verify_run(
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta_run_id = str(meta.get("run_id", ""))
+    meta_solver_backend = str(meta.get("solver_backend", ""))
+    meta_status = str(meta.get("status", ""))
+    meta_opensees_command_raw = meta.get("opensees_command", [])
+    meta_opensees_command = (
+        [str(v) for v in meta_opensees_command_raw]
+        if isinstance(meta_opensees_command_raw, list)
+        else []
+    )
     meta_checksums_raw = meta.get("checksums", {})
     meta_checksums = meta_checksums_raw if isinstance(meta_checksums_raw, dict) else {}
     details["run_id_dir"] = root.name
     details["run_id_meta"] = meta_run_id
+    details["solver_backend_meta"] = meta_solver_backend
+    details["status_meta"] = meta_status
+    details["opensees_command_meta"] = meta_opensees_command
     pwp_effective_row: tuple[object, ...] | None = None
     pwp_effective_error = ""
     eql_summary_row: tuple[object, ...] | None = None
     eql_summary_error = ""
     eql_layer_count_sql = 0
+    artifact_kinds: set[str] = set()
 
     try:
         with sqlite3.connect(sqlite_path) as conn:
@@ -110,6 +122,13 @@ def verify_run(
                 (sqlite_run_id,),
             ).fetchall()
             metric_map = {str(name): _safe_float(value) for name, value in metrics_rows}
+            artifacts_rows = conn.execute(
+                "SELECT kind, path FROM artifacts WHERE run_id = ?",
+                (sqlite_run_id,),
+            ).fetchall()
+            artifact_kinds = {str(kind) for kind, _ in artifacts_rows}
+            details["artifact_kinds_sqlite"] = sorted(artifact_kinds)
+            details["artifact_paths_sqlite"] = [str(path) for _, path in artifacts_rows]
 
             try:
                 checksum_rows = conn.execute(
@@ -383,6 +402,19 @@ def verify_run(
         if sqlite_hash_meta
         else (not require_checksums)
     )
+
+    checks["opensees_meta_command_present"] = True
+    checks["opensees_artifacts_logged"] = True
+    checks["opensees_logs_exist"] = True
+    if meta_solver_backend == "opensees" and meta_status == "ok":
+        checks["opensees_meta_command_present"] = len(meta_opensees_command) > 0
+        required_artifacts = {"opensees_stdout", "opensees_stderr"}
+        checks["opensees_artifacts_logged"] = required_artifacts.issubset(artifact_kinds)
+        stdout_path = root / "opensees_stdout.log"
+        stderr_path = root / "opensees_stderr.log"
+        checks["opensees_logs_exist"] = stdout_path.exists() and stderr_path.exists()
+        details["opensees_stdout_exists"] = stdout_path.exists()
+        details["opensees_stderr_exists"] = stderr_path.exists()
 
     ok = all(checks.values())
     return VerificationReport(ok=ok, checks=checks, details=details)

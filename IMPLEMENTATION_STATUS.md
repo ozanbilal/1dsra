@@ -90,6 +90,7 @@ Implemented:
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
 - `verify` now also checks `pwp_effective_stats` table-level consistency vs HDF5
+- `verify` now checks successful OpenSees runs for command metadata + stdout/stderr artifact/log presence
 - `verify-batch` now emits machine-readable policy verdicts (`require_runs`, condition flags, `passed`) including path/directory guards
 - HTML/PDF report generation (includes effective-stress KPI summary and additional time-history plots)
 

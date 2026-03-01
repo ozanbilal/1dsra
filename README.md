@@ -196,6 +196,7 @@ Use `verify` to validate post-run integrity:
 - run-id consistency between directory, `run_meta.json`, and SQLite `runs`
 - metric consistency between HDF5 and SQLite (`pga`, `ru_max`, `delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
 - `pwp_effective_stats` table consistency against HDF5 (`row count`, `time bounds`, `delta_u_max`, `sigma_v_eff_min`)
+- for successful OpenSees runs: command metadata + stdout/stderr artifact/log presence checks
 - checksum consistency for `results.h5` and `results.sqlite`
 
 Use `verify-batch` for folder-level checks over multiple run directories.

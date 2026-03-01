@@ -1,7 +1,9 @@
 import sqlite3
 from pathlib import Path
 
+import dsra1d.pipeline as pipeline_mod
 from dsra1d.config import load_project_config
+from dsra1d.interop.opensees import OpenSeesRunOutput
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.verify import verify_batch, verify_run
@@ -150,3 +152,44 @@ def test_verify_run_checks_eql_summary_consistency(tmp_path: Path) -> None:
     assert report.checks["eql_iterations_match"] is True
     assert report.checks["eql_converged_match"] is True
     assert report.checks["eql_layer_count_match"] is True
+
+
+def test_verify_run_checks_opensees_logs_and_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "opensees"
+    cfg.analysis.retries = 0
+    cfg.opensees.executable = "OpenSees"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    def _fake_run_opensees(executable, tcl_file, cwd, timeout_s, extra_args=None):
+        _ = (tcl_file, timeout_s, extra_args)
+        cwd_path = Path(cwd)
+        times = [0.0, dt, 2.0 * dt]
+        surface = [0.0, 0.01, -0.005]
+        ru = [0.0, 0.02, 0.03]
+        with (cwd_path / "surface_acc.out").open("w", encoding="utf-8") as f:
+            for t, a in zip(times, surface, strict=True):
+                f.write(f"{t} {a}\n")
+        with (cwd_path / "pwp_ru.out").open("w", encoding="utf-8") as f:
+            for t, r in zip(times, ru, strict=True):
+                f.write(f"{t} {r}\n")
+        return OpenSeesRunOutput(
+            returncode=0,
+            stdout="OpenSees fake ok",
+            stderr="",
+            command=[str(executable), str(tcl_file)],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_opensees", _fake_run_opensees)
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-ok")
+    assert result.status == "ok"
+
+    report = verify_run(result.output_dir)
+    assert report.ok is True
+    assert report.checks["opensees_meta_command_present"] is True
+    assert report.checks["opensees_artifacts_logged"] is True
+    assert report.checks["opensees_logs_exist"] is True

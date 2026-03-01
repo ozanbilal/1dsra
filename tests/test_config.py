@@ -112,6 +112,27 @@ analysis:
     assert loaded.analysis.solver_backend == "mock"
 
 
+def test_linear_backend_allows_missing_pm4_parameters(tmp_path: Path) -> None:
+    cfg = tmp_path / "missing_pm4_linear.yml"
+    cfg.write_text(
+        """
+project_name: missing-pm4-linear
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+analysis:
+  solver_backend: linear
+""".strip(),
+        encoding="utf-8",
+    )
+    loaded = load_project_config(cfg)
+    assert loaded.analysis.solver_backend == "linear"
+
+
 def test_invalid_motion_unit_rejected(tmp_path: Path) -> None:
     cfg = tmp_path / "bad_unit.yml"
     cfg.write_text(

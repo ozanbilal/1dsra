@@ -7,6 +7,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - JSON/YAML schema-validated project configs
 - Motion preprocessing (baseline correction + scaling)
 - OpenSees model generation and subprocess orchestration
+- Native linear SH backend (lumped shear-beam, Newmark integration) for immediate baseline analysis
 - MKZ/GQH hysteretic backbone helpers for native/mock-track prototyping
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
@@ -109,6 +110,7 @@ Runtime backend mode can be overridden at execution time:
 - `--backend auto` (if config requests OpenSees but executable is missing, fallback to mock)
 - `--backend opensees` (force OpenSees, fail fast if executable missing)
 - `--backend mock` (force mock backend)
+- `--backend linear` (force native linear SH response backend)
 These options are available on `run`, `batch`, `dt-check`, and `quickstart`.
 `quickstart` creates a self-contained sample run directory, executes analysis, runs verification,
 and writes `quickstart_summary.json`.

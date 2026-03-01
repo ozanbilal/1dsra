@@ -19,6 +19,7 @@ from dsra1d.interop.opensees import (
     run_opensees,
     validate_tcl_script,
 )
+from dsra1d.linear import solve_linear_sh_response
 from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.post import compute_spectra
@@ -107,6 +108,17 @@ def _write_mock_outputs(
     ru_t = np.arange(surface.size, dtype=np.float64) * dt
     ru = np.clip(np.linspace(0.0, mean_ru_target, surface.size), 0.0, 1.0)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([ru_t, ru]))
+
+
+def _write_linear_outputs(
+    run_dir: Path,
+    config: ProjectConfig,
+    motion: Motion,
+) -> None:
+    t, surface = solve_linear_sh_response(config, motion)
+    np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
+    ru = np.zeros_like(t)
+    np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
 
 
 def _sha256_file(path: Path) -> str:
@@ -198,6 +210,12 @@ def run_analysis(
                         dt=processed.dt,
                     )
                     break
+    elif config.analysis.solver_backend == "linear":
+        _write_linear_outputs(
+            run_dir=run_dir,
+            config=config,
+            motion=processed,
+        )
     else:
         _write_mock_outputs(
             run_dir=run_dir,

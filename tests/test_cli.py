@@ -391,6 +391,25 @@ opensees:
     assert "--backend auto" in result.stdout
 
 
+def test_cli_run_linear_backend_forced(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            "examples/configs/effective_stress.yml",
+            "--motion",
+            "examples/motions/sample_motion.csv",
+            "--out",
+            str(tmp_path / "out"),
+            "--backend",
+            "linear",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "linear (forced)" in result.stdout
+
+
 def test_cli_quickstart_auto_runs_and_writes_summary(
     tmp_path: Path,
     monkeypatch,

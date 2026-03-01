@@ -107,6 +107,7 @@ Implemented:
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
+- CI now includes optional OpenSees parity gate job when `DSRA1D_CI_OPENSEES_EXE` is configured
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
 - Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
 - Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
@@ -140,12 +141,13 @@ Missing:
 
 - CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
-- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, and `mkz-gqh-eql` templates
+- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
-- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql`
+- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql|nonlinear`
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
 - `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
+- `--backend nonlinear` now enables native MKZ/GQH backbone-coupled time-domain analysis without OpenSees dependency
 - EQL convergence diagnostics are now stored and verifiable across HDF5/SQLite/report outputs
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
@@ -153,6 +155,7 @@ Missing:
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
 - CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)
+- CI includes optional OpenSees parity gate when `DSRA1D_CI_OPENSEES_EXE` is configured
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
@@ -162,8 +165,8 @@ Missing:
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI now shows transfer-function visualization (`|H(f)|`) when available
 - Streamlit UI includes campaign controls and inline campaign summary rendering
-- Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`)
-- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear/eql`) and run-level OpenSees executable override
+- Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, `mkz-gqh-nonlinear`)
+- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear/eql/nonlinear`) and run-level OpenSees executable override
 - Streamlit UI now visualizes transfer function (`|H(f)|`) for runs with stored spectral ratio outputs
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
@@ -232,7 +235,7 @@ Status legend:
 | PM4Silt support for effective-stress runs | Partial | Material blocks, params, and strict_plus profile checks | Add deeper PM4Silt benchmark/validation matrix |
 | PWP output normalization (`ru`, `delta_u`, `sigma_v_eff`) | Done | Stored in HDF5/SQLite + verified in `verify` checks | Add richer depth-dependent diagnostics |
 | PWP model family (Dobry/Matasovic/GMP/Park-Ahn etc.) | Pending | Not implemented as native model family | Implement first simplified model + dissipation strategy |
-| Nonlinear total-stress MKZ/GQH native coupling | Partial | MKZ/GQH helpers, curve inspector, Masing loop preview | Integrate into native solver path (not only mock/proxy) |
+| Nonlinear total-stress MKZ/GQH native coupling | Partial | Native time-domain backbone-coupled solver backend (`solver_backend: nonlinear`) now runs MKZ/GQH profiles without mock dependency | Add unloading/reloading hysteresis rules (Masing/non-Masing) and published-reference calibration |
 | Masing/non-Masing production hysteresis rules | Partial | Masing-style loop generation helper exists | Add time-stepping constitutive update and non-Masing option |
 | Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
 | Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |

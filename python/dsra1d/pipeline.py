@@ -22,6 +22,7 @@ from dsra1d.interop.opensees import (
 from dsra1d.linear import solve_equivalent_linear_sh_response, solve_linear_sh_response
 from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
+from dsra1d.nonlinear import solve_nonlinear_sh_response
 from dsra1d.post import compute_spectra, compute_transfer_function
 from dsra1d.store import ResultStore, write_hdf5, write_sqlite
 from dsra1d.store import load_result as _load_result
@@ -133,6 +134,17 @@ def _write_linear_outputs(
     motion: Motion,
 ) -> None:
     t, surface = solve_linear_sh_response(config, motion)
+    np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
+    ru = np.zeros_like(t)
+    np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
+
+
+def _write_nonlinear_outputs(
+    run_dir: Path,
+    config: ProjectConfig,
+    motion: Motion,
+) -> None:
+    t, surface = solve_nonlinear_sh_response(config, motion)
     np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
     ru = np.zeros_like(t)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
@@ -258,6 +270,12 @@ def run_analysis(
                     break
     elif config.analysis.solver_backend == "linear":
         _write_linear_outputs(
+            run_dir=run_dir,
+            config=config,
+            motion=processed,
+        )
+    elif config.analysis.solver_backend == "nonlinear":
+        _write_nonlinear_outputs(
             run_dir=run_dir,
             config=config,
             motion=processed,

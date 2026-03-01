@@ -39,6 +39,17 @@ def test_cli_init_mkz_gqh_eql_template(tmp_path: Path) -> None:
     assert "solver_backend: eql" in content
 
 
+def test_cli_init_mkz_gqh_nonlinear_template(tmp_path: Path) -> None:
+    out = tmp_path / "mkz_gqh_nonlinear.yml"
+    result = runner.invoke(
+        app,
+        ["init", "--template", "mkz-gqh-nonlinear", "--out", str(out)],
+    )
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "solver_backend: nonlinear" in content
+
+
 def test_cli_init_effective_stress_strict_plus_template(tmp_path: Path) -> None:
     out = tmp_path / "effective_stress_strict_plus.yml"
     result = runner.invoke(
@@ -481,6 +492,25 @@ def test_cli_run_eql_backend_forced(tmp_path: Path) -> None:
     assert "eql (forced)" in result.stdout
 
 
+def test_cli_run_nonlinear_backend_forced(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            "examples/configs/mkz_gqh_mock.yml",
+            "--motion",
+            "examples/motions/sample_motion.csv",
+            "--out",
+            str(tmp_path / "out"),
+            "--backend",
+            "nonlinear",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "nonlinear (forced)" in result.stdout
+
+
 def test_cli_quickstart_auto_runs_and_writes_summary(
     tmp_path: Path,
     monkeypatch,
@@ -550,6 +580,29 @@ def test_cli_quickstart_mkz_gqh_eql_runs(tmp_path: Path) -> None:
     assert summary["run_status"] == "ok"
     assert summary["verify_ok"] is True
     assert summary["backend"] == "eql"
+
+
+def test_cli_quickstart_mkz_gqh_nonlinear_runs(tmp_path: Path) -> None:
+    out_dir = tmp_path / "quickstart_mkz_nl"
+    result = runner.invoke(
+        app,
+        [
+            "quickstart",
+            "--out",
+            str(out_dir),
+            "--template",
+            "mkz-gqh-nonlinear",
+            "--backend",
+            "nonlinear",
+        ],
+    )
+    assert result.exit_code == 0
+    summary_path = out_dir / "quickstart_summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["run_status"] == "ok"
+    assert summary["verify_ok"] is True
+    assert summary["backend"] == "nonlinear"
 
 
 def test_cli_verify_batch_passes(tmp_path: Path) -> None:

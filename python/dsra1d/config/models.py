@@ -65,7 +65,7 @@ class AnalysisControl(BaseModel):
     dt: PositiveFloat | None = None
     t_end: PositiveFloat | None = None
     f_max: PositiveFloat = 25.0
-    solver_backend: Literal["opensees", "mock", "linear", "eql"] = "opensees"
+    solver_backend: Literal["opensees", "mock", "linear", "eql", "nonlinear"] = "opensees"
     pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
     timeout_s: int = 180
     retries: int = 1

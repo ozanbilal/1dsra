@@ -157,6 +157,10 @@ def _apply_runtime_backend(
         cfg_run.analysis.solver_backend = "eql"
         return cfg_run, "eql (forced)"
 
+    if backend_mode == "nonlinear":
+        cfg_run.analysis.solver_backend = "nonlinear"
+        return cfg_run, "nonlinear (forced)"
+
     if backend_mode == "opensees":
         cfg_run.analysis.solver_backend = "opensees"
         resolved = resolve_opensees_executable(cfg_run.opensees.executable)
@@ -623,6 +627,7 @@ def main() -> None:
     strict_plus_cfg = root / "examples" / "configs" / "effective_stress_strict_plus.yml"
     mkz_cfg = root / "examples" / "configs" / "mkz_gqh_mock.yml"
     mkz_eql_cfg = root / "examples" / "configs" / "mkz_gqh_eql.yml"
+    mkz_nl_cfg = root / "examples" / "configs" / "mkz_gqh_nonlinear.yml"
     default_motion = root / "examples" / "motions" / "sample_motion.csv"
     default_out = root / "out" / "ui"
     config_presets = {
@@ -630,6 +635,7 @@ def main() -> None:
         "effective-stress-strict-plus": strict_plus_cfg,
         "mkz-gqh-mock": mkz_cfg,
         "mkz-gqh-eql": mkz_eql_cfg,
+        "mkz-gqh-nonlinear": mkz_nl_cfg,
     }
 
     st.set_page_config(
@@ -683,7 +689,7 @@ def main() -> None:
     )
     run_backend_mode = st.sidebar.selectbox(
         "Run Backend Mode",
-        options=["config", "auto", "opensees", "mock", "linear", "eql"],
+        options=["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"],
         index=1,
     )
     run_opensees_executable = st.sidebar.text_input(

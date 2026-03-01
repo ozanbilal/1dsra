@@ -26,7 +26,15 @@ from dsra1d.post import render_summary_markdown, summarize_campaign, write_repor
 from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="1DSRA CLI")
-RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear", "eql"]
+RunBackendMode = Literal[
+    "config",
+    "auto",
+    "opensees",
+    "mock",
+    "linear",
+    "eql",
+    "nonlinear",
+]
 
 
 def _load_json_mapping(path: Path) -> dict[str, object]:
@@ -62,6 +70,10 @@ def _apply_runtime_backend(
     if backend == "eql":
         cfg_run.analysis.solver_backend = "eql"
         return cfg_run, "eql (forced)"
+
+    if backend == "nonlinear":
+        cfg_run.analysis.solver_backend = "nonlinear"
+        return cfg_run, "nonlinear (forced)"
 
     if backend == "opensees":
         cfg_run.analysis.solver_backend = "opensees"
@@ -347,6 +359,7 @@ def quickstart(
         "effective-stress-strict-plus": "effective_stress_strict_plus.yml",
         "mkz-gqh-mock": "mkz_gqh_mock.yml",
         "mkz-gqh-eql": "mkz_gqh_eql.yml",
+        "mkz-gqh-nonlinear": "mkz_gqh_nonlinear.yml",
     }
     config_name = template_to_config.get(template)
     if config_name is None:

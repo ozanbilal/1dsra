@@ -16,6 +16,8 @@ class ResultStore:
     acc_surface: np.ndarray
     spectra_periods: np.ndarray
     spectra_psa: np.ndarray
+    transfer_freq_hz: np.ndarray
+    transfer_abs: np.ndarray
     ru_time: np.ndarray
     ru: np.ndarray
     delta_u: np.ndarray
@@ -33,6 +35,16 @@ def load_result(output_dir: str | Path) -> ResultStore:
         acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
         periods = np.array(h5["/spectra/periods"], dtype=np.float64)
         psa = np.array(h5["/spectra/psa"], dtype=np.float64)
+        transfer_freq_hz = (
+            np.array(h5["/spectra/freq_hz"], dtype=np.float64)
+            if "/spectra/freq_hz" in h5
+            else np.array([], dtype=np.float64)
+        )
+        transfer_abs = (
+            np.array(h5["/spectra/transfer_abs"], dtype=np.float64)
+            if "/spectra/transfer_abs" in h5
+            else np.array([], dtype=np.float64)
+        )
         ru_time = np.array(h5["/pwp/time"], dtype=np.float64) if "/pwp/time" in h5 else np.array([])
         ru = np.array(h5["/pwp/ru"], dtype=np.float64) if "/pwp/ru" in h5 else np.array([])
         delta_u = (
@@ -71,6 +83,8 @@ def load_result(output_dir: str | Path) -> ResultStore:
         acc_surface=acc,
         spectra_periods=periods,
         spectra_psa=psa,
+        transfer_freq_hz=transfer_freq_hz,
+        transfer_abs=transfer_abs,
         ru_time=ru_time,
         ru=ru,
         delta_u=delta_u,

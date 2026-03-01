@@ -38,6 +38,7 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
     delta_u_max = _safe_max(result.delta_u)
     sigma_v_eff_min = _safe_min(result.sigma_v_eff)
     sigma_v_ref = result.sigma_v_ref
+    transfer_max = _safe_max(result.transfer_abs)
 
     if "html" in formats:
         html = out_dir / "report.html"
@@ -51,6 +52,7 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
                     f"<p>delta_u_max: {_fmt(delta_u_max)} kPa (proxy units)</p>",
                     f"<p>sigma_v_ref: {_fmt(sigma_v_ref)} kPa (proxy units)</p>",
                     f"<p>sigma_v_eff_min: {_fmt(sigma_v_eff_min)} kPa (proxy units)</p>",
+                    f"<p>transfer_abs_max: {_fmt(transfer_max)}</p>",
                     f"<p>Spectra points: {len(periods)}</p>",
                     "</body></html>",
                 ]
@@ -107,6 +109,20 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
             fig2.tight_layout()
             pdf.savefig(fig2)
             plt.close(fig2)
+
+            if (
+                result.transfer_freq_hz.size > 1
+                and result.transfer_freq_hz.size == result.transfer_abs.size
+            ):
+                fig3, ax3 = plt.subplots(figsize=(8, 4.5))
+                ax3.plot(result.transfer_freq_hz, result.transfer_abs, lw=1.2, color="#4b3f72")
+                ax3.set_title("Transfer Function |H(f)|")
+                ax3.set_xlabel("Frequency (Hz)")
+                ax3.set_ylabel("Amplification")
+                ax3.set_xlim(left=0.0)
+                ax3.grid(True, alpha=0.3)
+                pdf.savefig(fig3)
+                plt.close(fig3)
         written.append(pdf_path)
 
     return written

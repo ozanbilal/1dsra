@@ -24,6 +24,8 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
         assert "/pwp/delta_u" in h5
         assert "/pwp/sigma_v_ref" in h5
         assert "/pwp/sigma_v_eff" in h5
+        assert "/spectra/freq_hz" in h5
+        assert "/spectra/transfer_abs" in h5
         assert h5["/mesh/layer_idx"].shape[0] >= 1
 
     conn = sqlite3.connect(result.sqlite_path)
@@ -32,12 +34,14 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
         n_artifacts = conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
         n_checksums = conn.execute("SELECT COUNT(*) FROM checksums").fetchone()[0]
         n_pwp_effective = conn.execute("SELECT COUNT(*) FROM pwp_effective_stats").fetchone()[0]
+        n_transfer = conn.execute("SELECT COUNT(*) FROM transfer_function").fetchone()[0]
     finally:
         conn.close()
     assert n_mesh >= 1
     assert n_artifacts >= 4
     assert n_checksums >= 1
     assert n_pwp_effective >= 1
+    assert n_transfer >= 1
     assert (result.output_dir / "run_meta.json").exists()
     run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
     checksums = run_meta.get("checksums", {})
@@ -48,6 +52,8 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
     store = load_result(result.output_dir)
     assert store.acc_surface.size > 0
     assert store.spectra_periods.size == 80
+    assert store.transfer_freq_hz.size > 0
+    assert store.transfer_abs.size == store.transfer_freq_hz.size
     assert store.ru.size > 0
     assert store.delta_u.size > 0
     assert store.sigma_v_eff.size > 0

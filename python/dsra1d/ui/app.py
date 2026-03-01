@@ -326,6 +326,29 @@ def _make_spectra_plot(periods: np.ndarray, psa: np.ndarray) -> go.Figure:
     return fig
 
 
+def _make_transfer_plot(freq_hz: np.ndarray, transfer_abs: np.ndarray) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=freq_hz,
+            y=transfer_abs,
+            mode="lines",
+            line={"width": 1.8, "color": "#4b3f72"},
+            name="|H(f)|",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title="Transfer Function |H(f)|",
+        xaxis_title="Frequency (Hz)",
+        yaxis_title="Amplification",
+        height=340,
+        margin={"l": 30, "r": 20, "t": 55, "b": 35},
+    )
+    fig.update_xaxes(range=[0.0, float(np.max(freq_hz)) if freq_hz.size > 0 else 1.0])
+    return fig
+
+
 def _make_ru_plot(time: np.ndarray, ru: np.ndarray) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
@@ -541,6 +564,8 @@ def _render_run_outputs(run_dir: Path) -> None:
     acc = rs.acc_surface
     periods = rs.spectra_periods
     psa = rs.spectra_psa
+    transfer_freq_hz = rs.transfer_freq_hz
+    transfer_abs = rs.transfer_abs
     ru_time = rs.ru_time
     ru = rs.ru
     delta_u = rs.delta_u
@@ -573,6 +598,11 @@ def _render_run_outputs(run_dir: Path) -> None:
         st.plotly_chart(_make_acc_plot(time, acc), use_container_width=True)
     with pcol2:
         st.plotly_chart(_make_spectra_plot(periods, psa), use_container_width=True)
+    if transfer_freq_hz.size > 1 and transfer_freq_hz.size == transfer_abs.size:
+        st.plotly_chart(
+            _make_transfer_plot(transfer_freq_hz, transfer_abs),
+            use_container_width=True,
+        )
     pcol3, pcol4 = st.columns(2)
     with pcol3:
         st.plotly_chart(_make_ru_plot(ru_time, ru), use_container_width=True)

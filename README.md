@@ -120,6 +120,7 @@ Each run writes structured metadata/artifacts:
 - `opensees_stdout.log` / `opensees_stderr.log` (if available)
 - SQLite `artifacts` table entries for generated files
 - Effective-stress outputs in HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
+- Spectral outputs in HDF5 `/spectra`: `periods`, `psa`, `freq_hz`, `transfer_abs` (`|H(f)|`)
 
 ## Project Layout
 - `python/dsra1d/`: SDK + CLI + adapters

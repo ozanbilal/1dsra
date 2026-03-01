@@ -22,7 +22,7 @@ from dsra1d.interop.opensees import (
 from dsra1d.linear import solve_linear_sh_response
 from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
-from dsra1d.post import compute_spectra
+from dsra1d.post import compute_spectra, compute_transfer_function
 from dsra1d.store import ResultStore, write_hdf5, write_sqlite
 from dsra1d.store import load_result as _load_result
 from dsra1d.types import BatchResult, Motion, RunResult
@@ -243,6 +243,11 @@ def run_analysis(
     sigma_v_eff = np.asarray(sigma_v_ref - delta_u, dtype=np.float64)
 
     spectra = compute_spectra(acc_surface, dt=processed.dt, damping=0.05)
+    transfer_freq_hz, transfer_abs = compute_transfer_function(
+        processed.acc,
+        acc_surface,
+        processed.dt,
+    )
     time = surface_t
 
     surface_out = run_dir / "surface_acc.out"
@@ -275,6 +280,8 @@ def run_analysis(
             sigma_v_ref,
             sigma_v_eff,
             spectra,
+            transfer_freq_hz,
+            transfer_abs,
             mesh_layer_idx=np.array([s.index for s in slices], dtype=np.int64),
             mesh_z_top=np.array([s.z_top_m for s in slices], dtype=np.float64),
             mesh_z_bot=np.array([s.z_bot_m for s in slices], dtype=np.float64),
@@ -295,6 +302,8 @@ def run_analysis(
             dt=processed.dt,
             acc_surface=acc_surface,
             spectra_data=spectra,
+            transfer_freq_hz=transfer_freq_hz,
+            transfer_abs=transfer_abs,
             ru_time=ru_t,
             ru=ru,
             delta_u=delta_u,

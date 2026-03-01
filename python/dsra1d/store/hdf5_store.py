@@ -18,6 +18,8 @@ def write_hdf5(
     sigma_v_ref: float,
     sigma_v_eff: np.ndarray,
     spectra: Spectra,
+    transfer_freq_hz: np.ndarray,
+    transfer_abs: np.ndarray,
     mesh_layer_idx: np.ndarray,
     mesh_z_top: np.ndarray,
     mesh_z_bot: np.ndarray,
@@ -42,6 +44,8 @@ def write_hdf5(
         spec = h5.create_group("/spectra")
         spec.create_dataset("periods", data=spectra.periods)
         spec.create_dataset("psa", data=spectra.psa)
+        spec.create_dataset("freq_hz", data=transfer_freq_hz)
+        spec.create_dataset("transfer_abs", data=transfer_abs)
 
         mesh = h5.create_group("/mesh")
         mesh.create_dataset("layer_idx", data=mesh_layer_idx)

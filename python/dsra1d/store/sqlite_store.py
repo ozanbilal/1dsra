@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS spectra (
   period_s REAL NOT NULL,
   psa REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS transfer_function (
+  run_id TEXT NOT NULL,
+  freq_hz REAL NOT NULL,
+  amplification REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS pwp_stats (
   run_id TEXT NOT NULL,
   t REAL NOT NULL,
@@ -86,6 +91,8 @@ def write_sqlite(
     dt: float,
     acc_surface: np.ndarray,
     spectra_data: Spectra,
+    transfer_freq_hz: np.ndarray,
+    transfer_abs: np.ndarray,
     ru_time: np.ndarray,
     ru: np.ndarray,
     delta_u: np.ndarray,
@@ -104,6 +111,7 @@ def write_sqlite(
             "motions",
             "metrics",
             "spectra",
+            "transfer_function",
             "pwp_stats",
             "pwp_effective_stats",
             "artifacts",
@@ -170,6 +178,13 @@ def write_sqlite(
             [
                 (run_id, float(t), float(s))
                 for t, s in zip(spectra_data.periods, spectra_data.psa, strict=True)
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO transfer_function(run_id, freq_hz, amplification) VALUES (?, ?, ?)",
+            [
+                (run_id, float(f), float(h))
+                for f, h in zip(transfer_freq_hz, transfer_abs, strict=True)
             ],
         )
         conn.executemany(

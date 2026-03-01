@@ -26,3 +26,4 @@ def test_report_includes_effective_stress_metrics(tmp_path: Path) -> None:
     assert "ru_max:" in html
     assert "delta_u_max:" in html
     assert "sigma_v_eff_min:" in html
+    assert "transfer_abs_max:" in html

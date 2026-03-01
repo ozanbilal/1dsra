@@ -51,3 +51,29 @@ def compute_spectra(
         psa[idx] = np.max(np.abs(u)) * omega**2
 
     return Spectra(periods=periods, psa=psa)
+
+
+def compute_transfer_function(
+    input_signal: np.ndarray,
+    output_signal: np.ndarray,
+    dt: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    if dt <= 0.0:
+        raise ValueError("dt must be > 0 for transfer function.")
+    n = min(int(input_signal.size), int(output_signal.size))
+    if n < 2:
+        return np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64)
+
+    x = np.asarray(input_signal[:n], dtype=np.float64)
+    y = np.asarray(output_signal[:n], dtype=np.float64)
+    x = x - float(np.mean(x))
+    y = y - float(np.mean(y))
+
+    x_fft = np.fft.rfft(x)
+    y_fft = np.fft.rfft(y)
+    freq = np.fft.rfftfreq(n, d=dt)
+    denom = np.maximum(np.abs(x_fft), 1.0e-12)
+    h_abs = np.abs(y_fft) / denom
+    if h_abs.size > 0:
+        h_abs[0] = 0.0
+    return freq.astype(np.float64), h_abs.astype(np.float64)

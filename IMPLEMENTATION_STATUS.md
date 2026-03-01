@@ -83,7 +83,8 @@ Status: **Completed (v1 base)**
 
 Implemented:
 - HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
-- SQLite output tables (runs, layers, motions, metrics, spectra, pwp_stats, mesh_slices, artifacts)
+- SQLite output tables (runs, layers, motions, metrics, spectra, transfer_function, pwp_stats, mesh_slices, artifacts)
+- Transfer-function outputs now persisted (`/spectra/freq_hz`, `/spectra/transfer_abs`, SQLite `transfer_function`)
 - SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
@@ -151,9 +152,11 @@ Missing:
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
+- Streamlit UI now shows transfer-function visualization (`|H(f)|`) when available
 - Streamlit UI includes campaign controls and inline campaign summary rendering
 - Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
-- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock`) and run-level OpenSees executable override
+- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear`) and run-level OpenSees executable override
+- Streamlit UI now visualizes transfer function (`|H(f)|`) for runs with stored spectral ratio outputs
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy

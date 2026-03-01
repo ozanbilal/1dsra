@@ -159,7 +159,11 @@ opensees:
         resolved = Path("C:/OpenSees/OpenSees.exe")
         version = "OpenSees 3.x"
 
-    monkeypatch.setattr(cli_main, "probe_opensees_executable", lambda _: _Probe())
+    monkeypatch.setattr(
+        cli_main,
+        "probe_opensees_executable",
+        lambda *args, **kwargs: _Probe(),
+    )
     result = runner.invoke(
         app,
         [

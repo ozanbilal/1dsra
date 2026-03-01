@@ -15,6 +15,7 @@ profile:
         m: 2.2
         damping_min: 0.01
         damping_max: 0.12
+        reload_factor: 1.5
     - name: MKZ-Base
       thickness_m: 8.0
       unit_weight_kN_m3: 19.2
@@ -25,10 +26,11 @@ profile:
         gamma_ref: 0.0013
         damping_min: 0.01
         damping_max: 0.10
+        reload_factor: 2.0
 analysis:
   dt: 0.01
   f_max: 25.0
-  solver_backend: mock
+  solver_backend: nonlinear
 boundary_condition: elastic_halfspace
 motion:
   units: m/s2

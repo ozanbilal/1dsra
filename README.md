@@ -9,7 +9,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - OpenSees model generation and subprocess orchestration
 - Native linear SH backend (lumped shear-beam, Newmark integration) for immediate baseline analysis
 - Native equivalent-linear backend (`eql`) with iterative MKZ/GQH strain-compatible update loop
-- MKZ/GQH hysteretic backbone helpers for native/mock-track prototyping
+- Native nonlinear MKZ/GQH time-domain backend with stateful Masing/non-Masing branch updates
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
@@ -90,8 +90,8 @@ u-p assembly constants are configurable per project via:
 - `gravity_steps`
 When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
-MKZ/GQH are currently enabled for `mock` backend prototyping and are intentionally rejected
-for `opensees` backend in v1 pipeline.
+MKZ/GQH are intentionally rejected for `opensees` backend in v1 pipeline.
+Use native `eql` / `nonlinear` backends for MKZ/GQH runs.
 For calibration-ready experiments, you can pass extra positional PM4 arguments with:
 - `layer.material_optional_args: [ ... ]`
 These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line in order.
@@ -163,6 +163,8 @@ On Linux/macOS, use `export` instead of `set`.
 cases when `opensees.executable` is not found.
 You can override executable path without editing benchmark configs:
 - `DSRA1D_OPENSEES_EXE_OVERRIDE=/path/to/OpenSees`
+You can also override executable extra args (JSON list or shell string):
+- `DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE='["scripts/opensees_pyshim.py"]'`
 You can also pass override directly via CLI:
 - `--opensees-executable /path/to/OpenSees`
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
@@ -172,6 +174,9 @@ Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 CI can run parity automatically when repository variable `DSRA1D_CI_OPENSEES_EXE` is set
 to a valid executable path/name on the runner.
+Optional OpenSeesPy parity gate can be enabled with repository variable:
+- `DSRA1D_CI_OPENSEESPY=1`
+and uses `scripts/opensees_pyshim.py`.
 Use execution coverage policy for campaign/benchmark suites:
 - `--min-execution-coverage <0..1>` (fails if executed case ratio is below target)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.

@@ -174,6 +174,7 @@ def _mkz_gqh_mock_template() -> dict[str, Any]:
                         "gamma_ref": 0.0012,
                         "damping_min": 0.01,
                         "damping_max": 0.10,
+                        "reload_factor": 2.0,
                     },
                 },
                 {
@@ -190,6 +191,7 @@ def _mkz_gqh_mock_template() -> dict[str, Any]:
                         "m": 2.0,
                         "damping_min": 0.01,
                         "damping_max": 0.12,
+                        "reload_factor": 1.6,
                     },
                 },
             ]

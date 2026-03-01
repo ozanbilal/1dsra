@@ -53,6 +53,7 @@ def resolve_opensees_executable(executable: str) -> Path | None:
 
 def probe_opensees_executable(
     executable: str,
+    extra_args: list[str] | None = None,
     timeout_s: int = 5,
 ) -> OpenSeesProbeResult:
     resolved = resolve_opensees_executable(executable)
@@ -66,7 +67,10 @@ def probe_opensees_executable(
             command=[],
         )
 
-    cmd = [str(resolved), "-version"]
+    cmd = [str(resolved)]
+    if extra_args:
+        cmd.extend(extra_args)
+    cmd.append("-version")
     try:
         proc = subprocess.run(
             cmd,

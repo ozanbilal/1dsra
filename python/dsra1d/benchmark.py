@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,20 @@ from dsra1d.interop.opensees import probe_opensees_executable, resolve_opensees_
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
+
+
+def _parse_opensees_extra_args_override(raw: str) -> list[str]:
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        posix_mode = os.name != "nt"
+        return shlex.split(value, posix=posix_mode)
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed]
+    return [str(parsed)]
 
 
 def _load_case_outputs(hdf5_path: Path) -> dict[str, np.ndarray]:
@@ -286,9 +301,13 @@ def run_benchmark_suite(
         probe_exe = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
         if not probe_exe:
             probe_exe = "OpenSees"
-        probe = probe_opensees_executable(probe_exe)
+        probe_extra = _parse_opensees_extra_args_override(
+            os.getenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", "")
+        )
+        probe = probe_opensees_executable(probe_exe, extra_args=probe_extra)
         report["backend_probe"] = {
             "requested": probe_exe,
+            "extra_args": probe_extra,
             "available": probe.available,
             "resolved": str(probe.resolved) if probe.resolved is not None else "",
             "version": probe.version,
@@ -303,8 +322,13 @@ def run_benchmark_suite(
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
         exe_override = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
+        extra_args_override = _parse_opensees_extra_args_override(
+            os.getenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", "")
+        )
         if exe_override and cfg.analysis.solver_backend == "opensees":
             cfg.opensees.executable = exe_override
+        if extra_args_override and cfg.analysis.solver_backend == "opensees":
+            cfg.opensees.extra_args = extra_args_override
         motion_path = suite_dir / case["motion"]
 
         if cfg.analysis.solver_backend == "opensees":

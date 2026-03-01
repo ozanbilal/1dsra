@@ -104,7 +104,14 @@ class Layer(BaseModel):
                 if val is not None and val <= 0.0:
                     raise ValueError(f"PM4Silt parameter '{key}' must be > 0.")
         elif self.material == MaterialType.MKZ:
-            allowed = {"gmax", "gamma_ref", "tau_max", "damping_min", "damping_max"}
+            allowed = {
+                "gmax",
+                "gamma_ref",
+                "tau_max",
+                "damping_min",
+                "damping_max",
+                "reload_factor",
+            }
             gmax = self.material_params.get("gmax")
             gamma_ref = self.material_params.get("gamma_ref")
             if gmax is None or gmax <= 0.0:
@@ -122,6 +129,9 @@ class Layer(BaseModel):
                 raise ValueError("MKZ parameter 'damping_max' must be in [0, 0.5].")
             if d_min is not None and d_max is not None and d_min > d_max:
                 raise ValueError("MKZ requires damping_min <= damping_max.")
+            reload_factor = self.material_params.get("reload_factor")
+            if reload_factor is not None and reload_factor <= 0.0:
+                raise ValueError("MKZ parameter 'reload_factor' must be > 0 when provided.")
         elif self.material == MaterialType.GQH:
             allowed = {
                 "gmax",
@@ -132,6 +142,7 @@ class Layer(BaseModel):
                 "tau_max",
                 "damping_min",
                 "damping_max",
+                "reload_factor",
             }
             gmax = self.material_params.get("gmax")
             gamma_ref = self.material_params.get("gamma_ref")
@@ -154,6 +165,9 @@ class Layer(BaseModel):
                 raise ValueError("GQH parameter 'damping_max' must be in [0, 0.5].")
             if d_min is not None and d_max is not None and d_min > d_max:
                 raise ValueError("GQH requires damping_min <= damping_max.")
+            reload_factor = self.material_params.get("reload_factor")
+            if reload_factor is not None and reload_factor <= 0.0:
+                raise ValueError("GQH parameter 'reload_factor' must be > 0 when provided.")
         else:
             allowed = {"nu"}
             nu = self.material_params.get("nu")

@@ -12,6 +12,7 @@ profile:
         gamma_ref: 0.0012
         damping_min: 0.01
         damping_max: 0.10
+        reload_factor: 2.0
     - name: GQH-Bottom
       thickness_m: 12.0
       unit_weight_kN_m3: 19.5
@@ -25,6 +26,7 @@ profile:
         m: 2.0
         damping_min: 0.01
         damping_max: 0.12
+        reload_factor: 1.6
 boundary_condition: elastic_halfspace
 analysis:
   solver_backend: nonlinear

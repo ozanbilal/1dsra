@@ -29,3 +29,20 @@ def test_run_analysis_nonlinear_backend_writes_verifiable_outputs(tmp_path: Path
     assert result.status == "ok"
     report = verify_run(result.output_dir)
     assert report.ok is True
+
+
+def test_nonlinear_solver_reload_factor_changes_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    _, surface_default = solve_nonlinear_sh_response(cfg, motion)
+
+    cfg_changed = cfg.model_copy(deep=True)
+    cfg_changed.profile.layers[0].material_params["reload_factor"] = 1.0
+    cfg_changed.profile.layers[1].material_params["reload_factor"] = 1.0
+    _, surface_changed = solve_nonlinear_sh_response(cfg_changed, motion)
+
+    assert surface_default.shape == surface_changed.shape
+    # Non-Masing factor change should alter the surface response.
+    assert not np.allclose(surface_default, surface_changed)

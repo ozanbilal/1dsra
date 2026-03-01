@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import numpy.typing as npt
 
@@ -19,7 +21,7 @@ def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
     return 0.02
 
 
-def _element_stress(
+def _element_backbone_stress(
     material: MaterialType,
     params: dict[str, float],
     gamma: float,
@@ -57,6 +59,79 @@ def _element_stress(
     return gmax_fallback * gamma
 
 
+def _strain_direction(delta_gamma: float, eps: float) -> int:
+    if delta_gamma > eps:
+        return 1
+    if delta_gamma < -eps:
+        return -1
+    return 0
+
+
+@dataclass(slots=True)
+class _ElementConstitutiveState:
+    material: MaterialType
+    params: dict[str, float]
+    gmax_fallback: float
+    reload_factor: float
+    eps_gamma: float = 1.0e-12
+    initialized: bool = False
+    direction: int = 0
+    gamma_prev: float = 0.0
+    tau_prev: float = 0.0
+    gamma_rev: float = 0.0
+    tau_rev: float = 0.0
+
+    def _backbone(self, gamma: float) -> float:
+        return _element_backbone_stress(
+            self.material,
+            self.params,
+            gamma,
+            gmax_fallback=self.gmax_fallback,
+        )
+
+    def update_stress(self, gamma: float) -> float:
+        if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
+            tau = self._backbone(gamma)
+            self.gamma_prev = gamma
+            self.tau_prev = tau
+            self.initialized = True
+            return tau
+
+        if not self.initialized:
+            tau = self._backbone(gamma)
+            delta_gamma = gamma - self.gamma_prev
+            self.direction = _strain_direction(delta_gamma, self.eps_gamma)
+            if self.direction == 0:
+                self.direction = 1 if gamma >= 0.0 else -1
+            self.gamma_prev = gamma
+            self.tau_prev = tau
+            self.gamma_rev = 0.0
+            self.tau_rev = 0.0
+            self.initialized = True
+            return tau
+
+        delta_gamma = gamma - self.gamma_prev
+        new_direction = _strain_direction(delta_gamma, self.eps_gamma)
+        if new_direction != 0 and new_direction != self.direction:
+            self.gamma_rev = self.gamma_prev
+            self.tau_rev = self.tau_prev
+            self.direction = new_direction
+
+        if self.direction == 0:
+            self.direction = 1 if gamma >= self.gamma_prev else -1
+
+        # Generalized Masing-type branch update.
+        # reload_factor=2.0 -> classical Masing,
+        # reload_factor!=2.0 -> non-Masing approximation.
+        k = max(self.reload_factor, 1.0e-6)
+        shifted_gamma = (gamma - self.gamma_rev) / k
+        tau = self.tau_rev + (k * self._backbone(shifted_gamma))
+
+        self.gamma_prev = gamma
+        self.tau_prev = tau
+        return tau
+
+
 def solve_nonlinear_sh_response(
     config: ProjectConfig,
     motion: Motion,
@@ -92,9 +167,7 @@ def solve_nonlinear_sh_response(
     m_elem = np.zeros(n_elem, dtype=np.float64)
     c_elem = np.zeros(n_elem, dtype=np.float64)
     dz_elem = np.zeros(n_elem, dtype=np.float64)
-    gmax_elem = np.zeros(n_elem, dtype=np.float64)
-    mat_elem: list[MaterialType] = []
-    params_elem: list[dict[str, float]] = []
+    constitutive_states: list[_ElementConstitutiveState] = []
 
     for j, elem in enumerate(element_slices):
         layer_slice = layer_by_idx[elem.layer_index]
@@ -110,9 +183,16 @@ def solve_nonlinear_sh_response(
         m_elem[j] = m_j
         c_elem[j] = c_j
         dz_elem[j] = dz
-        gmax_elem[j] = g_mod
-        mat_elem.append(cfg_layer.material)
-        params_elem.append(cfg_layer.material_params)
+        reload_factor_raw = cfg_layer.material_params.get("reload_factor", 2.0)
+        reload_factor = float(np.clip(reload_factor_raw, 0.5, 4.0))
+        constitutive_states.append(
+            _ElementConstitutiveState(
+                material=cfg_layer.material,
+                params=cfg_layer.material_params,
+                gmax_fallback=g_mod,
+                reload_factor=reload_factor,
+            )
+        )
 
     m_diag_full = np.zeros(n_nodes, dtype=np.float64)
     m_diag_full[0] += 0.5 * m_elem[0]
@@ -143,6 +223,7 @@ def solve_nonlinear_sh_response(
     u = np.zeros((n_free,), dtype=np.float64)
     v = np.zeros((n_free,), dtype=np.float64)
     a_rel_hist = np.zeros((n_free, n_steps), dtype=np.float64)
+    a_prev = np.zeros((n_free,), dtype=np.float64)
 
     for i in range(n_steps):
         ag = float(acc_g[i])
@@ -153,21 +234,17 @@ def solve_nonlinear_sh_response(
             for j in range(n_elem):
                 dz = float(max(dz_elem[j], 1.0e-9))
                 gamma = float((u_full[j] - u_full[j + 1]) / dz)
-                tau = _element_stress(
-                    mat_elem[j],
-                    params_elem[j],
-                    gamma,
-                    gmax_fallback=float(gmax_elem[j]),
-                )
+                tau = constitutive_states[j].update_stress(gamma)
                 force = tau * area
                 f_int_full[j] += force
                 f_int_full[j + 1] -= force
             f_int = f_int_full[:n_free]
             f_ext = -m_diag * ag
-            a = (f_ext - (c_mat @ v) - f_int) / m_diag
-            v = v + dt_sub * a
+            a_curr = (f_ext - (c_mat @ v) - f_int) / m_diag
+            v = v + dt_sub * a_curr
             u = u + dt_sub * v
-        a_rel_hist[:, i] = a
+            a_prev = a_curr
+        a_rel_hist[:, i] = a_prev
 
     if n_free == 0:
         surface_acc = acc_g.copy()

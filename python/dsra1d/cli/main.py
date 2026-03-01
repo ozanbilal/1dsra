@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -207,6 +208,33 @@ def _run_benchmark_with_optional_override(
                 os.environ[env_key] = old_value
 
 
+def _parse_opensees_extra_args_override(raw: str) -> list[str]:
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        posix_mode = os.name != "nt"
+        return shlex.split(value, posix=posix_mode)
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed]
+    return [str(parsed)]
+
+
+def _apply_opensees_env_override(cfg: ProjectConfig) -> ProjectConfig:
+    if cfg.analysis.solver_backend != "opensees":
+        return cfg
+    override_exe = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
+    override_extra_raw = os.getenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", "")
+    override_extra = _parse_opensees_extra_args_override(override_extra_raw)
+    if override_exe:
+        cfg.opensees.executable = override_exe
+    if override_extra:
+        cfg.opensees.extra_args = override_extra
+    return cfg
+
+
 def _annotate_benchmark_policy(
     report: dict[str, object],
     *,
@@ -310,15 +338,29 @@ def validate(
     check_backend: bool = typer.Option(False, "--check-backend"),
 ) -> None:
     cfg = load_project_config(config)
+    cfg = _apply_opensees_env_override(cfg)
     if check_backend and cfg.analysis.solver_backend == "opensees":
-        probe = probe_opensees_executable(cfg.opensees.executable)
+        probe = probe_opensees_executable(
+            cfg.opensees.executable,
+            extra_args=cfg.opensees.extra_args,
+        )
         if probe.resolved is None:
             print(
                 "[red]OpenSees executable not found:[/red] "
                 f"{cfg.opensees.executable}"
             )
             raise typer.Exit(code=5)
+        if not probe.available:
+            print(
+                "[red]OpenSees backend probe failed:[/red] "
+                f"{probe.version}"
+            )
+            if probe.stderr.strip():
+                print(f"[red]Probe stderr:[/red] {probe.stderr.strip()}")
+            raise typer.Exit(code=5)
         print(f"[green]OpenSees executable[/green]: {probe.resolved}")
+        if cfg.opensees.extra_args:
+            print(f"[cyan]OpenSees extra args[/cyan]: {cfg.opensees.extra_args}")
         print(f"[cyan]OpenSees version probe[/cyan]: {probe.version}")
     print(f"[green]Valid config[/green]: {cfg.project_name}")
 

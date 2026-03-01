@@ -7,6 +7,10 @@ on:
         description: "Absolute path or command name for OpenSees executable"
         required: true
         default: "OpenSees"
+      opensees_extra_args:
+        description: "Optional extra args for executable (JSON list or shell string)"
+        required: false
+        default: ""
       fail_on_skip:
         description: "Fail workflow if any parity case is skipped"
         required: false
@@ -40,12 +44,14 @@ jobs:
       - name: Check OpenSees Availability
         env:
           DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
+          DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE: ${{ inputs.opensees_extra_args }}
         run: |
           1dsra validate --config benchmarks/opensees-parity/cases/parity01.yml --check-backend || true
 
       - name: Run OpenSees Parity Campaign
         env:
           DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
+          DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE: ${{ inputs.opensees_extra_args }}
         run: |
           if [ "${{ inputs.fail_on_skip }}" = "true" ]; then
             1dsra campaign \

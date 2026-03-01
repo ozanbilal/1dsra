@@ -32,3 +32,23 @@ def test_probe_opensees_executable_with_python_binary() -> None:
     assert probe.resolved is not None
     assert probe.command
     assert probe.command[-1] == "-version"
+
+
+def test_probe_opensees_executable_with_extra_args(tmp_path: Path) -> None:
+    shim = tmp_path / "probe_shim.py"
+    shim.write_text(
+        "import sys\n"
+        "if '-version' in sys.argv:\n"
+        "    print('shim-version')\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    probe = probe_opensees_executable(
+        sys.executable,
+        extra_args=[str(shim)],
+        timeout_s=2,
+    )
+    assert probe.available is True
+    assert probe.command[-2] == str(shim)
+    assert probe.command[-1] == "-version"

@@ -76,7 +76,7 @@ Not completed:
 - Full parameter coverage and robust validation of PM4 inputs
 - Verified physics-level parity against reference OpenSees/DEEPSOIL datasets
 - Dissipation model tuning and advanced pore-pressure workflows
-- MKZ/GQH native nonlinear solver coupling (currently helper/backbone + mock proxy only)
+- Published-reference calibration for MKZ/GQH nonlinear hysteresis (current native coupling exists)
 
 ### Phase 4 - Result Store and Reporting
 Status: **Completed (v1 base)**
@@ -100,14 +100,16 @@ Status: **Completed (basic) / Partial (scientific depth)**
 Implemented:
 - `benchmark` command
 - Core benchmark suite with multi-case pass/fail output and metric-level tolerance checks
-- Added `core-hyst` benchmark suite for MKZ/GQH mock regression coverage (3-case matrix)
+- Added `core-hyst` benchmark suite for MKZ/GQH native nonlinear regression coverage (3-case matrix)
 - Added `core-linear` benchmark suite for native linear SH backend coverage (3-case matrix)
 - Added `core-eql` benchmark suite for native equivalent-linear backend coverage (3-case matrix)
 - `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
+- Manual parity workflow now also accepts executable extra-args override (`opensees_extra_args`)
 - CI now includes optional OpenSees parity gate job when `DSRA1D_CI_OPENSEES_EXE` is configured
+- CI includes optional OpenSeesPy parity gate (`DSRA1D_CI_OPENSEESPY=1`)
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
 - Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
 - Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
@@ -147,7 +149,7 @@ Missing:
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
 - `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
-- `--backend nonlinear` now enables native MKZ/GQH backbone-coupled time-domain analysis without OpenSees dependency
+- `--backend nonlinear` now enables native MKZ/GQH stateful hysteretic time-domain analysis without OpenSees dependency
 - EQL convergence diagnostics are now stored and verifiable across HDF5/SQLite/report outputs
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
@@ -160,6 +162,7 @@ Missing:
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
 - Parity benchmark reports now include `backend_probe` diagnostics (`requested`, `resolved`, `available`, `version`)
+- OpenSees override env now supports executable extra args (`DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE`)
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
@@ -235,8 +238,8 @@ Status legend:
 | PM4Silt support for effective-stress runs | Partial | Material blocks, params, and strict_plus profile checks | Add deeper PM4Silt benchmark/validation matrix |
 | PWP output normalization (`ru`, `delta_u`, `sigma_v_eff`) | Done | Stored in HDF5/SQLite + verified in `verify` checks | Add richer depth-dependent diagnostics |
 | PWP model family (Dobry/Matasovic/GMP/Park-Ahn etc.) | Pending | Not implemented as native model family | Implement first simplified model + dissipation strategy |
-| Nonlinear total-stress MKZ/GQH native coupling | Partial | Native time-domain backbone-coupled solver backend (`solver_backend: nonlinear`) now runs MKZ/GQH profiles without mock dependency | Add unloading/reloading hysteresis rules (Masing/non-Masing) and published-reference calibration |
-| Masing/non-Masing production hysteresis rules | Partial | Masing-style loop generation helper exists | Add time-stepping constitutive update and non-Masing option |
+| Nonlinear total-stress MKZ/GQH native coupling | Partial | Native time-domain solver now includes stateful branch tracking and runs MKZ/GQH profiles without mock dependency | Add published-reference calibration and stronger constitutive verification envelopes |
+| Masing/non-Masing production hysteresis rules | Partial | Time-stepping constitutive update now supports generalized reload factor (`reload_factor`, Masing/non-Masing approximation) | Extend with advanced path-dependence checks and reference loop matching |
 | Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
 | Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |
 | EQL solver (SHAKE-like + deconv/conv) | Partial | Native time-domain strain-compatible EQL backend (`solver_backend: eql`) is implemented with iterative MKZ/GQH modulus+damping updates and convergence tracking | Add frequency-domain deconvolution/convolution mode and published-reference validation |
@@ -247,7 +250,7 @@ Status legend:
 | GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
 | Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
 | Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
-| Real-binary OpenSees integration validation | Partial | Optional integration harness exists | Run and lock on machine/CI runner with installed OpenSees |
+| Real-binary OpenSees integration validation | Partial | Optional integration harness + optional CI parity gates (external executable and OpenSeesPy shim mode) | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
 | Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |
 | Release hardening and governance | Partial | Release/tag/changelog guards added | Finalize org sign-off, manuals, and artifact policy |
 | Native effective-stress solver beyond OpenSees interop | Out-of-v1 | Explicitly deferred | Start after linear/EQL native milestones |

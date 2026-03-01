@@ -20,6 +20,24 @@ class VerificationReport:
         return {"ok": self.ok, "checks": self.checks, "details": self.details}
 
 
+@dataclass(slots=True)
+class BatchVerificationReport:
+    ok: bool
+    total_runs: int
+    passed_runs: int
+    failed_runs: int
+    reports: dict[str, dict[str, object]]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "ok": self.ok,
+            "total_runs": self.total_runs,
+            "passed_runs": self.passed_runs,
+            "failed_runs": self.failed_runs,
+            "reports": self.reports,
+        }
+
+
 def _sha256_file(path: Path) -> str:
     hasher = hashlib.sha256()
     with path.open("rb") as f:
@@ -70,28 +88,41 @@ def verify_run(
     details["run_id_dir"] = root.name
     details["run_id_meta"] = meta_run_id
 
-    with sqlite3.connect(sqlite_path) as conn:
-        run_row = conn.execute(
-            "SELECT run_id FROM runs ORDER BY rowid DESC LIMIT 1"
-        ).fetchone()
-        sqlite_run_id = str(run_row[0]) if run_row else ""
-        details["run_id_sqlite"] = sqlite_run_id
+    try:
+        with sqlite3.connect(sqlite_path) as conn:
+            run_row = conn.execute(
+                "SELECT run_id FROM runs ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            sqlite_run_id = str(run_row[0]) if run_row else ""
+            details["run_id_sqlite"] = sqlite_run_id
 
-        metrics_rows = conn.execute(
-            "SELECT name, value FROM metrics WHERE run_id = ?",
-            (sqlite_run_id,),
-        ).fetchall()
-        metric_map = {str(name): _safe_float(value) for name, value in metrics_rows}
+            metrics_rows = conn.execute(
+                "SELECT name, value FROM metrics WHERE run_id = ?",
+                (sqlite_run_id,),
+            ).fetchall()
+            metric_map = {str(name): _safe_float(value) for name, value in metrics_rows}
 
-        checksum_rows = conn.execute(
-            "SELECT artifact, sha256 FROM checksums WHERE run_id = ?",
-            (sqlite_run_id,),
-        ).fetchall()
-        checksum_map_sqlite = {str(k): str(v) for k, v in checksum_rows}
+            try:
+                checksum_rows = conn.execute(
+                    "SELECT artifact, sha256 FROM checksums WHERE run_id = ?",
+                    (sqlite_run_id,),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                checksum_rows = []
+            checksum_map_sqlite = {str(k): str(v) for k, v in checksum_rows}
+    except sqlite3.Error as exc:
+        checks["sqlite_readable"] = False
+        details["sqlite_error"] = str(exc)
+        return VerificationReport(ok=False, checks=checks, details=details)
 
-    with h5py.File(h5_path, "r") as h5:
-        acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
-        ru = np.array(h5["/pwp/ru"], dtype=np.float64)
+    try:
+        with h5py.File(h5_path, "r") as h5:
+            acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
+            ru = np.array(h5["/pwp/ru"], dtype=np.float64)
+    except OSError as exc:
+        checks["hdf5_readable"] = False
+        details["hdf5_error"] = str(exc)
+        return VerificationReport(ok=False, checks=checks, details=details)
 
     pga_h5 = float(np.max(np.abs(acc)))
     ru_max_h5 = float(np.max(ru))
@@ -142,3 +173,56 @@ def verify_run(
 
     ok = all(checks.values())
     return VerificationReport(ok=ok, checks=checks, details=details)
+
+
+def _is_run_dir(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and (path / "results.h5").exists()
+        and (path / "results.sqlite").exists()
+        and (path / "run_meta.json").exists()
+    )
+
+
+def verify_batch(
+    output_root: str | Path,
+    *,
+    tolerance: float = 1.0e-8,
+    require_checksums: bool = True,
+    require_runs: int = 1,
+) -> BatchVerificationReport:
+    root = Path(output_root)
+    run_dirs = sorted([p for p in root.iterdir() if _is_run_dir(p)])
+
+    reports: dict[str, dict[str, object]] = {}
+    passed = 0
+    failed = 0
+
+    for run_dir in run_dirs:
+        try:
+            rep = verify_run(
+                run_dir,
+                tolerance=tolerance,
+                require_checksums=require_checksums,
+            )
+        except Exception as exc:  # defensive guard to keep batch verification progressing
+            rep = VerificationReport(
+                ok=False,
+                checks={"unexpected_error": False},
+                details={"exception": str(exc)},
+            )
+        reports[run_dir.name] = rep.as_dict()
+        if rep.ok:
+            passed += 1
+        else:
+            failed += 1
+
+    total = len(run_dirs)
+    ok = (failed == 0) and (total >= require_runs)
+    return BatchVerificationReport(
+        ok=ok,
+        total_runs=total,
+        passed_runs=passed,
+        failed_runs=failed,
+        reports=reports,
+    )

@@ -34,3 +34,6 @@ jobs:
 
       - name: Tests
         run: pytest
+
+      - name: Benchmark Gate
+        run: 1dsra benchmark --suite core-es --out out/ci_bench --require-runs 3

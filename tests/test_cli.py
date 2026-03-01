@@ -140,3 +140,34 @@ def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert (run_dirs[0] / "verify_report.json").exists()
+
+
+def test_cli_verify_batch_passes(tmp_path: Path) -> None:
+    cfg = Path("examples/configs/effective_stress.yml")
+    motion = Path("examples/motions/sample_motion.csv")
+    run_result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            str(cfg),
+            "--motion",
+            str(motion),
+            "--out",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert run_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "verify-batch",
+            "--in",
+            str(tmp_path / "out"),
+            "--require-runs",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (tmp_path / "out" / "verify_batch_report.json").exists()

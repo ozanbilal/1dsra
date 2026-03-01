@@ -15,7 +15,7 @@ from dsra1d.interop.opensees import resolve_opensees_executable
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import write_report
-from dsra1d.verify import verify_run
+from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="1DSRA CLI")
 
@@ -196,6 +196,32 @@ def verify(
         print("[red]Verification failed[/red]")
         raise typer.Exit(code=9)
     print("[green]Verification passed[/green]")
+
+
+@app.command("verify-batch")
+def verify_batch_cmd(
+    input_dir: Path = typer.Option(..., "--in"),
+    tolerance: float = typer.Option(1.0e-8, "--tolerance"),
+    require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
+    require_runs: int = typer.Option(1, "--require-runs"),
+) -> None:
+    report = verify_batch(
+        input_dir,
+        tolerance=tolerance,
+        require_checksums=require_checksums,
+        require_runs=require_runs,
+    )
+    report_path = input_dir / "verify_batch_report.json"
+    report_path.write_text(json.dumps(report.as_dict(), indent=2), encoding="utf-8")
+    print(f"[green]Verify batch report:[/green] {report_path}")
+    print(
+        f"total_runs={report.total_runs}, "
+        f"passed={report.passed_runs}, failed={report.failed_runs}"
+    )
+    if not report.ok:
+        print("[red]Batch verification failed[/red]")
+        raise typer.Exit(code=9)
+    print("[green]Batch verification passed[/green]")
 
 
 @app.command("ui")

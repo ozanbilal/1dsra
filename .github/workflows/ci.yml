@@ -27,18 +27,13 @@ jobs:
           pip install -e .[dev]
 
       - name: Lint
-        run: ruff check .
+        run: python -m ruff check .
 
       - name: Type check
-        run: mypy python
+        run: python -m mypy python
 
       - name: Tests
-        run: pytest
+        run: python -m pytest
 
       - name: Campaign Gate
-        run: |
-          1dsra campaign \
-            --suite core-es \
-            --out out/ci_bench \
-            --require-runs 3 \
-            --verify-require-runs 3
+        run: python -m dsra1d.cli.main campaign --suite core-es --out out/ci_bench --require-runs 3 --verify-require-runs 3

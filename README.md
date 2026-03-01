@@ -41,6 +41,7 @@ pip install -e .[dev]
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite core-hyst --out out/benchmarks_hyst
 1dsra benchmark --suite core-linear --out out/benchmarks_linear
+1dsra benchmark --suite core-eql --out out/benchmarks_eql
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
@@ -63,7 +64,7 @@ pip install -e .[ui]
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
-UI also includes a campaign panel (`core-es`, `core-hyst`, `core-linear`, `opensees-parity`) with inline benchmark+verify summaries.
+UI also includes a campaign panel (`core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`) with inline benchmark+verify summaries.
 UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`) for quick switching.
 UI run panel includes backend mode selection (`config/auto/opensees/mock/linear/eql`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.

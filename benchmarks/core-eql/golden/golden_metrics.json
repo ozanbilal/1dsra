@@ -1,0 +1,68 @@
+{
+  "eql01": {
+    "checks": {
+      "pga": { "expected": 0.03953029115756858, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 111.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "transfer_abs_max": { "expected": 225758190980.94278, "abs_tol": 0.0, "rel_tol": 0.05 },
+      "transfer_peak_freq_hz": { "expected": 20.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 0.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  },
+  "eql02": {
+    "checks": {
+      "pga": { "expected": 0.06903264687193689, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 243.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "transfer_abs_max": { "expected": 396849558470.98376, "abs_tol": 0.0, "rel_tol": 0.05 },
+      "transfer_peak_freq_hz": { "expected": 15.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 0.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  },
+  "eql03": {
+    "checks": {
+      "pga": { "expected": 0.04514805765284903, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 149.6, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
+      "transfer_abs_max": { "expected": 295027720042.3374, "abs_tol": 0.0, "rel_tol": 0.05 },
+      "transfer_peak_freq_hz": { "expected": 10.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 0.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  }
+}

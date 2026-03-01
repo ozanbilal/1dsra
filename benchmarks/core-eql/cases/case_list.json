@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "eql01",
+      "config": "cases/eql01.yml",
+      "motion": "cases/eql01_motion.csv"
+    },
+    {
+      "name": "eql02",
+      "config": "cases/eql02.yml",
+      "motion": "cases/eql02_motion.csv"
+    },
+    {
+      "name": "eql03",
+      "config": "cases/eql03.yml",
+      "motion": "cases/eql03_motion.csv"
+    }
+  ]
+}

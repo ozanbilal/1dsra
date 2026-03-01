@@ -1,0 +1,39 @@
+project_name: benchmark-eql-03
+seed: 4103
+profile:
+  layers:
+    - name: MKZTop
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.2
+      vs_m_s: 180.0
+      material: mkz
+      material_params:
+        gmax: 72000.0
+        gamma_ref: 0.0010
+        damping_min: 0.01
+        damping_max: 0.11
+    - name: GQHMid
+      thickness_m: 10.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 260.0
+      material: gqh
+      material_params:
+        gmax: 68000.0
+        gamma_ref: 0.0014
+        a1: 1.1
+        a2: 0.25
+        m: 1.05
+        damping_min: 0.012
+        damping_max: 0.12
+analysis:
+  dt: 0.01
+  f_max: 25.0
+  solver_backend: eql
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true

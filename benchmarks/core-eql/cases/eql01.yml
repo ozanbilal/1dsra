@@ -1,0 +1,26 @@
+project_name: benchmark-eql-01
+seed: 4101
+profile:
+  layers:
+    - name: MKZTop
+      thickness_m: 12.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 220.0
+      material: mkz
+      material_params:
+        gmax: 70000.0
+        gamma_ref: 0.0012
+        damping_min: 0.01
+        damping_max: 0.10
+analysis:
+  dt: 0.005
+  f_max: 25.0
+  solver_backend: eql
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true

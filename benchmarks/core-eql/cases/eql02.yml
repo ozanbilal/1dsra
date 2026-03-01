@@ -1,0 +1,36 @@
+project_name: benchmark-eql-02
+seed: 4102
+profile:
+  layers:
+    - name: GQHSoft
+      thickness_m: 8.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 170.0
+      material: gqh
+      material_params:
+        gmax: 65000.0
+        gamma_ref: 0.0009
+        a1: 1.2
+        a2: 0.35
+        m: 1.1
+        damping_min: 0.012
+        damping_max: 0.11
+    - name: ElasticBase
+      thickness_m: 18.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 360.0
+      material: elastic
+      material_params:
+        nu: 0.30
+analysis:
+  dt: 0.01
+  f_max: 25.0
+  solver_backend: eql
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true

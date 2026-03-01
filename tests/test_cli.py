@@ -625,6 +625,29 @@ def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:
     assert (out_dir / "campaign_summary.md").exists()
 
 
+def test_cli_campaign_core_eql_writes_all_reports(tmp_path: Path) -> None:
+    out_dir = tmp_path / "campaign_eql"
+    result = runner.invoke(
+        app,
+        [
+            "campaign",
+            "--suite",
+            "core-eql",
+            "--out",
+            str(out_dir),
+            "--require-runs",
+            "3",
+            "--verify-require-runs",
+            "3",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (out_dir / "benchmark_core-eql.json").exists()
+    assert (out_dir / "verify_batch_report.json").exists()
+    assert (out_dir / "campaign_summary.json").exists()
+    assert (out_dir / "campaign_summary.md").exists()
+
+
 def test_cli_campaign_require_opensees_fails_when_backend_missing(
     tmp_path: Path,
     monkeypatch,

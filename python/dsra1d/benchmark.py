@@ -265,7 +265,7 @@ def run_benchmark_suite(
     suite: str,
     output_dir: Path,
 ) -> dict[str, object]:
-    if suite not in {"core-es", "core-hyst", "core-linear", "opensees-parity"}:
+    if suite not in {"core-es", "core-hyst", "core-linear", "core-eql", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
 
     repo_root = Path(__file__).resolve().parents[2]

@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "case01",
+      "config": "cases/case01.yml",
+      "motion": "cases/case01_motion.csv"
+    },
+    {
+      "name": "case02",
+      "config": "cases/case02.yml",
+      "motion": "cases/case02_motion.csv"
+    },
+    {
+      "name": "case03",
+      "config": "cases/case03.yml",
+      "motion": "cases/case03_motion.csv"
+    }
+  ]
+}

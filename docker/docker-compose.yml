@@ -1,0 +1,9 @@
+services:
+  cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ../examples:/app/examples
+      - ../out:/app/out
+    command: ["--help"]

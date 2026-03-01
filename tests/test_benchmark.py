@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from dsra1d.benchmark import run_benchmark_suite
+
+
+def test_benchmark_core_es_passes(tmp_path: Path) -> None:
+    report = run_benchmark_suite("core-es", tmp_path)
+    assert report["all_passed"] is True
+    cases = report["cases"]
+    assert isinstance(cases, list)
+    assert len(cases) == 3
+    for case in cases:
+        assert isinstance(case, dict)
+        assert case["passed"] is True
+        constraints = case["constraints"]
+        assert isinstance(constraints, dict)
+        assert constraints["ru_bounds_ok"] is True
+        deterministic = case["deterministic"]
+        assert isinstance(deterministic, dict)
+        assert deterministic["ok"] is True
+        dt_sensitivity = case["dt_sensitivity"]
+        assert isinstance(dt_sensitivity, dict)
+        assert dt_sensitivity["enabled"] is True
+        assert dt_sensitivity["passed"] is True

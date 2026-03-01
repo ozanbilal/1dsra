@@ -1,0 +1,23 @@
+project_name: benchmark-case-01
+seed: 123
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 170.0
+      material: pm4sand
+analysis:
+  dt: 0.01
+  f_max: 20.0
+  solver_backend: mock
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true
+opensees:
+  executable: OpenSees

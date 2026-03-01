@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+import h5py
+import numpy as np
+
+from dsra1d.config import ProjectConfig, load_project_config
+from dsra1d.motion import load_motion
+from dsra1d.pipeline import run_analysis
+from dsra1d.types import Motion, RunResult
+
+
+def _load_case_outputs(hdf5_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    with h5py.File(hdf5_path, "r") as h5:
+        acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
+        ru = np.array(h5["/pwp/ru"], dtype=np.float64)
+    return acc, ru
+
+
+def _load_psa(hdf5_path: Path) -> np.ndarray:
+    with h5py.File(hdf5_path, "r") as h5:
+        return np.array(h5["/spectra/psa"], dtype=np.float64)
+
+
+def _result_signature(acc: np.ndarray, ru: np.ndarray) -> str:
+    hasher = hashlib.sha1()
+    hasher.update(acc.tobytes(order="C"))
+    hasher.update(ru.tobytes(order="C"))
+    return hasher.hexdigest()
+
+
+def _build_check_specs(
+    expected: dict[str, Any],
+    pga_actual: float,
+    ru_max_actual: float,
+) -> dict[str, dict[str, float]]:
+    checks_raw = expected.get("checks")
+    if isinstance(checks_raw, dict):
+        return {
+            name: {
+                "expected": float(
+                    spec.get(
+                        "expected",
+                        pga_actual if name == "pga" else ru_max_actual,
+                    )
+                ),
+                "abs_tol": float(spec.get("abs_tol", 0.0)),
+                "rel_tol": float(spec.get("rel_tol", 0.0)),
+            }
+            for name, spec in checks_raw.items()
+            if isinstance(spec, dict)
+        }
+
+    tolerance = float(expected.get("tolerance", 0.0))
+    return {
+        "pga": {
+            "expected": float(expected.get("pga_expected", pga_actual)),
+            "abs_tol": tolerance,
+            "rel_tol": 0.0,
+        },
+        "ru_max": {
+            "expected": float(expected.get("ru_max_expected", ru_max_actual)),
+            "abs_tol": tolerance,
+            "rel_tol": 0.0,
+        },
+    }
+
+
+def _evaluate_metric(
+    actual: float,
+    expected: float,
+    abs_tol: float,
+    rel_tol: float,
+) -> dict[str, float | bool]:
+    diff = abs(actual - expected)
+    limit = max(abs_tol, rel_tol * max(abs(expected), 1.0e-12))
+    passed = diff <= limit
+    return {
+        "actual": actual,
+        "expected": expected,
+        "diff": diff,
+        "abs_tol": abs_tol,
+        "rel_tol": rel_tol,
+        "passed": passed,
+    }
+
+
+def _run_case(
+    cfg: ProjectConfig,
+    motion_path: Path,
+    output_dir: Path,
+) -> tuple[RunResult, Motion]:
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
+    return run_analysis(cfg, motion, output_dir), motion
+
+
+def _evaluate_dt_sensitivity(
+    cfg: ProjectConfig,
+    motion_path: Path,
+    output_dir: Path,
+    base_hdf5_path: Path,
+    threshold: float,
+) -> dict[str, float | bool | str]:
+    base_psa = _load_psa(base_hdf5_path)
+    cfg_half = cfg.model_copy(deep=True)
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    cfg_half.analysis.dt = dt / 2.0
+
+    half_run, _ = _run_case(cfg_half, motion_path, output_dir)
+    half_psa = _load_psa(half_run.hdf5_path)
+
+    if base_psa.shape != half_psa.shape:
+        return {
+            "enabled": True,
+            "passed": False,
+            "reason": "shape_mismatch",
+            "threshold": threshold,
+            "max_relative_psa_diff": float("inf"),
+            "mean_relative_psa_diff": float("inf"),
+            "base_dt": dt,
+            "half_dt": cfg_half.analysis.dt,
+            "half_run_id": half_run.run_id,
+        }
+
+    denom = np.maximum(np.abs(half_psa), 1.0e-10)
+    rel = np.abs(base_psa - half_psa) / denom
+    max_rel = float(np.max(rel))
+    mean_rel = float(np.mean(rel))
+    passed = max_rel <= threshold
+    return {
+        "enabled": True,
+        "passed": passed,
+        "threshold": threshold,
+        "max_relative_psa_diff": max_rel,
+        "mean_relative_psa_diff": mean_rel,
+        "base_dt": dt,
+        "half_dt": cfg_half.analysis.dt,
+        "half_run_id": half_run.run_id,
+    }
+
+
+def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
+    if suite != "core-es":
+        raise ValueError(f"Unknown suite: {suite}")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    suite_dir = repo_root / "benchmarks" / "core-es"
+    cases_path = suite_dir / "cases" / "case_list.json"
+    golden_path = suite_dir / "golden" / "golden_metrics.json"
+
+    cases = json.loads(cases_path.read_text(encoding="utf-8"))["cases"]
+    golden = json.loads(golden_path.read_text(encoding="utf-8"))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report: dict[str, object] = {"suite": suite, "cases": [], "all_passed": True}
+
+    for case in cases:
+        cfg = load_project_config(suite_dir / case["config"])
+        motion_path = suite_dir / case["motion"]
+        run_result, motion = _run_case(cfg, motion_path, output_dir)
+        acc, ru = _load_case_outputs(run_result.hdf5_path)
+        pga = float(np.max(np.abs(acc)))
+        ru_max = float(np.max(ru))
+        ru_min = float(np.min(ru))
+        signature = _result_signature(acc, ru)
+
+        expected = golden.get(case["name"], {})
+        checks = _build_check_specs(expected, pga_actual=pga, ru_max_actual=ru_max)
+        check_results: dict[str, dict[str, float | bool]] = {}
+        all_checks_ok = True
+        for name, spec in checks.items():
+            actual = pga if name == "pga" else ru_max if name == "ru_max" else float("nan")
+            if np.isnan(actual):
+                result = {
+                    "actual": actual,
+                    "expected": spec["expected"],
+                    "diff": float("inf"),
+                    "abs_tol": spec["abs_tol"],
+                    "rel_tol": spec["rel_tol"],
+                    "passed": False,
+                }
+            else:
+                result = _evaluate_metric(
+                    actual=actual,
+                    expected=spec["expected"],
+                    abs_tol=spec["abs_tol"],
+                    rel_tol=spec["rel_tol"],
+                )
+            check_results[name] = result
+            all_checks_ok = all_checks_ok and bool(result["passed"])
+
+        constraints = expected.get("constraints", {})
+        if not isinstance(constraints, dict):
+            constraints = {}
+        ru_min_limit = float(constraints.get("ru_min", 0.0))
+        ru_max_limit = float(constraints.get("ru_max", 1.0))
+        ru_bounds_ok = (ru_min >= ru_min_limit) and (ru_max <= ru_max_limit)
+
+        deterministic = bool(expected.get("deterministic", False))
+        deterministic_ok = True
+        signature_repeat = signature
+        if deterministic:
+            rerun = run_analysis(cfg, motion, output_dir)
+            acc2, ru2 = _load_case_outputs(rerun.hdf5_path)
+            signature_repeat = _result_signature(acc2, ru2)
+            deterministic_ok = signature == signature_repeat
+
+        dt_spec = expected.get("dt_sensitivity")
+        dt_result: dict[str, float | bool | str]
+        if isinstance(dt_spec, dict):
+            threshold = float(dt_spec.get("threshold", 1.0))
+            dt_result = _evaluate_dt_sensitivity(
+                cfg=cfg,
+                motion_path=motion_path,
+                output_dir=output_dir,
+                base_hdf5_path=run_result.hdf5_path,
+                threshold=threshold,
+            )
+        else:
+            dt_result = {"enabled": False, "passed": True}
+
+        case_passed = (
+            run_result.status == "ok"
+            and all_checks_ok
+            and ru_bounds_ok
+            and deterministic_ok
+            and bool(dt_result["passed"])
+        )
+
+        report_case = {
+            "name": case["name"],
+            "run_id": run_result.run_id,
+            "status": run_result.status,
+            "actual": {"pga": pga, "ru_max": ru_max, "ru_min": ru_min},
+            "expected": expected,
+            "checks": check_results,
+            "constraints": {
+                "ru_min_limit": ru_min_limit,
+                "ru_max_limit": ru_max_limit,
+                "ru_bounds_ok": ru_bounds_ok,
+            },
+            "deterministic": {
+                "enabled": deterministic,
+                "ok": deterministic_ok,
+                "signature": signature,
+                "signature_repeat": signature_repeat,
+            },
+            "dt_sensitivity": dt_result,
+            "passed": case_passed and run_result.status == "ok",
+        }
+        cast_cases = report["cases"]
+        if isinstance(cast_cases, list):
+            cast_cases.append(report_case)
+        if not report_case["passed"]:
+            report["all_passed"] = False
+
+    return report

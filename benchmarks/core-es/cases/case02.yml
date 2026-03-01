@@ -1,0 +1,29 @@
+project_name: benchmark-case-02
+seed: 124
+profile:
+  layers:
+    - name: SiltOnly
+      thickness_m: 9.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 210.0
+      material: pm4silt
+      material_params:
+        Su: 40.0
+        Su_Rat: 0.22
+        G_o: 520.0
+        h_po: 0.62
+boundary_condition: rigid
+analysis:
+  dt: 0.01
+  f_max: 20.0
+  solver_backend: mock
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: scale_by
+  scale_factor: 2.0
+output:
+  write_hdf5: true
+  write_sqlite: true
+opensees:
+  executable: OpenSees

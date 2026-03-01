@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "1dsra"
+version = "0.1.0"
+description = "1D Site Response Analysis toolkit with OpenSees adapter"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [
+  { name = "1DSRA Contributors" }
+]
+dependencies = [
+  "numpy>=2.0",
+  "scipy>=1.14",
+  "pydantic>=2.8",
+  "pyyaml>=6.0.2",
+  "typer>=0.16",
+  "h5py>=3.12",
+  "matplotlib>=3.10",
+  "rich>=13.9"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4",
+  "pytest-cov>=5.0",
+  "mypy>=1.18",
+  "ruff>=0.13",
+  "pre-commit>=4.0"
+]
+ui = [
+  "streamlit>=1.44",
+  "plotly>=6.0",
+  "pandas>=2.2"
+]
+
+[project.scripts]
+1dsra = "dsra1d.cli.main:app"
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "RUF"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+warn_return_any = true
+warn_unused_ignores = true
+mypy_path = ["python"]
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = ["h5py", "h5py.*", "scipy", "scipy.*", "streamlit", "plotly", "plotly.*", "yaml"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]

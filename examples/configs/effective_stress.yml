@@ -1,0 +1,41 @@
+project_name: sample-effective-stress
+seed: 42
+profile:
+  layers:
+    - name: SurfaceSand
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.42
+        G0: 620.0
+        hpo: 0.55
+    - name: DeepSilt
+      thickness_m: 12.0
+      unit_weight_kN_m3: 19.5
+      vs_m_s: 320.0
+      material: pm4silt
+      material_params:
+        Su: 45.0
+        Su_Rat: 0.23
+        G_o: 520.0
+        h_po: 0.62
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.005
+  f_max: 25.0
+  solver_backend: mock
+  timeout_s: 120
+  retries: 1
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []

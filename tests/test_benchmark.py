@@ -101,3 +101,32 @@ def test_benchmark_core_hyst_passes(tmp_path: Path) -> None:
         assert isinstance(actual, dict)
         assert "delta_u_max" in actual
         assert "sigma_v_eff_min" in actual
+
+
+def test_benchmark_core_linear_passes(tmp_path: Path) -> None:
+    report = run_benchmark_suite("core-linear", tmp_path)
+    assert report["all_passed"] is True
+    assert int(report["skipped"]) == 0
+    assert int(report["ran"]) == 3
+    assert int(report["total_cases"]) == 3
+    assert int(report["skipped_backend"]) == 0
+    assert report["backend_ready"] is True
+    assert float(report["execution_coverage"]) == 1.0
+    cases = report["cases"]
+    assert isinstance(cases, list)
+    assert len(cases) == 3
+    for case in cases:
+        assert isinstance(case, dict)
+        assert case["passed"] is True
+        actual = case["actual"]
+        assert isinstance(actual, dict)
+        assert "transfer_abs_max" in actual
+        assert "transfer_peak_freq_hz" in actual
+        checks = case["checks"]
+        assert isinstance(checks, dict)
+        assert checks["pga"]["passed"] is True
+        assert checks["ru_max"]["passed"] is True
+        assert checks["delta_u_max"]["passed"] is True
+        assert checks["sigma_v_eff_min"]["passed"] is True
+        assert checks["transfer_abs_max"]["passed"] is True
+        assert checks["transfer_peak_freq_hz"]["passed"] is True

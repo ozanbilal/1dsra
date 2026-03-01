@@ -30,11 +30,23 @@ def _load_case_outputs(hdf5_path: Path) -> dict[str, np.ndarray]:
             if "/pwp/sigma_v_eff" in h5
             else np.array([], dtype=np.float64)
         )
+        transfer_freq_hz = (
+            np.array(h5["/spectra/freq_hz"], dtype=np.float64)
+            if "/spectra/freq_hz" in h5
+            else np.array([], dtype=np.float64)
+        )
+        transfer_abs = (
+            np.array(h5["/spectra/transfer_abs"], dtype=np.float64)
+            if "/spectra/transfer_abs" in h5
+            else np.array([], dtype=np.float64)
+        )
     return {
         "surface_acc": acc,
         "ru": ru,
         "delta_u": delta_u,
         "sigma_v_eff": sigma_v_eff,
+        "transfer_freq_hz": transfer_freq_hz,
+        "transfer_abs": transfer_abs,
     }
 
 
@@ -253,7 +265,7 @@ def run_benchmark_suite(
     suite: str,
     output_dir: Path,
 ) -> dict[str, object]:
-    if suite not in {"core-es", "core-hyst", "opensees-parity"}:
+    if suite not in {"core-es", "core-hyst", "core-linear", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -308,17 +320,27 @@ def run_benchmark_suite(
         ru = series["ru"]
         delta_u = series["delta_u"]
         sigma_v_eff = series["sigma_v_eff"]
+        transfer_freq_hz = series["transfer_freq_hz"]
+        transfer_abs = series["transfer_abs"]
         pga = float(np.max(np.abs(acc)))
         ru_max = float(np.max(ru))
         ru_min = float(np.min(ru))
         delta_u_max = float(np.max(delta_u)) if delta_u.size > 0 else float("nan")
         sigma_v_eff_min = float(np.min(sigma_v_eff)) if sigma_v_eff.size > 0 else float("nan")
+        transfer_abs_max = float(np.max(transfer_abs)) if transfer_abs.size > 0 else float("nan")
+        if transfer_abs.size > 1 and transfer_freq_hz.size == transfer_abs.size:
+            idx_peak = int(np.argmax(transfer_abs))
+            transfer_peak_freq_hz = float(transfer_freq_hz[idx_peak])
+        else:
+            transfer_peak_freq_hz = float("nan")
         actual_metrics = {
             "pga": pga,
             "ru_max": ru_max,
             "ru_min": ru_min,
             "delta_u_max": delta_u_max,
             "sigma_v_eff_min": sigma_v_eff_min,
+            "transfer_abs_max": transfer_abs_max,
+            "transfer_peak_freq_hz": transfer_peak_freq_hz,
         }
         signature = _result_signature(series)
 

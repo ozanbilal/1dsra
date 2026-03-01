@@ -1,0 +1,30 @@
+project_name: benchmark-linear-02
+seed: 3102
+profile:
+  layers:
+    - name: SoftTop
+      thickness_m: 8.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 150.0
+      material: elastic
+      material_params:
+        nu: 0.30
+    - name: StiffBase
+      thickness_m: 20.0
+      unit_weight_kN_m3: 19.5
+      vs_m_s: 360.0
+      material: elastic
+      material_params:
+        nu: 0.30
+analysis:
+  dt: 0.01
+  f_max: 25.0
+  solver_backend: linear
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true

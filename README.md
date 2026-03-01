@@ -38,6 +38,7 @@ pip install -e .[dev]
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite core-hyst --out out/benchmarks_hyst
+1dsra benchmark --suite core-linear --out out/benchmarks_linear
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees

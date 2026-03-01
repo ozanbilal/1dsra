@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "lin01",
+      "config": "cases/lin01.yml",
+      "motion": "cases/lin01_motion.csv"
+    },
+    {
+      "name": "lin02",
+      "config": "cases/lin02.yml",
+      "motion": "cases/lin02_motion.csv"
+    },
+    {
+      "name": "lin03",
+      "config": "cases/lin03.yml",
+      "motion": "cases/lin03_motion.csv"
+    }
+  ]
+}

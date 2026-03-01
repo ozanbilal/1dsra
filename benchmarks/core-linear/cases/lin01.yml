@@ -1,0 +1,23 @@
+project_name: benchmark-linear-01
+seed: 3101
+profile:
+  layers:
+    - name: L1
+      thickness_m: 12.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 220.0
+      material: elastic
+      material_params:
+        nu: 0.30
+analysis:
+  dt: 0.005
+  f_max: 25.0
+  solver_backend: linear
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true

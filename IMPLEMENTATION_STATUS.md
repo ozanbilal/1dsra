@@ -99,6 +99,8 @@ Implemented:
 - `benchmark` command
 - Core benchmark suite with multi-case pass/fail output and metric-level tolerance checks
 - Added `core-hyst` benchmark suite for MKZ/GQH mock regression coverage (3-case matrix)
+- Added `core-linear` benchmark suite for native linear SH backend coverage (3-case matrix)
+- `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
@@ -234,7 +236,7 @@ Status legend:
 | CLI coverage (`run/batch/benchmark/campaign/verify/report/ui`) | Done | End-to-end command set available | Maintain backward compatibility and docs |
 | Python SDK stable entry points | Done | `run_analysis`, `run_batch`, `load_result`, `compute_spectra` | Add examples for calibration and campaign automation |
 | GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
-| Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
+| Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `core-linear`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
 | Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
 | Real-binary OpenSees integration validation | Partial | Optional integration harness exists | Run and lock on machine/CI runner with installed OpenSees |
 | Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |

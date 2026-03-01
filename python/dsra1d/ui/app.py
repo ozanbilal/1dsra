@@ -668,7 +668,7 @@ def main() -> None:
     st.sidebar.header("Campaign Control")
     campaign_suite = st.sidebar.selectbox(
         "Benchmark Suite",
-        options=["core-es", "core-hyst", "opensees-parity"],
+        options=["core-es", "core-hyst", "core-linear", "opensees-parity"],
         index=0,
     )
     opensees_executable = st.sidebar.text_input(

@@ -573,6 +573,11 @@ def main() -> None:
                     "Exec Coverage",
                     f"{float(benchmark_meta.get('execution_coverage', 0.0)):.3f}",
                 )
+                missing_cases = benchmark_meta.get("backend_missing_cases", [])
+                if isinstance(missing_cases, list) and missing_cases:
+                    with st.expander("Backend Missing Cases", expanded=False):
+                        for case_name in missing_cases:
+                            st.write(f"- `{case_name}`")
             c1, c2 = st.columns(2)
             with c1:
                 st.caption("Benchmark Report")

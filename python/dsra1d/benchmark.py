@@ -274,6 +274,7 @@ def run_benchmark_suite(
     skipped_backend_count = 0
     ran_count = 0
     total_cases = len(cases)
+    backend_missing_cases: list[str] = []
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
@@ -297,6 +298,7 @@ def run_benchmark_suite(
                     cast_cases.append(report_case)
                 skipped_count += 1
                 skipped_backend_count += 1
+                backend_missing_cases.append(str(case.get("name", "unknown")))
                 continue
 
         run_result, motion = _run_case(cfg, motion_path, output_dir)
@@ -420,4 +422,5 @@ def run_benchmark_suite(
         if total_cases > 0
         else 0.0
     )
+    report["backend_missing_cases"] = backend_missing_cases
     return report

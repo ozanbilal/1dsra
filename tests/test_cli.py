@@ -215,6 +215,7 @@ def test_cli_benchmark_opensees_executable_option_overrides_env(
         ],
     )
     assert result.exit_code == 0
+    assert "Benchmark coverage:" in result.stdout
     assert seen
     assert all(val == "FROM_OPTION" for val in seen)
 
@@ -360,6 +361,7 @@ def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 0
+    assert "Benchmark coverage:" in result.stdout
     assert (out_dir / "benchmark_core-es.json").exists()
     assert (out_dir / "verify_batch_report.json").exists()
     assert (out_dir / "campaign_summary.json").exists()

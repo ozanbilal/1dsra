@@ -13,6 +13,10 @@ def _as_list(value: object) -> list[object]:
     return cast(list[object], value) if isinstance(value, list) else []
 
 
+def _as_str_list(value: object) -> list[str]:
+    return [str(v) for v in _as_list(value)]
+
+
 def _classify_benchmark_case(case: dict[str, object]) -> str:
     status = str(case.get("status", ""))
     if status == "skipped":
@@ -137,6 +141,7 @@ def summarize_campaign(
     if not isinstance(benchmark_execution_coverage, (int, float)):
         denom = benchmark_total_cases if benchmark_total_cases > 0 else 1
         benchmark_execution_coverage = benchmark_ran / denom
+    backend_missing_cases = _as_str_list(benchmark_report.get("backend_missing_cases"))
 
     summary: dict[str, object] = {
         "generated_utc": datetime.now(UTC).isoformat(),
@@ -149,6 +154,7 @@ def summarize_campaign(
             "skipped_backend": benchmark_skipped_backend,
             "backend_ready": benchmark_backend_ready,
             "execution_coverage": float(benchmark_execution_coverage),
+            "backend_missing_cases": backend_missing_cases,
             "classification_counts": dict(benchmark_classes),
             "failed_or_nonpass_cases": failed_cases,
         },
@@ -182,6 +188,11 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
         f"backend_ready={benchmark.get('backend_ready')} "
         f"execution_coverage={benchmark.get('execution_coverage')}"
     )
+    backend_missing_cases = _as_str_list(benchmark.get("backend_missing_cases"))
+    if backend_missing_cases:
+        lines.append("- Benchmark backend missing cases:")
+        for case_name in backend_missing_cases:
+            lines.append(f"  - `{case_name}`")
     bench_counts = _as_dict(benchmark.get("classification_counts"))
     if bench_counts:
         lines.append("- Benchmark classifications:")

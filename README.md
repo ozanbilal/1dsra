@@ -148,6 +148,7 @@ Campaign summary now includes backend coverage indicators:
 - `backend_ready`
 - `skipped_backend`
 - `execution_coverage`
+- `backend_missing_cases`
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`

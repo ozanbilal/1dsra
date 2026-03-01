@@ -13,6 +13,7 @@ def test_summarize_campaign_benchmark_only() -> None:
         "skipped_backend": 1,
         "backend_ready": False,
         "execution_coverage": 2.0 / 3.0,
+        "backend_missing_cases": ["case_skip"],
         "cases": [
             {"name": "case_pass", "status": "ok", "passed": True},
             {"name": "case_skip", "status": "skipped", "reason": "OpenSees executable not found"},
@@ -32,6 +33,7 @@ def test_summarize_campaign_benchmark_only() -> None:
     assert benchmark["skipped_backend"] == 1
     assert benchmark["backend_ready"] is False
     assert benchmark["execution_coverage"] == 2.0 / 3.0
+    assert benchmark["backend_missing_cases"] == ["case_skip"]
     counts = benchmark["classification_counts"]
     assert isinstance(counts, dict)
     assert counts["passed"] == 1
@@ -124,6 +126,7 @@ def test_render_summary_markdown_contains_key_sections() -> None:
             "skipped_backend": 0,
             "backend_ready": True,
             "execution_coverage": 1.0,
+            "backend_missing_cases": [],
             "classification_counts": {"passed": 2},
         },
         "verify_batch": {
@@ -140,6 +143,27 @@ def test_render_summary_markdown_contains_key_sections() -> None:
     assert "execution_coverage=1.0" in md
     assert "Benchmark classifications" in md
     assert "Verify classifications" in md
+
+
+def test_render_summary_markdown_lists_backend_missing_cases() -> None:
+    summary: dict[str, object] = {
+        "generated_utc": "2026-03-01T00:00:00+00:00",
+        "suite": "opensees-parity",
+        "benchmark": {
+            "all_passed": True,
+            "total_cases": 3,
+            "ran": 0,
+            "skipped": 3,
+            "skipped_backend": 3,
+            "backend_ready": False,
+            "execution_coverage": 0.0,
+            "backend_missing_cases": ["parity01", "parity02"],
+            "classification_counts": {"skipped_missing_executable": 3},
+        },
+    }
+    md = render_summary_markdown(summary)
+    assert "Benchmark backend missing cases" in md
+    assert "`parity01`" in md
 
 
 def test_summarize_campaign_computes_execution_coverage_fallback() -> None:

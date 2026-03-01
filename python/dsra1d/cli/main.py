@@ -100,6 +100,37 @@ def _run_benchmark_with_optional_override(
                 os.environ[env_key] = old_value
 
 
+def _print_benchmark_coverage(report: dict[str, object]) -> None:
+    total_raw = report.get("total_cases", 0)
+    ran_raw = report.get("ran", 0)
+    skipped_backend_raw = report.get("skipped_backend", 0)
+    coverage_raw = report.get("execution_coverage", 0.0)
+    backend_ready = bool(report.get("backend_ready", True))
+    total = int(total_raw) if isinstance(total_raw, (int, float, str)) else 0
+    ran = int(ran_raw) if isinstance(ran_raw, (int, float, str)) else 0
+    skipped_backend = (
+        int(skipped_backend_raw)
+        if isinstance(skipped_backend_raw, (int, float, str))
+        else 0
+    )
+    if isinstance(coverage_raw, (int, float)):
+        coverage = float(coverage_raw)
+    elif isinstance(coverage_raw, str):
+        try:
+            coverage = float(coverage_raw)
+        except ValueError:
+            coverage = 0.0
+    else:
+        coverage = 0.0
+    print(
+        "[cyan]Benchmark coverage:[/cyan] "
+        f"ran={ran}/{total}, "
+        f"backend_ready={backend_ready}, "
+        f"skipped_backend={skipped_backend}, "
+        f"execution_coverage={coverage:.3f}"
+    )
+
+
 @app.command("init")
 def init_config(
     template: str = typer.Option("effective-stress", "--template"),
@@ -202,6 +233,7 @@ def benchmark(
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {report_path}")
+    _print_benchmark_coverage(report)
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
     _enforce_benchmark_strict_policy(
@@ -246,6 +278,7 @@ def campaign(
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {benchmark_path}")
+    _print_benchmark_coverage(report)
 
     verify = verify_batch(
         out,

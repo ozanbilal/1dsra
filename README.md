@@ -87,9 +87,14 @@ pytest tests/test_opensees_integration_optional.py
 On Linux/macOS, use `export` instead of `set`.
 `opensees-parity` benchmark suite also supports real-binary verification and auto-skips
 cases when `opensees.executable` is not found.
+You can override executable path without editing benchmark configs:
+- `DSRA1D_OPENSEES_EXE_OVERRIDE=/path/to/OpenSees`
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
+
+A dedicated manual parity workflow is included:
+- `.github/workflows/opensees-parity.yml`
 
 ## Run Verification
 Use `verify` to validate post-run integrity:

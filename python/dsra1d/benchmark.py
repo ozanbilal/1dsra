@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -171,6 +172,9 @@ def run_benchmark_suite(
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
+        exe_override = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
+        if exe_override and cfg.analysis.solver_backend == "opensees":
+            cfg.opensees.executable = exe_override
         motion_path = suite_dir / case["motion"]
 
         if cfg.analysis.solver_backend == "opensees":

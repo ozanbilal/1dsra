@@ -211,7 +211,13 @@ def verify_batch_cmd(
         require_checksums=require_checksums,
         require_runs=require_runs,
     )
-    report_path = input_dir / "verify_batch_report.json"
+    if input_dir.exists():
+        report_base = input_dir
+    elif input_dir.parent.exists():
+        report_base = input_dir.parent
+    else:
+        report_base = Path.cwd()
+    report_path = report_base / "verify_batch_report.json"
     report_path.write_text(json.dumps(report.as_dict(), indent=2), encoding="utf-8")
     print(f"[green]Verify batch report:[/green] {report_path}")
     print(

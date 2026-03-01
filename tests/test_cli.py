@@ -171,3 +171,17 @@ def test_cli_verify_batch_passes(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert (tmp_path / "out" / "verify_batch_report.json").exists()
+
+
+def test_cli_verify_batch_missing_path_fails(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "verify-batch",
+            "--in",
+            str(tmp_path / "does_not_exist"),
+            "--require-runs",
+            "1",
+        ],
+    )
+    assert result.exit_code == 9

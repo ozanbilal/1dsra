@@ -192,6 +192,23 @@ def verify_batch(
     require_runs: int = 1,
 ) -> BatchVerificationReport:
     root = Path(output_root)
+    if not root.exists():
+        return BatchVerificationReport(
+            ok=False,
+            total_runs=0,
+            passed_runs=0,
+            failed_runs=0,
+            reports={"_batch": {"ok": False, "reason": f"Path not found: {root}"}},
+        )
+    if not root.is_dir():
+        return BatchVerificationReport(
+            ok=False,
+            total_runs=0,
+            passed_runs=0,
+            failed_runs=0,
+            reports={"_batch": {"ok": False, "reason": f"Not a directory: {root}"}},
+        )
+
     run_dirs = sorted([p for p in root.iterdir() if _is_run_dir(p)])
 
     reports: dict[str, dict[str, object]] = {}

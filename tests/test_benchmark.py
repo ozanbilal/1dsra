@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import dsra1d.benchmark as benchmark_mod
 from dsra1d.benchmark import run_benchmark_suite
 
 
@@ -36,3 +37,21 @@ def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
     cases = report["cases"]
     assert isinstance(cases, list)
     assert any(isinstance(c, dict) and c.get("status") == "skipped" for c in cases)
+
+
+def test_benchmark_opensees_uses_executable_override_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seen: list[str] = []
+
+    def fake_resolve(executable: str):
+        seen.append(executable)
+        return None
+
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", fake_resolve)
+    monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "OVERRIDE_EXE")
+    report = benchmark_mod.run_benchmark_suite("opensees-parity", tmp_path)
+    assert report["all_passed"] is True
+    assert seen
+    assert all(v == "OVERRIDE_EXE" for v in seen)

@@ -61,6 +61,13 @@ def test_verify_batch_require_runs_fails_when_insufficient(tmp_path: Path) -> No
     assert report.total_runs == 1
 
 
+def test_verify_batch_handles_missing_path(tmp_path: Path) -> None:
+    report = verify_batch(tmp_path / "missing_runs")
+    assert report.ok is False
+    assert report.total_runs == 0
+    assert "_batch" in report.reports
+
+
 def test_verify_run_handles_corrupted_hdf5(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))

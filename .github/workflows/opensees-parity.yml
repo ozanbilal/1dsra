@@ -1,0 +1,52 @@
+name: opensees-parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      opensees_executable:
+        description: "Absolute path or command name for OpenSees executable"
+        required: true
+        default: "OpenSees"
+      fail_on_skip:
+        description: "Fail workflow if any parity case is skipped"
+        required: false
+        default: "true"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Check OpenSees Availability
+        env:
+          DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
+        run: |
+          1dsra validate --config benchmarks/opensees-parity/cases/parity01.yml --check-backend || true
+
+      - name: Run OpenSees Parity Suite
+        env:
+          DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
+        run: |
+          if [ "${{ inputs.fail_on_skip }}" = "true" ]; then
+            1dsra benchmark --suite opensees-parity --out out/opensees-parity --fail-on-skip --require-runs 1
+          else
+            1dsra benchmark --suite opensees-parity --out out/opensees-parity --require-runs 1
+          fi
+
+      - name: Upload Parity Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensees-parity-output
+          path: out/opensees-parity/**

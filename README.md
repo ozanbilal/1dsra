@@ -67,6 +67,7 @@ Apache-2.0
 - Implementation status: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - Version bump helper: `python scripts/release_bump.py --version 1.0.0`
+- Release tag guard: `python scripts/check_release_tag.py --tag v1.0.0`
 
 ## Optional Real OpenSees Integration Test
 By default, test suite runs fully in mock mode. To run the real binary integration test:

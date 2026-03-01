@@ -23,6 +23,9 @@ jobs:
           pip install -e .[dev]
           pip install build twine
 
+      - name: Validate Release Tag Version
+        run: python scripts/check_release_tag.py --tag "${{ github.ref_name }}"
+
       - name: Quality Gate
         run: |
           ruff check .

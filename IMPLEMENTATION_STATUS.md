@@ -96,7 +96,7 @@ Status: **In progress (early)**
 
 Missing:
 - Release process execution policy (tagging rules/checklist) still needs final sign-off
-- Artifact publishing policy finalization (GitHub release workflow scaffold is now added)
+- Artifact publishing policy finalization (GitHub release workflow + release tag/version guard are now added)
 - User manual completeness and migration notes
 
 ## 3. What Is Working Today
@@ -107,6 +107,7 @@ Missing:
 - Streamlit UI with run/benchmark/report controls and plot panels
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
 - Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`
+- Release tag/version consistency guard (`scripts/check_release_tag.py`, release workflow integration)
 - Stable run-id generation now hashes full config payload + motion series digest
 - Quality gate currently green in local runs:
   - `ruff check .`

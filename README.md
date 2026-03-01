@@ -27,6 +27,7 @@ pip install -e .[dev]
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
+1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
 ```
 
 ## Web UI (Streamlit)
@@ -99,6 +100,7 @@ Use benchmark strict policy flags to enforce non-skipped runs in CI:
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`
   - default strict target: `require_runs=3`
+  - writes `campaign_summary.json` + `campaign_summary.md` and appends markdown to GitHub job summary
 
 ## Run Verification
 Use `verify` to validate post-run integrity:
@@ -107,3 +109,4 @@ Use `verify` to validate post-run integrity:
 - checksum consistency for `results.h5` and `results.sqlite`
 
 Use `verify-batch` for folder-level checks over multiple run directories.
+Use `summarize` to aggregate benchmark + verify outputs into campaign-level JSON/Markdown artifacts.

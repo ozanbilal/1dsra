@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import typer
@@ -14,10 +15,22 @@ from dsra1d.config import load_project_config, write_config_template
 from dsra1d.interop.opensees import resolve_opensees_executable
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
-from dsra1d.post import write_report
+from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
 from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="1DSRA CLI")
+
+
+def _load_json_mapping(path: Path) -> dict[str, object]:
+    if not path.exists():
+        raise typer.BadParameter(f"Path not found: {path}")
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"Invalid JSON file: {path} ({exc})") from exc
+    if not isinstance(parsed, dict):
+        raise typer.BadParameter(f"JSON root must be object: {path}")
+    return cast(dict[str, object], parsed)
 
 
 @app.command("init")
@@ -110,6 +123,31 @@ def benchmark(
             f"ran={ran}, require_runs={require_runs}"
         )
         raise typer.Exit(code=7)
+
+
+@app.command("summarize")
+def summarize(
+    benchmark_report: Path = typer.Option(..., "--benchmark-report"),
+    verify_batch_report: Path | None = typer.Option(None, "--verify-batch-report"),
+    out: Path = typer.Option(Path("out/summary"), "--out"),
+) -> None:
+    benchmark_data = _load_json_mapping(benchmark_report)
+    verify_data = (
+        _load_json_mapping(verify_batch_report)
+        if verify_batch_report is not None
+        else None
+    )
+    summary = summarize_campaign(benchmark_data, verify_data)
+    out.mkdir(parents=True, exist_ok=True)
+    json_path = out / "campaign_summary.json"
+    markdown_path = out / "campaign_summary.md"
+    json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    markdown_path.write_text(
+        render_summary_markdown(summary),
+        encoding="utf-8",
+    )
+    print(f"[green]Campaign summary JSON:[/green] {json_path}")
+    print(f"[green]Campaign summary Markdown:[/green] {markdown_path}")
 
 
 @app.command("report")

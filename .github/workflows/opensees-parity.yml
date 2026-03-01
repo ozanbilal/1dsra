@@ -52,6 +52,14 @@ jobs:
       - name: Verify Parity Outputs
         run: 1dsra verify-batch --in out/opensees-parity --require-runs ${{ inputs.require_runs }}
 
+      - name: Summarize Campaign
+        run: |
+          1dsra summarize \
+            --benchmark-report out/opensees-parity/benchmark_opensees-parity.json \
+            --verify-batch-report out/opensees-parity/verify_batch_report.json \
+            --out out/opensees-parity
+          cat out/opensees-parity/campaign_summary.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Parity Artifacts
         uses: actions/upload-artifact@v4
         with:

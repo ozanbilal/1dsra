@@ -86,6 +86,8 @@ Implemented:
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
+- Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
+- Parity workflow now publishes campaign summary into GitHub Step Summary
 - Automated test coverage including TCL generation, parser robustness, fallback behavior
 - Time-step sensitivity utility command (`dt-check`) for Δt vs Δt/2 comparison
 - Additional benchmark guards:
@@ -108,7 +110,7 @@ Missing:
 
 ## 3. What Is Working Today
 
-- CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - CLI backend preflight: `validate --check-backend`
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels

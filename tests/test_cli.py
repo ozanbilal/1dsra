@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import dsra1d.benchmark as benchmark_mod
@@ -185,3 +186,51 @@ def test_cli_verify_batch_missing_path_fails(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 9
+
+
+def test_cli_summarize_writes_outputs(tmp_path: Path) -> None:
+    benchmark_report = {
+        "suite": "opensees-parity",
+        "all_passed": True,
+        "skipped": 1,
+        "ran": 2,
+        "cases": [
+            {"name": "case01", "status": "ok", "passed": True},
+            {
+                "name": "case02",
+                "status": "skipped",
+                "reason": "OpenSees executable not found: OpenSees",
+                "passed": True,
+            },
+        ],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 1,
+        "passed_runs": 1,
+        "failed_runs": 0,
+        "reports": {"run-1": {"ok": True, "checks": {}}},
+    }
+    bench_path = tmp_path / "benchmark.json"
+    verify_path = tmp_path / "verify_batch_report.json"
+    bench_path.write_text(json.dumps(benchmark_report), encoding="utf-8")
+    verify_path.write_text(json.dumps(verify_batch_report), encoding="utf-8")
+
+    out_dir = tmp_path / "summary"
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--benchmark-report",
+            str(bench_path),
+            "--verify-batch-report",
+            str(verify_path),
+            "--out",
+            str(out_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    summary_json = out_dir / "campaign_summary.json"
+    summary_md = out_dir / "campaign_summary.md"
+    assert summary_json.exists()
+    assert summary_md.exists()

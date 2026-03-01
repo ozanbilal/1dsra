@@ -122,6 +122,7 @@ Apache-2.0
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - CI/release workflows enforce a `core-es` campaign gate (`benchmark + verify + summary`)
 - CI/release workflows enforce `core-es` and `core-hyst` campaign gates (`benchmark + verify + summary`)
+- CI/release campaign gates enforce full execution coverage (`--min-execution-coverage 1.0`)
 - Version bump helper: `python scripts/release_bump.py --version 1.0.0`
 - Release tag guard: `python scripts/check_release_tag.py --tag v1.0.0`
 - Changelog guard: `python scripts/check_changelog.py --tag v1.0.0`
@@ -157,6 +158,7 @@ Campaign summary now includes backend coverage indicators:
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`
   - default strict target: `require_runs=3`
+  - default coverage target: `min_execution_coverage=1.0`
   - writes `campaign_summary.json` + `campaign_summary.md` and appends markdown to GitHub job summary
 
 ## Run Verification

@@ -15,6 +15,10 @@ on:
         description: "Minimum number of executed (non-skipped) parity runs"
         required: false
         default: "3"
+      min_execution_coverage:
+        description: "Minimum executed case coverage ratio in [0,1]"
+        required: false
+        default: "1.0"
 
 jobs:
   parity:
@@ -48,6 +52,7 @@ jobs:
               --suite opensees-parity \
               --out out/opensees-parity \
               --require-opensees \
+              --min-execution-coverage ${{ inputs.min_execution_coverage }} \
               --fail-on-skip \
               --require-runs ${{ inputs.require_runs }} \
               --verify-require-runs ${{ inputs.require_runs }}
@@ -56,6 +61,7 @@ jobs:
               --suite opensees-parity \
               --out out/opensees-parity \
               --require-opensees \
+              --min-execution-coverage ${{ inputs.min_execution_coverage }} \
               --require-runs ${{ inputs.require_runs }} \
               --verify-require-runs ${{ inputs.require_runs }}
           fi

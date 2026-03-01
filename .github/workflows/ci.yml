@@ -36,7 +36,7 @@ jobs:
         run: python -m pytest
 
       - name: Core ES Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-es --out out/ci_bench_core_es --require-runs 3 --verify-require-runs 3
+        run: python -m dsra1d.cli.main campaign --suite core-es --out out/ci_bench_core_es --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
 
       - name: Core HYST Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-hyst --out out/ci_bench_core_hyst --require-runs 3 --verify-require-runs 3
+        run: python -m dsra1d.cli.main campaign --suite core-hyst --out out/ci_bench_core_hyst --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0

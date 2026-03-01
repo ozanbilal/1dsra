@@ -31,9 +31,17 @@ jobs:
 
       - name: Quality Gate
         run: |
-          ruff check .
-          mypy python
-          pytest
+          python -m ruff check .
+          python -m mypy python
+          python -m pytest
+
+      - name: Core ES Campaign Gate
+        run: |
+          1dsra campaign \
+            --suite core-es \
+            --out out/release-core-es \
+            --require-runs 3 \
+            --verify-require-runs 3
 
       - name: Build Distributions
         run: python -m build

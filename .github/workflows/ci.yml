@@ -35,8 +35,10 @@ jobs:
       - name: Tests
         run: pytest
 
-      - name: Benchmark Gate
-        run: 1dsra benchmark --suite core-es --out out/ci_bench --require-runs 3
-
-      - name: Verify Batch Gate
-        run: 1dsra verify-batch --in out/ci_bench --require-runs 3
+      - name: Campaign Gate
+        run: |
+          1dsra campaign \
+            --suite core-es \
+            --out out/ci_bench \
+            --require-runs 3 \
+            --verify-require-runs 3

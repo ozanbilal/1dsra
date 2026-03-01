@@ -116,6 +116,7 @@ Status: **In progress (early)**
 Missing:
 - Release process execution policy (tagging rules/checklist) still needs final sign-off
 - Artifact publishing policy finalization (GitHub release workflow + release tag/version + changelog guards are now added)
+- Organization-level sign-off for release gates (CI/release now enforce `core-es` campaign gate)
 - User manual completeness and migration notes
 
 ## 3. What Is Working Today

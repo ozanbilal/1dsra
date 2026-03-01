@@ -110,6 +110,32 @@ opensees:
     assert result.exit_code == 5
 
 
+def test_cli_render_tcl_writes_artifacts(tmp_path: Path) -> None:
+    cfg = Path("examples/configs/effective_stress.yml")
+    motion = Path("examples/motions/sample_motion.csv")
+    out_dir = tmp_path / "tcl_out"
+    result = runner.invoke(
+        app,
+        [
+            "render-tcl",
+            "--config",
+            str(cfg),
+            "--motion",
+            str(motion),
+            "--out",
+            str(out_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    tcl_path = out_dir / "model.tcl"
+    motion_path = out_dir / "motion_processed.csv"
+    assert tcl_path.exists()
+    assert motion_path.exists()
+    tcl = tcl_path.read_text(encoding="utf-8")
+    assert "model BasicBuilder -ndm 2 -ndf 3" in tcl
+    assert "element quadUP" in tcl
+
+
 def test_cli_benchmark_require_runs_strict_fails(tmp_path: Path) -> None:
     result = runner.invoke(
         app,

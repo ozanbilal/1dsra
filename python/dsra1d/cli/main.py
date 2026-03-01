@@ -13,8 +13,8 @@ from rich import print
 
 from dsra1d.benchmark import run_benchmark_suite
 from dsra1d.config import load_project_config, write_config_template
-from dsra1d.interop.opensees import resolve_opensees_executable
-from dsra1d.motion import load_motion
+from dsra1d.interop.opensees import render_tcl, resolve_opensees_executable, validate_tcl_script
+from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
 from dsra1d.verify import verify_batch, verify_run
@@ -118,6 +118,30 @@ def run(
         print(f"[red]Run failed:[/red] {res.message}")
         raise typer.Exit(code=2)
     print(f"[green]Completed[/green]: {res.output_dir}")
+
+
+@app.command("render-tcl")
+def render_tcl_cmd(
+    config: Path = typer.Option(..., "--config"),
+    motion: Path = typer.Option(..., "--motion"),
+    out: Path = typer.Option(Path("out/tcl"), "--out"),
+) -> None:
+    cfg = load_project_config(config)
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    mot = load_motion(motion, dt=dt, unit=cfg.motion.units)
+    processed = preprocess_motion(mot, cfg.motion)
+
+    out.mkdir(parents=True, exist_ok=True)
+    motion_out = out / "motion_processed.csv"
+    np.savetxt(motion_out, processed.acc, delimiter=",")
+
+    script = render_tcl(cfg, motion_file=motion_out, output_dir=out)
+    validate_tcl_script(script)
+    tcl_out = out / "model.tcl"
+    tcl_out.write_text(script, encoding="utf-8")
+
+    print(f"[green]Tcl script written:[/green] {tcl_out}")
+    print(f"[green]Processed motion written:[/green] {motion_out}")
 
 
 @app.command("batch")

@@ -130,7 +130,7 @@ Missing:
 
 ## 3. What Is Working Today
 
-- CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- CLI commands: `init`, `validate`, `render-tcl`, `run`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`

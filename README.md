@@ -28,6 +28,7 @@ pip install -e .[dev]
 1dsra init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
+1dsra render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
 1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
@@ -90,6 +91,9 @@ Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 - `quadUP` element assembly
 - boundary conditions (`rigid` or `elastic_halfspace` with Lysmer-style dashpot), gravity+dynamic stages
 - surface acceleration and pore-pressure ratio recorder outputs
+
+Use CLI `render-tcl` when you want to inspect/export OpenSees Tcl and processed motion
+without running the solver backend.
 
 Each run writes structured metadata/artifacts:
 - `run_meta.json` with backend, status, command metadata

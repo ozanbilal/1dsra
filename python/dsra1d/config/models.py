@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, field_validator, model_validator
 
+from dsra1d.units import normalize_accel_unit
+
 
 class MaterialType(StrEnum):
     PM4SAND = "pm4sand"
@@ -42,6 +44,11 @@ class MotionConfig(BaseModel):
     scale_mode: ScaleMode = ScaleMode.NONE
     scale_factor: float | None = None
     target_pga: float | None = None
+
+    @field_validator("units")
+    @classmethod
+    def validate_units(cls, value: str) -> str:
+        return normalize_accel_unit(value)
 
     @model_validator(mode="after")
     def validate_scaling(self) -> MotionConfig:

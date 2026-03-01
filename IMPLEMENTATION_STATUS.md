@@ -28,6 +28,7 @@ Implemented:
 - Motion load and preprocessing (baseline correction, scale modes)
 - Material-level parameter validation for PM4Sand/PM4Silt/elastic (`material_params`)
 - Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
+- Motion unit validation + conversion to SI (`m/s2`) for consistent downstream calculations
 
 Notes:
 - Input validation works for current config model.

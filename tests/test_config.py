@@ -104,3 +104,26 @@ analysis:
     )
     loaded = load_project_config(cfg)
     assert loaded.analysis.solver_backend == "mock"
+
+
+def test_invalid_motion_unit_rejected(tmp_path: Path) -> None:
+    cfg = tmp_path / "bad_unit.yml"
+    cfg.write_text(
+        """
+project_name: bad-unit
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: elastic
+motion:
+  units: foo
+analysis:
+  solver_backend: mock
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)

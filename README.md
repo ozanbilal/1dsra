@@ -43,6 +43,8 @@ opensees:
 You can also use an absolute path for deterministic environments.
 When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
+Motion units are validated and converted to SI internally (`m/s2`).
+Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 
 `render_tcl` now generates a calibration-ready u-p column scaffold with:
 - `model BasicBuilder -ndm 2 -ndf 3`

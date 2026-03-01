@@ -5,6 +5,7 @@ from scipy import signal
 
 from dsra1d.config.models import BaselineMode, MotionConfig, ScaleMode
 from dsra1d.types import Motion
+from dsra1d.units import accel_value_to_si
 
 
 def apply_baseline_correction(acc: np.ndarray, mode: BaselineMode) -> np.ndarray:
@@ -25,17 +26,23 @@ def apply_scaling(acc: np.ndarray, cfg: MotionConfig) -> np.ndarray:
         return acc * cfg.scale_factor
     if cfg.scale_mode == ScaleMode.SCALE_TO_PGA:
         assert cfg.target_pga is not None
+        target_pga_si = accel_value_to_si(cfg.target_pga, cfg.units)
         current = float(np.max(np.abs(acc)))
         if current == 0:
             raise ValueError("Cannot scale to target PGA with zero input motion")
-        return acc * (cfg.target_pga / current)
+        return acc * (target_pga_si / current)
     raise ValueError(f"Unknown scale mode: {cfg.scale_mode}")
 
 
 def preprocess_motion(motion: Motion, cfg: MotionConfig) -> Motion:
     corrected = apply_baseline_correction(motion.acc, cfg.baseline)
     scaled = apply_scaling(corrected, cfg)
-    return Motion(dt=motion.dt, acc=scaled.astype(np.float64), unit=cfg.units, source=motion.source)
+    return Motion(
+        dt=motion.dt,
+        acc=scaled.astype(np.float64),
+        unit=motion.unit,
+        source=motion.source,
+    )
 
 
 def pga(acc: np.ndarray) -> float:

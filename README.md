@@ -9,6 +9,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - OpenSees model generation and subprocess orchestration
 - HDF5 + SQLite result stores
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
+- Batch deduplication for identical motions (avoids duplicate run collisions)
 - Windows + Linux CI matrix, Docker runtime
 
 ## Quick Start

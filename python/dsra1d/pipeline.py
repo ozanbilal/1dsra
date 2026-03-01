@@ -40,6 +40,23 @@ def _stable_run_id(config: ProjectConfig, motion: Motion) -> str:
     return f"run-{digest}"
 
 
+def _stable_motion_key(motion: Motion) -> tuple[float, str, str]:
+    acc = np.asarray(motion.acc, dtype=np.float64)
+    digest = hashlib.sha1(acc.tobytes(order="C")).hexdigest()
+    return (round(float(motion.dt), 12), motion.unit, digest)
+
+
+def _clone_run_result(result: RunResult) -> RunResult:
+    return RunResult(
+        run_id=result.run_id,
+        output_dir=result.output_dir,
+        hdf5_path=result.hdf5_path,
+        sqlite_path=result.sqlite_path,
+        status=result.status,
+        message=result.message,
+    )
+
+
 def _write_mock_outputs(run_dir: Path, acc: np.ndarray, dt: float) -> None:
     surface = 0.8 * acc
     np.savetxt(run_dir / "surface_acc.out", surface)
@@ -255,13 +272,37 @@ def run_batch(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if n_jobs <= 1:
-        results = [run_analysis(config=config, motion=m, output_dir=out_dir) for m in motions]
-        return BatchResult(output_dir=out_dir, results=results)
+    if not motions:
+        return BatchResult(output_dir=out_dir, results=[])
 
-    with ThreadPoolExecutor(max_workers=n_jobs) as ex:
-        futures = [ex.submit(run_analysis, config, m, out_dir) for m in motions]
-        results = [f.result() for f in futures]
+    key_to_motion: dict[tuple[float, str, str], Motion] = {}
+    ordered_keys: list[tuple[float, str, str]] = []
+    for motion in motions:
+        key = _stable_motion_key(motion)
+        ordered_keys.append(key)
+        if key not in key_to_motion:
+            key_to_motion[key] = motion
+
+    unique_keys = list(key_to_motion.keys())
+    result_by_key: dict[tuple[float, str, str], RunResult] = {}
+
+    if n_jobs <= 1:
+        for key in unique_keys:
+            result_by_key[key] = run_analysis(
+                config=config,
+                motion=key_to_motion[key],
+                output_dir=out_dir,
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=n_jobs) as ex:
+            futures = {
+                ex.submit(run_analysis, config, key_to_motion[key], out_dir): key
+                for key in unique_keys
+            }
+            for future, key in futures.items():
+                result_by_key[key] = future.result()
+
+    results = [_clone_run_result(result_by_key[key]) for key in ordered_keys]
 
     return BatchResult(output_dir=out_dir, results=results)
 

@@ -103,6 +103,7 @@ Implemented:
   - deterministic repeat-signature checks
   - varied case matrix (`pm4sand`, `pm4silt`, mixed profile + scaling modes)
   - optional per-case Δt vs Δt/2 PSA sensitivity checks
+- Batch runner now deduplicates identical motions to prevent output collisions and redundant runs
 
 Not completed:
 - Broad benchmark library (multiple soil profiles, strong-motion sets, edge cases)

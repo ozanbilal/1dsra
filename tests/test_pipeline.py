@@ -5,7 +5,7 @@ from pathlib import Path
 import h5py
 from dsra1d.config import load_project_config
 from dsra1d.motion import load_motion
-from dsra1d.pipeline import load_result, run_analysis
+from dsra1d.pipeline import load_result, run_analysis, run_batch
 
 
 def test_run_analysis_mock(tmp_path: Path) -> None:
@@ -80,3 +80,17 @@ def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:
     cfg_changed.seed = cfg.seed + 1
     r3 = run_analysis(cfg_changed, motion, output_dir=tmp_path / "runs")
     assert r3.run_id != r1.run_id
+
+
+def test_run_batch_deduplicates_identical_motions(tmp_path: Path) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion1 = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    motion2 = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    batch = run_batch(cfg, [motion1, motion2], output_dir=tmp_path / "batch", n_jobs=2)
+    assert len(batch.results) == 2
+    assert batch.results[0].run_id == batch.results[1].run_id
+    assert batch.results[0].status == "ok"
+    run_dirs = [p for p in (tmp_path / "batch").iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1

@@ -101,3 +101,38 @@ def test_render_summary_markdown_contains_key_sections() -> None:
     assert "Suite: `core-es`" in md
     assert "Benchmark classifications" in md
     assert "Verify classifications" in md
+
+
+def test_summarize_campaign_classifies_pwp_effective_mismatch() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "core-es",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 1,
+        "cases": [{"name": "case01", "status": "ok", "passed": True}],
+    }
+    verify_batch_report: dict[str, object] = {
+        "ok": False,
+        "total_runs": 1,
+        "passed_runs": 0,
+        "failed_runs": 1,
+        "reports": {
+            "run_bad": {
+                "ok": False,
+                "checks": {
+                    "files_present": True,
+                    "run_id_meta_vs_sqlite": True,
+                    "pwp_effective_rows_match": False,
+                },
+            }
+        },
+    }
+    summary = summarize_campaign(
+        benchmark_report=benchmark_report,
+        verify_batch_report=verify_batch_report,
+    )
+    verify = summary["verify_batch"]
+    assert isinstance(verify, dict)
+    counts = verify["classification_counts"]
+    assert isinstance(counts, dict)
+    assert counts["pwp_effective_mismatch"] == 1

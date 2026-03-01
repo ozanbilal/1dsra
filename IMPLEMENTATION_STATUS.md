@@ -79,8 +79,10 @@ Status: **Completed (v1 base)**
 Implemented:
 - HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
 - SQLite output tables (runs, layers, motions, metrics, spectra, pwp_stats, mesh_slices, artifacts)
+- SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
+- `verify` now also checks `pwp_effective_stats` table-level consistency vs HDF5
 - HTML/PDF report generation (includes effective-stress KPI summary and additional time-history plots)
 
 ### Phase 5 - Benchmark and Regression

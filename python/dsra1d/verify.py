@@ -87,6 +87,8 @@ def verify_run(
     meta_checksums = meta_checksums_raw if isinstance(meta_checksums_raw, dict) else {}
     details["run_id_dir"] = root.name
     details["run_id_meta"] = meta_run_id
+    pwp_effective_row: tuple[object, ...] | None = None
+    pwp_effective_error = ""
 
     try:
         with sqlite3.connect(sqlite_path) as conn:
@@ -110,6 +112,25 @@ def verify_run(
             except sqlite3.OperationalError:
                 checksum_rows = []
             checksum_map_sqlite = {str(k): str(v) for k, v in checksum_rows}
+
+            try:
+                pwp_effective_row = conn.execute(
+                    """
+                    SELECT
+                      COUNT(*),
+                      MIN(t),
+                      MAX(t),
+                      MAX(delta_u),
+                      MIN(sigma_v_eff)
+                    FROM pwp_effective_stats
+                    WHERE run_id = ?
+                    """,
+                    (sqlite_run_id,),
+                ).fetchone()
+                pwp_effective_error = ""
+            except sqlite3.OperationalError as exc:
+                pwp_effective_row = None
+                pwp_effective_error = str(exc)
     except sqlite3.Error as exc:
         checks["sqlite_readable"] = False
         details["sqlite_error"] = str(exc)
@@ -118,6 +139,7 @@ def verify_run(
     try:
         with h5py.File(h5_path, "r") as h5:
             acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
+            ru_time = np.array(h5["/pwp/time"], dtype=np.float64)
             ru = np.array(h5["/pwp/ru"], dtype=np.float64)
             has_delta_u = "/pwp/delta_u" in h5
             has_sigma_v_ref = "/pwp/sigma_v_ref" in h5
@@ -186,6 +208,59 @@ def verify_run(
         if ("sigma_v_eff_min" in metric_map and sigma_v_eff.size > 0)
         else True
     )
+    checks["pwp_effective_table_readable"] = pwp_effective_row is not None
+    has_effective_h5 = (
+        (ru_time.size > 0)
+        and (delta_u.size > 0)
+        and (sigma_v_eff.size > 0)
+    )
+
+    checks["pwp_effective_rows_match"] = True
+    checks["pwp_effective_time_start_match"] = True
+    checks["pwp_effective_time_end_match"] = True
+    checks["pwp_effective_delta_u_max_match"] = True
+    checks["pwp_effective_sigma_v_eff_min_match"] = True
+
+    if pwp_effective_row is None:
+        details["pwp_effective_error"] = pwp_effective_error
+        if has_effective_h5:
+            checks["pwp_effective_rows_match"] = False
+            checks["pwp_effective_time_start_match"] = False
+            checks["pwp_effective_time_end_match"] = False
+            checks["pwp_effective_delta_u_max_match"] = False
+            checks["pwp_effective_sigma_v_eff_min_match"] = False
+    else:
+        row_count = int(_safe_float(pwp_effective_row[0], 0.0))
+        t_min_sql = _safe_float(pwp_effective_row[1], float("nan"))
+        t_max_sql = _safe_float(pwp_effective_row[2], float("nan"))
+        delta_u_max_sql_table = _safe_float(pwp_effective_row[3], float("nan"))
+        sigma_v_eff_min_sql_table = _safe_float(pwp_effective_row[4], float("nan"))
+        details["pwp_effective_rows_sqlite"] = row_count
+        details["pwp_effective_t_min_sqlite"] = t_min_sql
+        details["pwp_effective_t_max_sqlite"] = t_max_sql
+        details["pwp_effective_delta_u_max_sqlite"] = delta_u_max_sql_table
+        details["pwp_effective_sigma_v_eff_min_sqlite"] = sigma_v_eff_min_sql_table
+
+        if has_effective_h5:
+            t_min_h5 = float(ru_time[0])
+            t_max_h5 = float(ru_time[-1])
+            delta_u_max_h5_table = float(np.max(delta_u))
+            sigma_v_eff_min_h5_table = float(np.min(sigma_v_eff))
+            details["pwp_effective_rows_hdf5"] = int(ru_time.size)
+            details["pwp_effective_t_min_hdf5"] = t_min_h5
+            details["pwp_effective_t_max_hdf5"] = t_max_h5
+            details["pwp_effective_delta_u_max_hdf5"] = delta_u_max_h5_table
+            details["pwp_effective_sigma_v_eff_min_hdf5"] = sigma_v_eff_min_h5_table
+
+            checks["pwp_effective_rows_match"] = row_count == int(ru_time.size)
+            checks["pwp_effective_time_start_match"] = abs(t_min_sql - t_min_h5) <= tolerance
+            checks["pwp_effective_time_end_match"] = abs(t_max_sql - t_max_h5) <= tolerance
+            checks["pwp_effective_delta_u_max_match"] = (
+                abs(delta_u_max_sql_table - delta_u_max_h5_table) <= tolerance
+            )
+            checks["pwp_effective_sigma_v_eff_min_match"] = (
+                abs(sigma_v_eff_min_sql_table - sigma_v_eff_min_h5_table) <= tolerance
+            )
 
     h5_hash_actual = _sha256_file(h5_path)
     sqlite_hash_actual = _sha256_file(sqlite_path)

@@ -67,6 +67,9 @@ def _classify_verify_run(report: dict[str, object]) -> str:
         metric_keys = [k for k in checks if k.startswith("metrics_")]
         if any(not bool(checks.get(k, True)) for k in metric_keys):
             return "metric_mismatch"
+        pwp_effective_keys = [k for k in checks if k.startswith("pwp_effective_")]
+        if any(not bool(checks.get(k, True)) for k in pwp_effective_keys):
+            return "pwp_effective_mismatch"
         checksum_keys = [
             "checksum_h5_meta_match",
             "checksum_h5_sqlite_match",

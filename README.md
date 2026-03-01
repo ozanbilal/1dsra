@@ -12,6 +12,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
 - Benchmark checks include effective-stress metrics (`delta_u_max`, `sigma_v_eff_min`)
 - Batch deduplication for identical motions (avoids duplicate run collisions)
+- Deterministic reruns are idempotent in SQLite (run-id tables are refreshed, not duplicated)
 - Windows + Linux CI matrix, Docker runtime
 
 ## Quick Start
@@ -125,6 +126,7 @@ A dedicated manual parity workflow is included:
 Use `verify` to validate post-run integrity:
 - run-id consistency between directory, `run_meta.json`, and SQLite `runs`
 - metric consistency between HDF5 and SQLite (`pga`, `ru_max`, `delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
+- `pwp_effective_stats` table consistency against HDF5 (`row count`, `time bounds`, `delta_u_max`, `sigma_v_eff_min`)
 - checksum consistency for `results.h5` and `results.sqlite`
 
 Use `verify-batch` for folder-level checks over multiple run directories.

@@ -98,6 +98,19 @@ def write_sqlite(
     conn = sqlite3.connect(path)
     try:
         conn.executescript(DDL)
+        # Keep per-run tables idempotent when a deterministic run-id is re-written.
+        for table in (
+            "layers",
+            "motions",
+            "metrics",
+            "spectra",
+            "pwp_stats",
+            "pwp_effective_stats",
+            "artifacts",
+            "mesh_slices",
+            "checksums",
+        ):
+            conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
         conn.execute(
             (
                 "INSERT OR REPLACE INTO runs("

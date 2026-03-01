@@ -78,6 +78,22 @@ def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:
     r1 = run_analysis(cfg, motion, output_dir=tmp_path / "runs")
     r2 = run_analysis(cfg, motion, output_dir=tmp_path / "runs")
     assert r1.run_id == r2.run_id
+    with h5py.File(r2.hdf5_path, "r") as h5:
+        n_pwp_h5 = int(h5["/pwp/time"].shape[0])
+    conn = sqlite3.connect(r2.sqlite_path)
+    try:
+        n_pwp_sql = conn.execute(
+            "SELECT COUNT(*) FROM pwp_effective_stats WHERE run_id = ?",
+            (r2.run_id,),
+        ).fetchone()[0]
+        n_metrics_sql = conn.execute(
+            "SELECT COUNT(*) FROM metrics WHERE run_id = ?",
+            (r2.run_id,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert n_pwp_sql == n_pwp_h5
+    assert n_metrics_sql == 5
 
     cfg_changed = cfg.model_copy(deep=True)
     cfg_changed.seed = cfg.seed + 1

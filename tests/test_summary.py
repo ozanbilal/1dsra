@@ -35,6 +35,32 @@ def test_summarize_campaign_benchmark_only() -> None:
     assert sorted(nonpass) == ["case_metric_fail", "case_skip"]
 
 
+def test_summarize_campaign_classifies_generic_constraint_fail() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "core-hyst",
+        "all_passed": False,
+        "skipped": 0,
+        "ran": 1,
+        "cases": [
+            {
+                "name": "case_constraint_fail",
+                "status": "ok",
+                "passed": False,
+                "constraints": {
+                    "ru_bounds_ok": True,
+                    "delta_u_min_ok": False,
+                },
+            }
+        ],
+    }
+    summary = summarize_campaign(benchmark_report)
+    benchmark = summary["benchmark"]
+    assert isinstance(benchmark, dict)
+    counts = benchmark["classification_counts"]
+    assert isinstance(counts, dict)
+    assert counts["constraint_fail"] == 1
+
+
 def test_summarize_campaign_with_verify_batch() -> None:
     benchmark_report: dict[str, object] = {
         "suite": "core-es",

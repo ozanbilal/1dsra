@@ -34,8 +34,14 @@ def _classify_benchmark_case(case: dict[str, object]) -> str:
             return "metric_mismatch"
 
     constraints = _as_dict(case.get("constraints"))
-    if constraints and not bool(constraints.get("ru_bounds_ok", True)):
-        return "ru_constraint_fail"
+    if constraints:
+        if not bool(constraints.get("ru_bounds_ok", True)):
+            return "ru_constraint_fail"
+        constraint_ok_flags = [
+            key for key in constraints if key.endswith("_ok")
+        ]
+        if any(not bool(constraints.get(key, True)) for key in constraint_ok_flags):
+            return "constraint_fail"
 
     deterministic = _as_dict(case.get("deterministic"))
     if deterministic and not bool(deterministic.get("ok", True)):

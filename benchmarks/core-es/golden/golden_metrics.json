@@ -9,7 +9,11 @@
     },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -26,7 +30,11 @@
     },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -43,7 +51,11 @@
     },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "ru_monotonic_nondecreasing": true,
+      "delta_u_min": 0.0,
+      "sigma_v_eff_min": 0.0,
+      "pga_min": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {

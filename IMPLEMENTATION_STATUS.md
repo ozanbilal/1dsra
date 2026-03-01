@@ -106,6 +106,8 @@ Implemented:
 - Time-step sensitivity utility command (`dt-check`) for Δt vs Δt/2 comparison
 - Additional benchmark guards:
   - physical ru bounds checks
+  - ru monotonicity option and lower-bound checks for `delta_u` / `sigma_v_eff`
+  - PGA min/max guard checks
   - deterministic repeat-signature checks
   - effective-stress metric checks (`delta_u_max`, `sigma_v_eff_min`)
   - varied case matrix (`pm4sand`, `pm4silt`, mixed profile + scaling modes)

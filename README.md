@@ -11,6 +11,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
+- Benchmark constraints now support physics guards (ru monotonic, `delta_u`/`sigma_v_eff` lower bounds, PGA bounds)
 - Benchmark checks include effective-stress metrics (`delta_u_max`, `sigma_v_eff_min`)
 - Batch deduplication for identical motions (avoids duplicate run collisions)
 - Deterministic reruns are idempotent in SQLite (run-id tables are refreshed, not duplicated)

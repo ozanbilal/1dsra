@@ -28,6 +28,10 @@ def test_benchmark_core_es_passes(tmp_path: Path) -> None:
         constraints = case["constraints"]
         assert isinstance(constraints, dict)
         assert constraints["ru_bounds_ok"] is True
+        assert constraints["delta_u_min_ok"] is True
+        assert constraints["sigma_v_eff_min_ok"] is True
+        assert constraints["pga_bounds_ok"] is True
+        assert constraints["ru_monotonic_ok"] is True
         deterministic = case["deterministic"]
         assert isinstance(deterministic, dict)
         assert deterministic["ok"] is True

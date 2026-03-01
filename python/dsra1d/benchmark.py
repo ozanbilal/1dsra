@@ -109,6 +109,91 @@ def _evaluate_metric(
     }
 
 
+def _as_float(value: object, default: float) -> float:
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _evaluate_constraints(
+    constraints: dict[str, object],
+    *,
+    ru: np.ndarray,
+    delta_u: np.ndarray,
+    sigma_v_eff: np.ndarray,
+    actual_metrics: dict[str, float],
+) -> tuple[dict[str, float | bool], bool]:
+    ru_min_limit = _as_float(constraints.get("ru_min", 0.0), 0.0)
+    ru_max_limit = _as_float(constraints.get("ru_max", 1.0), 1.0)
+    ru_min = float(actual_metrics.get("ru_min", float("nan")))
+    ru_max = float(actual_metrics.get("ru_max", float("nan")))
+    ru_bounds_ok = (ru_min >= ru_min_limit) and (ru_max <= ru_max_limit)
+
+    delta_u_min_limit = _as_float(constraints.get("delta_u_min", float("-inf")), float("-inf"))
+    sigma_v_eff_min_limit = _as_float(
+        constraints.get("sigma_v_eff_min", float("-inf")),
+        float("-inf"),
+    )
+    pga_min_limit = _as_float(constraints.get("pga_min", float("-inf")), float("-inf"))
+    pga_max_limit = _as_float(constraints.get("pga_max", float("inf")), float("inf"))
+
+    delta_u_min_actual = float(np.min(delta_u)) if delta_u.size > 0 else float("nan")
+    sigma_v_eff_min_actual = (
+        float(np.min(sigma_v_eff)) if sigma_v_eff.size > 0 else float("nan")
+    )
+    pga_actual = float(actual_metrics.get("pga", float("nan")))
+
+    delta_u_min_ok = (
+        True
+        if delta_u.size == 0 and np.isneginf(delta_u_min_limit)
+        else (delta_u_min_actual >= delta_u_min_limit)
+    )
+    sigma_v_eff_min_ok = (
+        True
+        if sigma_v_eff.size == 0 and np.isneginf(sigma_v_eff_min_limit)
+        else (sigma_v_eff_min_actual >= sigma_v_eff_min_limit)
+    )
+    pga_bounds_ok = (pga_actual >= pga_min_limit) and (pga_actual <= pga_max_limit)
+
+    monotonic_requested = bool(constraints.get("ru_monotonic_nondecreasing", False))
+    if monotonic_requested and ru.size > 1:
+        ru_mono_ok = bool(np.all(np.diff(ru) >= -1.0e-10))
+    else:
+        ru_mono_ok = True
+
+    result: dict[str, float | bool] = {
+        "ru_min_limit": ru_min_limit,
+        "ru_max_limit": ru_max_limit,
+        "ru_bounds_ok": ru_bounds_ok,
+        "delta_u_min_limit": delta_u_min_limit,
+        "delta_u_min_actual": delta_u_min_actual,
+        "delta_u_min_ok": delta_u_min_ok,
+        "sigma_v_eff_min_limit": sigma_v_eff_min_limit,
+        "sigma_v_eff_min_actual": sigma_v_eff_min_actual,
+        "sigma_v_eff_min_ok": sigma_v_eff_min_ok,
+        "pga_min_limit": pga_min_limit,
+        "pga_max_limit": pga_max_limit,
+        "pga_bounds_ok": pga_bounds_ok,
+        "ru_monotonic_requested": monotonic_requested,
+        "ru_monotonic_ok": ru_mono_ok,
+    }
+    all_ok = (
+        ru_bounds_ok
+        and delta_u_min_ok
+        and sigma_v_eff_min_ok
+        and pga_bounds_ok
+        and ru_mono_ok
+    )
+    return result, all_ok
+
+
 def _run_case(
     cfg: ProjectConfig,
     motion_path: Path,
@@ -259,9 +344,13 @@ def run_benchmark_suite(
         constraints = expected.get("constraints", {})
         if not isinstance(constraints, dict):
             constraints = {}
-        ru_min_limit = float(constraints.get("ru_min", 0.0))
-        ru_max_limit = float(constraints.get("ru_max", 1.0))
-        ru_bounds_ok = (ru_min >= ru_min_limit) and (ru_max <= ru_max_limit)
+        constraint_results, constraints_ok = _evaluate_constraints(
+            constraints,
+            ru=ru,
+            delta_u=delta_u,
+            sigma_v_eff=sigma_v_eff,
+            actual_metrics=actual_metrics,
+        )
 
         deterministic = bool(expected.get("deterministic", False))
         deterministic_ok = True
@@ -289,7 +378,7 @@ def run_benchmark_suite(
         case_passed = (
             run_result.status == "ok"
             and all_checks_ok
-            and ru_bounds_ok
+            and constraints_ok
             and deterministic_ok
             and bool(dt_result["passed"])
         )
@@ -301,11 +390,7 @@ def run_benchmark_suite(
             "actual": actual_metrics,
             "expected": expected,
             "checks": check_results,
-            "constraints": {
-                "ru_min_limit": ru_min_limit,
-                "ru_max_limit": ru_max_limit,
-                "ru_bounds_ok": ru_bounds_ok,
-            },
+            "constraints": constraint_results,
             "deterministic": {
                 "enabled": deterministic,
                 "ok": deterministic_ok,

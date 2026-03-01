@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +13,18 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+PYTHON_SRC_ROOT = Path(__file__).resolve().parents[2]
+if str(PYTHON_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC_ROOT))
+
 from dsra1d.benchmark import run_benchmark_suite
 from dsra1d.config import load_project_config
 from dsra1d.interop.opensees import render_tcl, validate_tcl_script
+from dsra1d.materials import (
+    bounded_damping_from_reduction,
+    gqh_modulus_reduction,
+    mkz_modulus_reduction,
+)
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
 from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
@@ -249,6 +260,98 @@ def _make_effective_stress_plot(
         height=300,
         margin={"l": 30, "r": 20, "t": 55, "b": 35},
     )
+    return fig
+
+
+def _collect_hysteretic_curves(config_path: Path) -> list[dict[str, Any]]:
+    cfg = load_project_config(config_path)
+    strain = np.logspace(-6, -1, 180, dtype=np.float64)
+    curves: list[dict[str, Any]] = []
+    for layer in cfg.profile.layers:
+        material_name = str(getattr(layer.material, "value", layer.material)).lower()
+        if material_name not in {"mkz", "gqh"}:
+            continue
+        gamma_ref = float(layer.material_params.get("gamma_ref", 0.001))
+        damping_min = float(layer.material_params.get("damping_min", 0.01))
+        damping_max = float(layer.material_params.get("damping_max", 0.12))
+        if material_name == "mkz":
+            reduction = mkz_modulus_reduction(strain, gamma_ref=gamma_ref)
+            model_name = "MKZ"
+        else:
+            reduction = gqh_modulus_reduction(
+                strain,
+                gamma_ref=gamma_ref,
+                a1=float(layer.material_params.get("a1", 1.0)),
+                a2=float(layer.material_params.get("a2", 0.0)),
+                m=float(layer.material_params.get("m", 1.0)),
+            )
+            model_name = "GQH"
+        damping = bounded_damping_from_reduction(
+            reduction,
+            damping_min=damping_min,
+            damping_max=damping_max,
+        )
+        curves.append(
+            {
+                "label": f"{layer.name} ({model_name})",
+                "strain": strain,
+                "reduction": reduction,
+                "damping": damping,
+                "gamma_ref": gamma_ref,
+                "damping_min": damping_min,
+                "damping_max": damping_max,
+            }
+        )
+    return curves
+
+
+def _make_hysteretic_reduction_plot(curves: list[dict[str, Any]]) -> go.Figure:
+    fig = go.Figure()
+    for curve in curves:
+        fig.add_trace(
+            go.Scatter(
+                x=curve["strain"],
+                y=curve["reduction"],
+                mode="lines",
+                line={"width": 1.8},
+                name=str(curve["label"]),
+            )
+        )
+    fig.update_layout(
+        template="plotly_white",
+        title="MKZ/GQH G/Gmax Curves",
+        xaxis_title="Shear Strain, gamma",
+        yaxis_title="G/Gmax",
+        height=320,
+        margin={"l": 30, "r": 20, "t": 55, "b": 35},
+    )
+    fig.update_xaxes(type="log")
+    fig.update_yaxes(range=[0.0, 1.05])
+    return fig
+
+
+def _make_hysteretic_damping_plot(curves: list[dict[str, Any]]) -> go.Figure:
+    fig = go.Figure()
+    for curve in curves:
+        fig.add_trace(
+            go.Scatter(
+                x=curve["strain"],
+                y=curve["damping"],
+                mode="lines",
+                line={"width": 1.8},
+                name=str(curve["label"]),
+            )
+        )
+    fig.update_layout(
+        template="plotly_white",
+        title="MKZ/GQH Damping Proxy Curves",
+        xaxis_title="Shear Strain, gamma",
+        yaxis_title="Damping Ratio",
+        height=320,
+        margin={"l": 30, "r": 20, "t": 55, "b": 35},
+    )
+    fig.update_xaxes(type="log")
+    fig.update_yaxes(range=[0.0, 0.5])
     return fig
 
 
@@ -533,6 +636,37 @@ def main() -> None:
                 )
     else:
         st.info("No Tcl preview yet. Use Render Tcl.")
+
+    st.divider()
+    st.subheader("MKZ/GQH Curve Inspector")
+    try:
+        curves = _collect_hysteretic_curves(cfg_path)
+        if curves:
+            hcol1, hcol2 = st.columns(2)
+            with hcol1:
+                st.plotly_chart(
+                    _make_hysteretic_reduction_plot(curves),
+                    use_container_width=True,
+                )
+            with hcol2:
+                st.plotly_chart(
+                    _make_hysteretic_damping_plot(curves),
+                    use_container_width=True,
+                )
+            summary_rows = [
+                {
+                    "Layer": str(curve["label"]),
+                    "gamma_ref": f"{float(curve['gamma_ref']):.4e}",
+                    "damping_min": f"{float(curve['damping_min']):.4f}",
+                    "damping_max": f"{float(curve['damping_max']):.4f}",
+                }
+                for curve in curves
+            ]
+            st.table(summary_rows)
+        else:
+            st.info("Selected config has no MKZ/GQH layers.")
+    except Exception as exc:
+        st.info(f"Curve inspector available after valid config load: {exc}")
 
     st.divider()
     st.subheader("Latest Run")

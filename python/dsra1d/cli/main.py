@@ -96,8 +96,10 @@ def benchmark(
     print(f"[green]Benchmark report:[/green] {report_path}")
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
-    skipped = int(report.get("skipped", 0))
-    ran = int(report.get("ran", 0))
+    skipped_raw = report.get("skipped", 0)
+    ran_raw = report.get("ran", 0)
+    skipped = int(skipped_raw) if isinstance(skipped_raw, (int, float, str)) else 0
+    ran = int(ran_raw) if isinstance(ran_raw, (int, float, str)) else 0
     if fail_on_skip and skipped > 0:
         print(f"[red]Benchmark strict policy failed:[/red] skipped={skipped}")
         raise typer.Exit(code=7)

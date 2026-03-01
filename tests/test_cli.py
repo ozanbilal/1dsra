@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import dsra1d.benchmark as benchmark_mod
 from dsra1d.cli.main import app
 from typer.testing import CliRunner
 
@@ -73,3 +74,38 @@ opensees:
         ],
     )
     assert result.exit_code == 5
+
+
+def test_cli_benchmark_require_runs_strict_fails(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "core-es",
+            "--out",
+            str(tmp_path / "bench"),
+            "--require-runs",
+            "99",
+        ],
+    )
+    assert result.exit_code == 7
+
+
+def test_cli_benchmark_fail_on_skip_fails_when_backend_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _: None)
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(tmp_path / "bench"),
+            "--fail-on-skip",
+        ],
+    )
+    assert result.exit_code == 7

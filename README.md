@@ -24,6 +24,7 @@ pip install -e .[dev]
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 1
 ```
 
 ## Web UI (Streamlit)
@@ -82,3 +83,6 @@ pytest tests/test_opensees_integration_optional.py
 On Linux/macOS, use `export` instead of `set`.
 `opensees-parity` benchmark suite also supports real-binary verification and auto-skips
 cases when `opensees.executable` is not found.
+Use benchmark strict policy flags to enforce non-skipped runs in CI:
+- `--fail-on-skip`
+- `--require-runs <N>`

@@ -80,6 +80,7 @@ Implemented:
 - `benchmark` command
 - Core benchmark suite with multi-case pass/fail output and metric-level tolerance checks
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
+- Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Automated test coverage including TCL generation, parser robustness, fallback behavior
 - Time-step sensitivity utility command (`dt-check`) for Δt vs Δt/2 comparison
 - Additional benchmark guards:

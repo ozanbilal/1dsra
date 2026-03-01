@@ -64,9 +64,8 @@ def _classify_verify_run(report: dict[str, object]) -> str:
             return "missing_files"
         if not bool(checks.get("run_id_meta_vs_sqlite", True)):
             return "run_id_mismatch"
-        if not bool(checks.get("metrics_pga_match", True)) or not bool(
-            checks.get("metrics_ru_max_match", True)
-        ):
+        metric_keys = [k for k in checks if k.startswith("metrics_")]
+        if any(not bool(checks.get(k, True)) for k in metric_keys):
             return "metric_mismatch"
         checksum_keys = [
             "checksum_h5_meta_match",

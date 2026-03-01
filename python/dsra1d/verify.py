@@ -119,6 +119,24 @@ def verify_run(
         with h5py.File(h5_path, "r") as h5:
             acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
             ru = np.array(h5["/pwp/ru"], dtype=np.float64)
+            has_delta_u = "/pwp/delta_u" in h5
+            has_sigma_v_ref = "/pwp/sigma_v_ref" in h5
+            has_sigma_v_eff = "/pwp/sigma_v_eff" in h5
+            delta_u = (
+                np.array(h5["/pwp/delta_u"], dtype=np.float64)
+                if has_delta_u
+                else np.array([], dtype=np.float64)
+            )
+            sigma_v_ref_arr = (
+                np.array(h5["/pwp/sigma_v_ref"], dtype=np.float64)
+                if has_sigma_v_ref
+                else np.array([], dtype=np.float64)
+            )
+            sigma_v_eff = (
+                np.array(h5["/pwp/sigma_v_eff"], dtype=np.float64)
+                if has_sigma_v_eff
+                else np.array([], dtype=np.float64)
+            )
     except OSError as exc:
         checks["hdf5_readable"] = False
         details["hdf5_error"] = str(exc)
@@ -126,17 +144,48 @@ def verify_run(
 
     pga_h5 = float(np.max(np.abs(acc)))
     ru_max_h5 = float(np.max(ru))
+    delta_u_max_h5 = float(np.max(delta_u)) if delta_u.size > 0 else float("nan")
+    sigma_v_ref_h5 = (
+        float(sigma_v_ref_arr.reshape(-1)[0])
+        if sigma_v_ref_arr.size > 0
+        else float("nan")
+    )
+    sigma_v_eff_min_h5 = float(np.min(sigma_v_eff)) if sigma_v_eff.size > 0 else float("nan")
     pga_sql = metric_map.get("pga", float("nan"))
     ru_max_sql = metric_map.get("ru_max", float("nan"))
+    delta_u_max_sql = metric_map.get("delta_u_max", float("nan"))
+    sigma_v_ref_sql = metric_map.get("sigma_v_ref", float("nan"))
+    sigma_v_eff_min_sql = metric_map.get("sigma_v_eff_min", float("nan"))
     details["pga_hdf5"] = pga_h5
     details["pga_sqlite"] = pga_sql
     details["ru_max_hdf5"] = ru_max_h5
     details["ru_max_sqlite"] = ru_max_sql
+    details["delta_u_max_hdf5"] = delta_u_max_h5
+    details["delta_u_max_sqlite"] = delta_u_max_sql
+    details["sigma_v_ref_hdf5"] = sigma_v_ref_h5
+    details["sigma_v_ref_sqlite"] = sigma_v_ref_sql
+    details["sigma_v_eff_min_hdf5"] = sigma_v_eff_min_h5
+    details["sigma_v_eff_min_sqlite"] = sigma_v_eff_min_sql
 
     checks["run_id_dir_vs_meta"] = meta_run_id == root.name
     checks["run_id_meta_vs_sqlite"] = meta_run_id == sqlite_run_id
     checks["metrics_pga_match"] = abs(pga_h5 - pga_sql) <= tolerance
     checks["metrics_ru_max_match"] = abs(ru_max_h5 - ru_max_sql) <= tolerance
+    checks["metrics_delta_u_max_match"] = (
+        abs(delta_u_max_h5 - delta_u_max_sql) <= tolerance
+        if ("delta_u_max" in metric_map and delta_u.size > 0)
+        else True
+    )
+    checks["metrics_sigma_v_ref_match"] = (
+        abs(sigma_v_ref_h5 - sigma_v_ref_sql) <= tolerance
+        if ("sigma_v_ref" in metric_map and sigma_v_ref_arr.size > 0)
+        else True
+    )
+    checks["metrics_sigma_v_eff_min_match"] = (
+        abs(sigma_v_eff_min_h5 - sigma_v_eff_min_sql) <= tolerance
+        if ("sigma_v_eff_min" in metric_map and sigma_v_eff.size > 0)
+        else True
+    )
 
     h5_hash_actual = _sha256_file(h5_path)
     sqlite_hash_actual = _sha256_file(sqlite_path)

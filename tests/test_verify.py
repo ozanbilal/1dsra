@@ -15,6 +15,9 @@ def test_verify_run_passes_for_fresh_output(tmp_path: Path) -> None:
     result = run_analysis(cfg, motion, output_dir=tmp_path)
     report = verify_run(result.output_dir)
     assert report.ok is True
+    assert report.checks["metrics_delta_u_max_match"] is True
+    assert report.checks["metrics_sigma_v_ref_match"] is True
+    assert report.checks["metrics_sigma_v_eff_min_match"] is True
 
 
 def test_verify_run_detects_metric_tamper(tmp_path: Path) -> None:

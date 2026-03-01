@@ -79,6 +79,7 @@ Implemented:
 - HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
 - SQLite output tables (runs, layers, motions, metrics, spectra, pwp_stats, mesh_slices, artifacts)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
+- `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
 - HTML/PDF report generation
 
 ### Phase 5 - Benchmark and Regression

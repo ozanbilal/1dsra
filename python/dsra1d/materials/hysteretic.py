@@ -104,6 +104,79 @@ class LayerHystereticProxy:
     ru_target: float
 
 
+@dataclass(slots=True, frozen=True)
+class HystereticLoop:
+    strain: FloatArray
+    stress: FloatArray
+    strain_amplitude: float
+    energy_dissipation: float
+
+
+def generate_masing_loop(
+    material: MaterialType,
+    material_params: Mapping[str, float],
+    *,
+    strain_amplitude: float,
+    n_points_per_branch: int = 120,
+) -> HystereticLoop:
+    if material not in {MaterialType.MKZ, MaterialType.GQH}:
+        raise ValueError("generate_masing_loop supports only MKZ and GQH materials.")
+    if strain_amplitude <= 0.0:
+        raise ValueError("strain_amplitude must be > 0.")
+    if n_points_per_branch < 3:
+        raise ValueError("n_points_per_branch must be >= 3.")
+
+    gmax = float(material_params.get("gmax", 0.0))
+    gamma_ref = float(material_params.get("gamma_ref", 0.0))
+    tau_max = material_params.get("tau_max")
+    tau_cap = float(tau_max) if tau_max is not None else None
+    if gmax <= 0.0:
+        raise ValueError("material_params['gmax'] must be > 0.")
+    if gamma_ref <= 0.0:
+        raise ValueError("material_params['gamma_ref'] must be > 0.")
+
+    def _backbone(abs_strain: FloatArray) -> FloatArray:
+        if material == MaterialType.MKZ:
+            return mkz_backbone_stress(
+                abs_strain,
+                gmax=gmax,
+                gamma_ref=gamma_ref,
+                tau_max=tau_cap,
+            )
+        return gqh_backbone_stress(
+            abs_strain,
+            gmax=gmax,
+            gamma_ref=gamma_ref,
+            a1=float(material_params.get("a1", 1.0)),
+            a2=float(material_params.get("a2", 0.0)),
+            m=float(material_params.get("m", 1.0)),
+            tau_max=tau_cap,
+        )
+
+    n = int(n_points_per_branch)
+    gamma_pos = np.linspace(0.0, strain_amplitude, n, dtype=np.float64)
+    tau_pos = _backbone(gamma_pos)
+
+    gamma_unload = np.linspace(strain_amplitude, -strain_amplitude, n, dtype=np.float64)
+    d_unload = np.abs(strain_amplitude - gamma_unload) / 2.0
+    tau_unload = tau_pos[-1] - 2.0 * _backbone(d_unload)
+
+    gamma_reload = np.linspace(-strain_amplitude, strain_amplitude, n, dtype=np.float64)
+    tau_neg = -tau_pos[-1]
+    d_reload = np.abs(-strain_amplitude - gamma_reload) / 2.0
+    tau_reload = tau_neg + 2.0 * _backbone(d_reload)
+
+    strain = np.concatenate([gamma_pos, gamma_unload[1:], gamma_reload[1:]])
+    stress = np.concatenate([tau_pos, tau_unload[1:], tau_reload[1:]])
+    energy = float(abs(np.trapezoid(stress, strain)))
+    return HystereticLoop(
+        strain=strain,
+        stress=stress,
+        strain_amplitude=float(strain_amplitude),
+        energy_dissipation=energy,
+    )
+
+
 def layer_hysteretic_proxy(
     material: MaterialType,
     material_params: Mapping[str, float],

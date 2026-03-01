@@ -18,10 +18,11 @@ if str(PYTHON_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC_ROOT))
 
 from dsra1d.benchmark import run_benchmark_suite
-from dsra1d.config import load_project_config
+from dsra1d.config import MaterialType, load_project_config
 from dsra1d.interop.opensees import render_tcl, validate_tcl_script
 from dsra1d.materials import (
     bounded_damping_from_reduction,
+    generate_masing_loop,
     gqh_modulus_reduction,
     mkz_modulus_reduction,
 )
@@ -364,8 +365,33 @@ def _collect_hysteretic_curves(config_path: Path) -> list[dict[str, Any]]:
                 "gamma_ref": gamma_ref,
                 "damping_min": damping_min,
                 "damping_max": damping_max,
+                "material_name": material_name,
+                "material_params": layer.material_params,
             }
         )
+    for curve in curves:
+        material_name = str(curve["material_name"]).lower()
+        if material_name == "mkz":
+            material = MaterialType.MKZ
+        else:
+            material = MaterialType.GQH
+        loop_amplitude = float(
+            np.clip(
+                5.0 * float(curve["gamma_ref"]),
+                2.5e-4,
+                2.0e-2,
+            )
+        )
+        loop = generate_masing_loop(
+            material=material,
+            material_params=curve["material_params"],
+            strain_amplitude=loop_amplitude,
+            n_points_per_branch=140,
+        )
+        curve["loop_strain"] = loop.strain
+        curve["loop_stress"] = loop.stress
+        curve["loop_energy"] = loop.energy_dissipation
+        curve["loop_strain_amplitude"] = loop.strain_amplitude
     return curves
 
 
@@ -416,6 +442,29 @@ def _make_hysteretic_damping_plot(curves: list[dict[str, Any]]) -> go.Figure:
     )
     fig.update_xaxes(type="log")
     fig.update_yaxes(range=[0.0, 0.5])
+    return fig
+
+
+def _make_hysteretic_loop_plot(curves: list[dict[str, Any]]) -> go.Figure:
+    fig = go.Figure()
+    for curve in curves:
+        fig.add_trace(
+            go.Scatter(
+                x=curve["loop_strain"],
+                y=curve["loop_stress"],
+                mode="lines",
+                line={"width": 1.8},
+                name=f"{curve['label']} @ gamma_a={float(curve['loop_strain_amplitude']):.2e}",
+            )
+        )
+    fig.update_layout(
+        template="plotly_white",
+        title="MKZ/GQH Masing Hysteresis Loops",
+        xaxis_title="Shear Strain, gamma",
+        yaxis_title="Shear Stress, tau (proxy)",
+        height=360,
+        margin={"l": 30, "r": 20, "t": 55, "b": 35},
+    )
     return fig
 
 
@@ -747,12 +796,18 @@ def main() -> None:
                     _make_hysteretic_damping_plot(curves),
                     use_container_width=True,
                 )
+            st.plotly_chart(
+                _make_hysteretic_loop_plot(curves),
+                use_container_width=True,
+            )
             summary_rows = [
                 {
                     "Layer": str(curve["label"]),
                     "gamma_ref": f"{float(curve['gamma_ref']):.4e}",
                     "damping_min": f"{float(curve['damping_min']):.4f}",
                     "damping_max": f"{float(curve['damping_max']):.4f}",
+                    "loop_gamma_a": f"{float(curve['loop_strain_amplitude']):.4e}",
+                    "loop_energy": f"{float(curve['loop_energy']):.4e}",
                 }
                 for curve in curves
             ]

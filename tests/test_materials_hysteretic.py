@@ -2,6 +2,7 @@ import numpy as np
 from dsra1d.config import MaterialType
 from dsra1d.materials import (
     bounded_damping_from_reduction,
+    generate_masing_loop,
     gqh_backbone_stress,
     gqh_modulus_reduction,
     layer_hysteretic_proxy,
@@ -59,3 +60,45 @@ def test_layer_hysteretic_proxy_for_mkz_is_bounded() -> None:
     assert 0.0 <= proxy.reduction <= 1.0
     assert 0.0 <= proxy.damping <= 0.5
     assert 0.0 <= proxy.ru_target <= 1.0
+
+
+def test_generate_masing_loop_mkz_has_positive_dissipation() -> None:
+    loop = generate_masing_loop(
+        material=MaterialType.MKZ,
+        material_params={"gmax": 65000.0, "gamma_ref": 0.0012},
+        strain_amplitude=0.0025,
+        n_points_per_branch=100,
+    )
+    assert loop.strain.shape == loop.stress.shape
+    assert loop.strain.size == (3 * 100) - 2
+    assert np.isclose(loop.strain[0], 0.0, atol=1.0e-12)
+    assert np.isclose(loop.strain[-1], 0.0025, atol=1.0e-12)
+    assert np.all(np.isfinite(loop.stress))
+    assert loop.energy_dissipation > 0.0
+
+
+def test_generate_masing_loop_gqh_has_positive_dissipation() -> None:
+    loop = generate_masing_loop(
+        material=MaterialType.GQH,
+        material_params={
+            "gmax": 70000.0,
+            "gamma_ref": 0.001,
+            "a1": 1.1,
+            "a2": 0.3,
+            "m": 2.0,
+        },
+        strain_amplitude=0.002,
+    )
+    assert loop.strain.shape == loop.stress.shape
+    assert np.all(np.isfinite(loop.strain))
+    assert np.all(np.isfinite(loop.stress))
+    assert loop.energy_dissipation > 0.0
+
+
+def test_generate_masing_loop_rejects_non_hysteretic_material() -> None:
+    with np.testing.assert_raises(ValueError):
+        generate_masing_loop(
+            material=MaterialType.PM4SAND,
+            material_params={},
+            strain_amplitude=0.001,
+        )

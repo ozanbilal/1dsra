@@ -150,7 +150,9 @@ Missing:
 - Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
+- Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
+- MKZ/GQH helper module now includes `generate_masing_loop` for calibration-oriented loop generation
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
 - Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`

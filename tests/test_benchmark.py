@@ -66,6 +66,10 @@ def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
     backend_missing = report["backend_missing_cases"]
     assert isinstance(backend_missing, list)
     assert len(backend_missing) >= 3
+    backend_probe = report.get("backend_probe")
+    assert isinstance(backend_probe, dict)
+    assert "available" in backend_probe
+    assert "version" in backend_probe
 
 
 def test_benchmark_opensees_uses_executable_override_env(

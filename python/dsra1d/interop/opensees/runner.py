@@ -33,12 +33,74 @@ class OpenSeesRunOutput:
     command: list[str]
 
 
+@dataclass(slots=True)
+class OpenSeesProbeResult:
+    available: bool
+    resolved: Path | None
+    version: str
+    stdout: str
+    stderr: str
+    command: list[str]
+
+
 def resolve_opensees_executable(executable: str) -> Path | None:
     candidate = Path(executable)
     if candidate.is_absolute():
         return candidate if candidate.exists() else None
     resolved = shutil.which(executable)
     return Path(resolved) if resolved is not None else None
+
+
+def probe_opensees_executable(
+    executable: str,
+    timeout_s: int = 5,
+) -> OpenSeesProbeResult:
+    resolved = resolve_opensees_executable(executable)
+    if resolved is None:
+        return OpenSeesProbeResult(
+            available=False,
+            resolved=None,
+            version="unknown",
+            stdout="",
+            stderr=f"OpenSees executable not found: {executable}",
+            command=[],
+        )
+
+    cmd = [str(resolved), "-version"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            timeout=timeout_s,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return OpenSeesProbeResult(
+            available=False,
+            resolved=resolved,
+            version="unknown",
+            stdout="",
+            stderr=str(exc),
+            command=cmd,
+        )
+
+    stdout = proc.stdout.strip()
+    stderr = proc.stderr.strip()
+    version_line = "unknown"
+    if stdout:
+        version_line = stdout.splitlines()[0].strip()
+    elif stderr:
+        version_line = stderr.splitlines()[0].strip()
+
+    return OpenSeesProbeResult(
+        available=(proc.returncode == 0),
+        resolved=resolved,
+        version=version_line,
+        stdout=proc.stdout,
+        stderr=proc.stderr,
+        command=cmd,
+    )
 
 
 def run_opensees(

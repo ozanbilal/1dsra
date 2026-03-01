@@ -119,6 +119,50 @@ opensees:
     assert result.exit_code == 5
 
 
+def test_cli_validate_check_backend_prints_probe_info(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "opensees_probe.yml"
+    cfg.write_text(
+        """
+project_name: probe-opensees
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class _Probe:
+        available = True
+        resolved = Path("C:/OpenSees/OpenSees.exe")
+        version = "OpenSees 3.x"
+
+    monkeypatch.setattr(cli_main, "probe_opensees_executable", lambda _: _Probe())
+    result = runner.invoke(
+        app,
+        [
+            "validate",
+            "--config",
+            str(cfg),
+            "--check-backend",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "OpenSees executable" in result.stdout
+    assert "OpenSees version probe" in result.stdout
+
+
 def test_cli_render_tcl_writes_artifacts(tmp_path: Path) -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     motion = Path("examples/motions/sample_motion.csv")

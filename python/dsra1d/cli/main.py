@@ -14,7 +14,12 @@ from rich import print
 
 from dsra1d.benchmark import run_benchmark_suite
 from dsra1d.config import ProjectConfig, load_project_config, write_config_template
-from dsra1d.interop.opensees import render_tcl, resolve_opensees_executable, validate_tcl_script
+from dsra1d.interop.opensees import (
+    probe_opensees_executable,
+    render_tcl,
+    resolve_opensees_executable,
+    validate_tcl_script,
+)
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
@@ -294,14 +299,15 @@ def validate(
 ) -> None:
     cfg = load_project_config(config)
     if check_backend and cfg.analysis.solver_backend == "opensees":
-        resolved = resolve_opensees_executable(cfg.opensees.executable)
-        if resolved is None:
+        probe = probe_opensees_executable(cfg.opensees.executable)
+        if probe.resolved is None:
             print(
                 "[red]OpenSees executable not found:[/red] "
                 f"{cfg.opensees.executable}"
             )
             raise typer.Exit(code=5)
-        print(f"[green]OpenSees executable[/green]: {resolved}")
+        print(f"[green]OpenSees executable[/green]: {probe.resolved}")
+        print(f"[cyan]OpenSees version probe[/cyan]: {probe.version}")
     print(f"[green]Valid config[/green]: {cfg.project_name}")
 
 

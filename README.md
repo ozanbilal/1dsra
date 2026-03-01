@@ -175,6 +175,11 @@ Campaign summary now includes backend coverage indicators:
 - `skipped_backend`
 - `execution_coverage`
 - `backend_missing_cases`
+Parity benchmark JSON also includes `backend_probe`:
+- `requested`
+- `resolved`
+- `available`
+- `version`
 Campaign summary JSON also includes policy evaluation blocks:
 - `policy.benchmark`
 - `policy.verify_batch`

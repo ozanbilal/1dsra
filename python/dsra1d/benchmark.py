@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 
 from dsra1d.config import ProjectConfig, load_project_config
-from dsra1d.interop.opensees import resolve_opensees_executable
+from dsra1d.interop.opensees import probe_opensees_executable, resolve_opensees_executable
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
@@ -282,6 +282,18 @@ def run_benchmark_suite(
         "cases": [],
         "all_passed": True,
     }
+    if suite == "opensees-parity":
+        probe_exe = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
+        if not probe_exe:
+            probe_exe = "OpenSees"
+        probe = probe_opensees_executable(probe_exe)
+        report["backend_probe"] = {
+            "requested": probe_exe,
+            "available": probe.available,
+            "resolved": str(probe.resolved) if probe.resolved is not None else "",
+            "version": probe.version,
+            "command": probe.command,
+        }
     skipped_count = 0
     skipped_backend_count = 0
     ran_count = 0

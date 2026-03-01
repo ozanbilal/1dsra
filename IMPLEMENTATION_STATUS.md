@@ -154,7 +154,8 @@ Missing:
 - CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
-- CLI backend preflight: `validate --check-backend`
+- CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
+- Parity benchmark reports now include `backend_probe` diagnostics (`requested`, `resolved`, `available`, `version`)
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)

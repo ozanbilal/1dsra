@@ -6,7 +6,9 @@ from dsra1d.interop.opensees.parse import (
 )
 from dsra1d.interop.opensees.runner import (
     OpenSeesExecutionError,
+    OpenSeesProbeResult,
     OpenSeesRunOutput,
+    probe_opensees_executable,
     resolve_opensees_executable,
     run_opensees,
 )
@@ -19,9 +21,11 @@ from dsra1d.interop.opensees.tcl import (
 
 __all__ = [
     "OpenSeesExecutionError",
+    "OpenSeesProbeResult",
     "OpenSeesRunOutput",
     "build_element_slices",
     "build_layer_slices",
+    "probe_opensees_executable",
     "read_pwp_raw",
     "read_ru",
     "read_surface_acc",

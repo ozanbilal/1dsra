@@ -11,6 +11,10 @@ on:
         description: "Fail workflow if any parity case is skipped"
         required: false
         default: "true"
+      require_runs:
+        description: "Minimum number of executed (non-skipped) parity runs"
+        required: false
+        default: "3"
 
 jobs:
   parity:
@@ -40,10 +44,13 @@ jobs:
           DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
         run: |
           if [ "${{ inputs.fail_on_skip }}" = "true" ]; then
-            1dsra benchmark --suite opensees-parity --out out/opensees-parity --fail-on-skip --require-runs 1
+            1dsra benchmark --suite opensees-parity --out out/opensees-parity --fail-on-skip --require-runs ${{ inputs.require_runs }}
           else
-            1dsra benchmark --suite opensees-parity --out out/opensees-parity --require-runs 1
+            1dsra benchmark --suite opensees-parity --out out/opensees-parity --require-runs ${{ inputs.require_runs }}
           fi
+
+      - name: Verify Parity Outputs
+        run: 1dsra verify-batch --in out/opensees-parity --require-runs ${{ inputs.require_runs }}
 
       - name: Upload Parity Artifacts
         uses: actions/upload-artifact@v4

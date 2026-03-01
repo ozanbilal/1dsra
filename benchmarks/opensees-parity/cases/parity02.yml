@@ -1,0 +1,40 @@
+project_name: parity-opensees-02
+seed: 1002
+profile:
+  layers:
+    - name: SandCap
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.2
+      vs_m_s: 170.0
+      material: pm4sand
+      material_params:
+        Dr: 0.40
+        G0: 580.0
+        hpo: 0.50
+    - name: ElasticBase
+      thickness_m: 10.0
+      unit_weight_kN_m3: 20.0
+      vs_m_s: 360.0
+      material: elastic
+      material_params:
+        nu: 0.30
+boundary_condition: rigid
+analysis:
+  dt: 0.004
+  f_max: 30.0
+  solver_backend: opensees
+  pm4_validation_profile: strict
+  timeout_s: 120
+  retries: 0
+motion:
+  units: g
+  baseline: remove_mean
+  scale_mode: scale_to_pga
+  target_pga: 0.35
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []

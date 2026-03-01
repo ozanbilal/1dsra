@@ -1,0 +1,44 @@
+project_name: parity-opensees-03
+seed: 1003
+profile:
+  layers:
+    - name: SiltUpper
+      thickness_m: 8.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 220.0
+      material: pm4silt
+      material_params:
+        Su: 38.0
+        Su_Rat: 0.21
+        G_o: 510.0
+        h_po: 0.58
+    - name: SiltLower
+      thickness_m: 10.0
+      unit_weight_kN_m3: 19.4
+      vs_m_s: 300.0
+      material: pm4silt
+      material_params:
+        Su: 52.0
+        Su_Rat: 0.26
+        G_o: 620.0
+        h_po: 0.62
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.005
+  f_max: 25.0
+  solver_backend: opensees
+  pm4_validation_profile: basic
+  timeout_s: 120
+  retries: 0
+motion:
+  units: gal
+  baseline: detrend_linear
+  scale_mode: scale_by
+  scale_factor: 1.2
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []

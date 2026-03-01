@@ -24,7 +24,7 @@ pip install -e .[dev]
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 1
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 ```
@@ -98,6 +98,7 @@ Use benchmark strict policy flags to enforce non-skipped runs in CI:
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`
+  - default strict target: `require_runs=3`
 
 ## Run Verification
 Use `verify` to validate post-run integrity:

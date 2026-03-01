@@ -9,6 +9,10 @@ def test_summarize_campaign_benchmark_only() -> None:
         "all_passed": False,
         "skipped": 1,
         "ran": 2,
+        "total_cases": 3,
+        "skipped_backend": 1,
+        "backend_ready": False,
+        "execution_coverage": 2.0 / 3.0,
         "cases": [
             {"name": "case_pass", "status": "ok", "passed": True},
             {"name": "case_skip", "status": "skipped", "reason": "OpenSees executable not found"},
@@ -24,6 +28,10 @@ def test_summarize_campaign_benchmark_only() -> None:
 
     benchmark = summary["benchmark"]
     assert isinstance(benchmark, dict)
+    assert benchmark["total_cases"] == 3
+    assert benchmark["skipped_backend"] == 1
+    assert benchmark["backend_ready"] is False
+    assert benchmark["execution_coverage"] == 2.0 / 3.0
     counts = benchmark["classification_counts"]
     assert isinstance(counts, dict)
     assert counts["passed"] == 1
@@ -113,6 +121,9 @@ def test_render_summary_markdown_contains_key_sections() -> None:
             "total_cases": 2,
             "ran": 2,
             "skipped": 0,
+            "skipped_backend": 0,
+            "backend_ready": True,
+            "execution_coverage": 1.0,
             "classification_counts": {"passed": 2},
         },
         "verify_batch": {
@@ -125,8 +136,30 @@ def test_render_summary_markdown_contains_key_sections() -> None:
     md = render_summary_markdown(summary)
     assert "# 1DSRA Campaign Summary" in md
     assert "Suite: `core-es`" in md
+    assert "backend_ready=True" in md
+    assert "execution_coverage=1.0" in md
     assert "Benchmark classifications" in md
     assert "Verify classifications" in md
+
+
+def test_summarize_campaign_computes_execution_coverage_fallback() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "core-es",
+        "all_passed": True,
+        "skipped": 1,
+        "ran": 3,
+        "cases": [
+            {"name": "a", "status": "ok", "passed": True},
+            {"name": "b", "status": "ok", "passed": True},
+            {"name": "c", "status": "ok", "passed": True},
+            {"name": "d", "status": "skipped", "reason": "placeholder"},
+        ],
+    }
+    summary = summarize_campaign(benchmark_report=benchmark_report)
+    benchmark = summary["benchmark"]
+    assert isinstance(benchmark, dict)
+    assert benchmark["total_cases"] == 4
+    assert benchmark["execution_coverage"] == 0.75
 
 
 def test_summarize_campaign_classifies_pwp_effective_mismatch() -> None:

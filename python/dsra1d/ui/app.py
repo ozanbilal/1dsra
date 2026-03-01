@@ -135,6 +135,7 @@ def _run_campaign_bundle(
     *,
     opensees_executable: str,
     verify_require_runs: int,
+    require_opensees: bool,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     campaign_dir.mkdir(parents=True, exist_ok=True)
     benchmark_report = _run_benchmark_with_optional_override(
@@ -142,6 +143,21 @@ def _run_campaign_bundle(
         output_dir=campaign_dir,
         opensees_executable=opensees_executable,
     )
+    backend_ready = bool(benchmark_report.get("backend_ready", True))
+    skipped_backend_raw = benchmark_report.get("skipped_backend", 0)
+    if isinstance(skipped_backend_raw, (int, float, str)):
+        skipped_backend = int(skipped_backend_raw)
+    else:
+        skipped_backend = 0
+    if (
+        require_opensees
+        and suite == "opensees-parity"
+        and (not backend_ready or skipped_backend > 0)
+    ):
+        raise RuntimeError(
+            "OpenSees backend is required for parity campaign but some cases were skipped "
+            f"(backend_ready={backend_ready}, skipped_backend={skipped_backend})."
+        )
     benchmark_path = campaign_dir / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(benchmark_report, indent=2), encoding="utf-8")
 
@@ -475,6 +491,10 @@ def main() -> None:
         "OpenSees Executable (optional)",
         "",
     )
+    require_opensees = st.sidebar.checkbox(
+        "Require OpenSees (parity)",
+        value=(campaign_suite == "opensees-parity"),
+    )
     verify_require_runs = int(
         st.sidebar.number_input(
             "Verify Require Runs",
@@ -538,11 +558,21 @@ def main() -> None:
                 campaign_dir=campaign_root,
                 opensees_executable=opensees_executable,
                 verify_require_runs=verify_require_runs,
+                require_opensees=require_opensees,
             )
             st.session_state["campaign_dir"] = str(campaign_root)
             st.success(f"Campaign completed: {campaign_root}")
             with st.expander("Campaign Summary", expanded=True):
                 st.markdown(render_summary_markdown(summary))
+            benchmark_meta = summary.get("benchmark")
+            if isinstance(benchmark_meta, dict):
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Backend Ready", str(benchmark_meta.get("backend_ready", "")))
+                m2.metric("Skipped Backend", int(benchmark_meta.get("skipped_backend", 0)))
+                m3.metric(
+                    "Exec Coverage",
+                    f"{float(benchmark_meta.get('execution_coverage', 0.0)):.3f}",
+                )
             c1, c2 = st.columns(2)
             with c1:
                 st.caption("Benchmark Report")

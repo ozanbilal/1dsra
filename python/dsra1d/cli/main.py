@@ -230,6 +230,19 @@ def campaign(
 ) -> None:
     out.mkdir(parents=True, exist_ok=True)
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
+    if not bool(report.get("all_passed", False)):
+        raise typer.Exit(code=3)
+    _enforce_benchmark_strict_policy(
+        report,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+    )
+    _enforce_backend_ready_policy(
+        report,
+        suite=suite,
+        require_opensees=require_opensees,
+    )
+
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {benchmark_path}")
@@ -252,18 +265,6 @@ def campaign(
     print(f"[green]Campaign summary JSON:[/green] {summary_json}")
     print(f"[green]Campaign summary Markdown:[/green] {summary_md}")
 
-    if not bool(report.get("all_passed", False)):
-        raise typer.Exit(code=3)
-    _enforce_benchmark_strict_policy(
-        report,
-        fail_on_skip=fail_on_skip,
-        require_runs=require_runs,
-    )
-    _enforce_backend_ready_policy(
-        report,
-        suite=suite,
-        require_opensees=require_opensees,
-    )
     if not verify.ok:
         print("[red]Batch verification failed[/red]")
         raise typer.Exit(code=9)

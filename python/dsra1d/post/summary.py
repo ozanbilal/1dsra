@@ -126,14 +126,29 @@ def summarize_campaign(
             if cls != "passed":
                 failed_runs.append(str(run_name))
 
+    benchmark_total_cases = _as_int(benchmark_report.get("total_cases", len(cases_raw)))
+    benchmark_ran = _as_int(benchmark_report.get("ran", 0))
+    benchmark_skipped = _as_int(benchmark_report.get("skipped", 0))
+    benchmark_skipped_backend = _as_int(benchmark_report.get("skipped_backend", 0))
+    benchmark_backend_ready = bool(
+        benchmark_report.get("backend_ready", benchmark_skipped_backend == 0)
+    )
+    benchmark_execution_coverage = benchmark_report.get("execution_coverage")
+    if not isinstance(benchmark_execution_coverage, (int, float)):
+        denom = benchmark_total_cases if benchmark_total_cases > 0 else 1
+        benchmark_execution_coverage = benchmark_ran / denom
+
     summary: dict[str, object] = {
         "generated_utc": datetime.now(UTC).isoformat(),
         "suite": str(benchmark_report.get("suite", "")),
         "benchmark": {
             "all_passed": bool(benchmark_report.get("all_passed", False)),
-            "skipped": _as_int(benchmark_report.get("skipped", 0)),
-            "ran": _as_int(benchmark_report.get("ran", 0)),
-            "total_cases": len(cases_raw),
+            "skipped": benchmark_skipped,
+            "ran": benchmark_ran,
+            "total_cases": benchmark_total_cases,
+            "skipped_backend": benchmark_skipped_backend,
+            "backend_ready": benchmark_backend_ready,
+            "execution_coverage": float(benchmark_execution_coverage),
             "classification_counts": dict(benchmark_classes),
             "failed_or_nonpass_cases": failed_cases,
         },
@@ -162,7 +177,10 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
         f"all_passed={benchmark.get('all_passed')} "
         f"total_cases={benchmark.get('total_cases')} "
         f"ran={benchmark.get('ran')} "
-        f"skipped={benchmark.get('skipped')}"
+        f"skipped={benchmark.get('skipped')} "
+        f"skipped_backend={benchmark.get('skipped_backend')} "
+        f"backend_ready={benchmark.get('backend_ready')} "
+        f"execution_coverage={benchmark.get('execution_coverage')}"
     )
     bench_counts = _as_dict(benchmark.get("classification_counts"))
     if bench_counts:

@@ -144,6 +144,10 @@ Use benchmark strict policy flags to enforce non-skipped runs in CI:
 Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.
+Campaign summary now includes backend coverage indicators:
+- `backend_ready`
+- `skipped_backend`
+- `execution_coverage`
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`

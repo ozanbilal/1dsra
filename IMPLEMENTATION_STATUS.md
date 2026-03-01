@@ -134,6 +134,7 @@ Missing:
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
+- `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
 - CLI backend preflight: `validate --check-backend`
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels

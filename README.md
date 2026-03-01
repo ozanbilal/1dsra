@@ -36,11 +36,13 @@ pip install -e .[dev]
 1dsra benchmark --suite core-hyst --out out/benchmarks_hyst
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
@@ -139,6 +141,8 @@ You can also pass override directly via CLI:
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
+Use OpenSees readiness policy for parity suites:
+- `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.
 
 A dedicated manual parity workflow is included:

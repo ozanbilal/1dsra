@@ -55,6 +55,32 @@ def _enforce_benchmark_strict_policy(
         raise typer.Exit(code=7)
 
 
+def _enforce_backend_ready_policy(
+    report: dict[str, object],
+    *,
+    suite: str,
+    require_opensees: bool,
+) -> None:
+    if not require_opensees:
+        return
+    if suite != "opensees-parity":
+        return
+    backend_ready_raw = report.get("backend_ready", True)
+    backend_ready = bool(backend_ready_raw)
+    skipped_backend_raw = report.get("skipped_backend", 0)
+    skipped_backend = (
+        int(skipped_backend_raw)
+        if isinstance(skipped_backend_raw, (int, float, str))
+        else 0
+    )
+    if not backend_ready or skipped_backend > 0:
+        print(
+            "[red]OpenSees backend policy failed:[/red] "
+            f"backend_ready={backend_ready}, skipped_backend={skipped_backend}"
+        )
+        raise typer.Exit(code=10)
+
+
 def _run_benchmark_with_optional_override(
     suite: str,
     out: Path,
@@ -169,6 +195,7 @@ def benchmark(
     out: Path = typer.Option(Path("out/benchmarks"), "--out"),
     fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
     require_runs: int = typer.Option(0, "--require-runs"),
+    require_opensees: bool = typer.Option(False, "--require-opensees"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
@@ -182,6 +209,11 @@ def benchmark(
         fail_on_skip=fail_on_skip,
         require_runs=require_runs,
     )
+    _enforce_backend_ready_policy(
+        report,
+        suite=suite,
+        require_opensees=require_opensees,
+    )
 
 
 @app.command("campaign")
@@ -190,6 +222,7 @@ def campaign(
     out: Path = typer.Option(Path("out/campaign"), "--out"),
     fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
     require_runs: int = typer.Option(0, "--require-runs"),
+    require_opensees: bool = typer.Option(False, "--require-opensees"),
     verify_require_runs: int = typer.Option(1, "--verify-require-runs"),
     tolerance: float = typer.Option(1.0e-8, "--tolerance"),
     require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
@@ -225,6 +258,11 @@ def campaign(
         report,
         fail_on_skip=fail_on_skip,
         require_runs=require_runs,
+    )
+    _enforce_backend_ready_policy(
+        report,
+        suite=suite,
+        require_opensees=require_opensees,
     )
     if not verify.ok:
         print("[red]Batch verification failed[/red]")

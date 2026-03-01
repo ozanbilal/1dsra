@@ -11,6 +11,10 @@ def test_benchmark_core_es_passes(tmp_path: Path) -> None:
     assert report["all_passed"] is True
     assert int(report["skipped"]) == 0
     assert int(report["ran"]) == 3
+    assert int(report["total_cases"]) == 3
+    assert int(report["skipped_backend"]) == 0
+    assert report["backend_ready"] is True
+    assert float(report["execution_coverage"]) == 1.0
     cases = report["cases"]
     assert isinstance(cases, list)
     assert len(cases) == 3
@@ -45,11 +49,17 @@ def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
     report = run_benchmark_suite("opensees-parity", tmp_path)
     assert report["all_passed"] is True
     assert int(report["skipped"]) >= 3
+    assert int(report["skipped_backend"]) >= 3
+    assert report["backend_ready"] is False
     assert int(report["ran"]) >= 0
     cases = report["cases"]
     assert isinstance(cases, list)
     assert len(cases) >= 3
     assert any(isinstance(c, dict) and c.get("status") == "skipped" for c in cases)
+    assert any(
+        isinstance(c, dict) and c.get("skip_kind") == "missing_opensees"
+        for c in cases
+    )
 
 
 def test_benchmark_opensees_uses_executable_override_env(

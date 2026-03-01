@@ -271,7 +271,9 @@ def run_benchmark_suite(
         "all_passed": True,
     }
     skipped_count = 0
+    skipped_backend_count = 0
     ran_count = 0
+    total_cases = len(cases)
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
@@ -288,11 +290,13 @@ def run_benchmark_suite(
                     "status": "skipped",
                     "reason": f"OpenSees executable not found: {cfg.opensees.executable}",
                     "passed": True,
+                    "skip_kind": "missing_opensees",
                 }
                 cast_cases = report["cases"]
                 if isinstance(cast_cases, list):
                     cast_cases.append(report_case)
                 skipped_count += 1
+                skipped_backend_count += 1
                 continue
 
         run_result, motion = _run_case(cfg, motion_path, output_dir)
@@ -408,4 +412,12 @@ def run_benchmark_suite(
 
     report["skipped"] = skipped_count
     report["ran"] = ran_count
+    report["total_cases"] = total_cases
+    report["skipped_backend"] = skipped_backend_count
+    report["backend_ready"] = skipped_backend_count == 0
+    report["execution_coverage"] = (
+        float(ran_count) / float(total_cases)
+        if total_cases > 0
+        else 0.0
+    )
     return report

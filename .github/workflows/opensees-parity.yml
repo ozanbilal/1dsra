@@ -47,6 +47,7 @@ jobs:
             1dsra campaign \
               --suite opensees-parity \
               --out out/opensees-parity \
+              --require-opensees \
               --fail-on-skip \
               --require-runs ${{ inputs.require_runs }} \
               --verify-require-runs ${{ inputs.require_runs }}
@@ -54,6 +55,7 @@ jobs:
             1dsra campaign \
               --suite opensees-parity \
               --out out/opensees-parity \
+              --require-opensees \
               --require-runs ${{ inputs.require_runs }} \
               --verify-require-runs ${{ inputs.require_runs }}
           fi

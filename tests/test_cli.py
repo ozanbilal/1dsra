@@ -171,6 +171,25 @@ def test_cli_benchmark_fail_on_skip_fails_when_backend_missing(
     assert result.exit_code == 7
 
 
+def test_cli_benchmark_require_opensees_fails_when_backend_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _: None)
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(tmp_path / "bench"),
+            "--require-opensees",
+        ],
+    )
+    assert result.exit_code == 10
+
+
 def test_cli_benchmark_opensees_executable_option_overrides_env(
     tmp_path: Path,
     monkeypatch,
@@ -368,3 +387,25 @@ def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:
     assert (out_dir / "verify_batch_report.json").exists()
     assert (out_dir / "campaign_summary.json").exists()
     assert (out_dir / "campaign_summary.md").exists()
+
+
+def test_cli_campaign_require_opensees_fails_when_backend_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _: None)
+    out_dir = tmp_path / "campaign_parity"
+    result = runner.invoke(
+        app,
+        [
+            "campaign",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(out_dir),
+            "--require-opensees",
+            "--verify-require-runs",
+            "1",
+        ],
+    )
+    assert result.exit_code == 10

@@ -410,6 +410,25 @@ def test_cli_run_linear_backend_forced(tmp_path: Path) -> None:
     assert "linear (forced)" in result.stdout
 
 
+def test_cli_run_eql_backend_forced(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            "examples/configs/mkz_gqh_mock.yml",
+            "--motion",
+            "examples/motions/sample_motion.csv",
+            "--out",
+            str(tmp_path / "out"),
+            "--backend",
+            "eql",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "eql (forced)" in result.stdout
+
+
 def test_cli_quickstart_auto_runs_and_writes_summary(
     tmp_path: Path,
     monkeypatch,

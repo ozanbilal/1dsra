@@ -8,6 +8,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - Motion preprocessing (baseline correction + scaling)
 - OpenSees model generation and subprocess orchestration
 - Native linear SH backend (lumped shear-beam, Newmark integration) for immediate baseline analysis
+- Native equivalent-linear backend (`eql`) with iterative MKZ/GQH strain-compatible update loop
 - MKZ/GQH hysteretic backbone helpers for native/mock-track prototyping
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
@@ -34,6 +35,7 @@ pip install -e .[dev]
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
 1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
 1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
+1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
 1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
@@ -61,9 +63,9 @@ pip install -e .[ui]
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
-UI also includes a campaign panel (`core-es`, `core-hyst`, `opensees-parity`) with inline benchmark+verify summaries.
+UI also includes a campaign panel (`core-es`, `core-hyst`, `core-linear`, `opensees-parity`) with inline benchmark+verify summaries.
 UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`) for quick switching.
-UI run panel includes backend mode selection (`config/auto/opensees/mock`) and optional run-level OpenSees executable override.
+UI run panel includes backend mode selection (`config/auto/opensees/mock/linear/eql`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 UI includes MKZ/GQH curve inspector plots (`G/Gmax` and damping proxy vs strain) for quick parameter sanity checks.
 
@@ -112,6 +114,7 @@ Runtime backend mode can be overridden at execution time:
 - `--backend opensees` (force OpenSees, fail fast if executable missing)
 - `--backend mock` (force mock backend)
 - `--backend linear` (force native linear SH response backend)
+- `--backend eql` (force native equivalent-linear backend with strain-compatible updates)
 These options are available on `run`, `batch`, `dt-check`, and `quickstart`.
 `quickstart` creates a self-contained sample run directory, executes analysis, runs verification,
 and writes `quickstart_summary.json`.

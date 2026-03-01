@@ -1,13 +1,39 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import numpy.typing as npt
 
 from dsra1d.config import MaterialType, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
+from dsra1d.materials import (
+    bounded_damping_from_reduction,
+    gqh_modulus_reduction,
+    mkz_modulus_reduction,
+)
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
+
+
+@dataclass(slots=True, frozen=True)
+class ShearBeamResponse:
+    time: FloatArray
+    surface_acc: FloatArray
+    element_max_abs_strain: FloatArray
+    layer_max_abs_strain: dict[int, float]
+
+
+@dataclass(slots=True, frozen=True)
+class EquivalentLinearResponse:
+    response: ShearBeamResponse
+    iterations: int
+    converged: bool
+    max_change_history: list[float]
+    layer_vs_m_s: dict[int, float]
+    layer_damping: dict[int, float]
+    layer_gamma_eff: dict[int, float]
 
 
 def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
@@ -18,13 +44,15 @@ def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
     return 0.02
 
 
-def solve_linear_sh_response(
+def _solve_shear_beam_response(
     config: ProjectConfig,
     motion: Motion,
     *,
+    layer_vs_m_s: dict[int, float] | None = None,
+    layer_damping: dict[int, float] | None = None,
     points_per_wavelength: float = 10.0,
     min_dz_m: float = 0.25,
-) -> tuple[FloatArray, FloatArray]:
+) -> ShearBeamResponse:
     if motion.acc.size < 2:
         raise ValueError("Motion must contain at least 2 samples for linear response.")
 
@@ -55,9 +83,20 @@ def solve_linear_sh_response(
         layer_slice = layer_by_idx[elem.layer_index]
         cfg_layer = cfg_layers[layer_slice.index - 1]
         rho = float(max(cfg_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
-        vs = float(max(cfg_layer.vs_m_s, 1.0e-6))
+        if layer_vs_m_s is not None:
+            vs_layer = layer_vs_m_s.get(layer_slice.index, cfg_layer.vs_m_s)
+        else:
+            vs_layer = cfg_layer.vs_m_s
+        vs = float(max(vs_layer, 1.0e-6))
         dz = float(max(elem.dz_m, 1.0e-6))
-        xi = _layer_damping(cfg_layer.material, cfg_layer.material_params)
+        if layer_damping is not None:
+            xi_layer = layer_damping.get(
+                layer_slice.index,
+                _layer_damping(cfg_layer.material, cfg_layer.material_params),
+            )
+        else:
+            xi_layer = _layer_damping(cfg_layer.material, cfg_layer.material_params)
+        xi = float(np.clip(xi_layer, 0.0, 0.5))
         g_mod = rho * vs * vs
         m_j = rho * area * dz
         k_j = g_mod * area / dz
@@ -136,6 +175,164 @@ def solve_linear_sh_response(
 
     if n_free == 0:
         surface_acc = acc_g.copy()
+        u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
     else:
         surface_acc = acc_rel[0, :] + acc_g
-    return time, surface_acc
+        u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
+        u_full[:n_free, :] = u
+
+    elem_max_abs = np.zeros(n_elem, dtype=np.float64)
+    layer_max_abs: dict[int, float] = {}
+    for j, elem in enumerate(element_slices):
+        dz = float(max(elem.dz_m, 1.0e-9))
+        gamma_t = (u_full[j, :] - u_full[j + 1, :]) / dz
+        gamma_max = float(np.max(np.abs(gamma_t)))
+        elem_max_abs[j] = gamma_max
+        prev = layer_max_abs.get(elem.layer_index, 0.0)
+        layer_max_abs[elem.layer_index] = max(prev, gamma_max)
+
+    return ShearBeamResponse(
+        time=time,
+        surface_acc=surface_acc,
+        element_max_abs_strain=elem_max_abs,
+        layer_max_abs_strain=layer_max_abs,
+    )
+
+
+def solve_linear_sh_response(
+    config: ProjectConfig,
+    motion: Motion,
+    *,
+    points_per_wavelength: float = 10.0,
+    min_dz_m: float = 0.25,
+) -> tuple[FloatArray, FloatArray]:
+    response = _solve_shear_beam_response(
+        config=config,
+        motion=motion,
+        points_per_wavelength=points_per_wavelength,
+        min_dz_m=min_dz_m,
+    )
+    return response.time, response.surface_acc
+
+
+def solve_equivalent_linear_sh_response(
+    config: ProjectConfig,
+    motion: Motion,
+    *,
+    max_iterations: int = 12,
+    convergence_tol: float = 0.03,
+    strain_ratio: float = 0.65,
+    relaxation: float = 0.6,
+    points_per_wavelength: float = 10.0,
+    min_dz_m: float = 0.25,
+) -> EquivalentLinearResponse:
+    if max_iterations < 1:
+        raise ValueError("max_iterations must be >= 1.")
+    if not (0.0 < convergence_tol < 1.0):
+        raise ValueError("convergence_tol must be within (0, 1).")
+    if not (0.0 < strain_ratio <= 1.0):
+        raise ValueError("strain_ratio must be within (0, 1].")
+    if not (0.0 < relaxation <= 1.0):
+        raise ValueError("relaxation must be within (0, 1].")
+
+    base_vs: dict[int, float] = {
+        idx: float(max(layer.vs_m_s, 1.0e-6))
+        for idx, layer in enumerate(config.profile.layers, start=1)
+    }
+    cur_vs = dict(base_vs)
+    cur_damping: dict[int, float] = {
+        idx: _layer_damping(layer.material, layer.material_params)
+        for idx, layer in enumerate(config.profile.layers, start=1)
+    }
+    cur_gamma_eff: dict[int, float] = {idx: 0.0 for idx in base_vs}
+    max_change_history: list[float] = []
+    converged = False
+    last_response: ShearBeamResponse | None = None
+
+    for iteration in range(1, max_iterations + 1):
+        response = _solve_shear_beam_response(
+            config=config,
+            motion=motion,
+            layer_vs_m_s=cur_vs,
+            layer_damping=cur_damping,
+            points_per_wavelength=points_per_wavelength,
+            min_dz_m=min_dz_m,
+        )
+        last_response = response
+
+        next_vs: dict[int, float] = {}
+        next_damping: dict[int, float] = {}
+        next_gamma_eff: dict[int, float] = {}
+        max_change = 0.0
+
+        for idx, layer in enumerate(config.profile.layers, start=1):
+            gamma_max = float(response.layer_max_abs_strain.get(idx, 0.0))
+            gamma_eff = max(float(strain_ratio * gamma_max), 1.0e-9)
+            next_gamma_eff[idx] = gamma_eff
+            g_reduction = 1.0
+            damping_new = _layer_damping(layer.material, layer.material_params)
+
+            if layer.material == MaterialType.MKZ:
+                gamma_ref = float(layer.material_params.get("gamma_ref", 0.001))
+                g_reduction = float(
+                    mkz_modulus_reduction(
+                        np.array([gamma_eff], dtype=np.float64),
+                        gamma_ref=gamma_ref,
+                    )[0]
+                )
+                g_reduction = float(np.clip(g_reduction, 0.05, 1.0))
+                damping_new = float(
+                    bounded_damping_from_reduction(
+                        np.array([g_reduction], dtype=np.float64),
+                        damping_min=float(layer.material_params.get("damping_min", 0.01)),
+                        damping_max=float(layer.material_params.get("damping_max", 0.12)),
+                    )[0]
+                )
+            elif layer.material == MaterialType.GQH:
+                gamma_ref = float(layer.material_params.get("gamma_ref", 0.001))
+                g_reduction = float(
+                    gqh_modulus_reduction(
+                        np.array([gamma_eff], dtype=np.float64),
+                        gamma_ref=gamma_ref,
+                        a1=float(layer.material_params.get("a1", 1.0)),
+                        a2=float(layer.material_params.get("a2", 0.0)),
+                        m=float(layer.material_params.get("m", 1.0)),
+                    )[0]
+                )
+                g_reduction = float(np.clip(g_reduction, 0.05, 1.0))
+                damping_new = float(
+                    bounded_damping_from_reduction(
+                        np.array([g_reduction], dtype=np.float64),
+                        damping_min=float(layer.material_params.get("damping_min", 0.01)),
+                        damping_max=float(layer.material_params.get("damping_max", 0.12)),
+                    )[0]
+                )
+
+            vs_target = float(max(base_vs[idx] * np.sqrt(g_reduction), 1.0e-6))
+            vs_prev = float(cur_vs[idx])
+            vs_updated = float((1.0 - relaxation) * vs_prev + relaxation * vs_target)
+            rel_change = abs(vs_updated - vs_prev) / max(vs_prev, 1.0e-9)
+            max_change = max(max_change, rel_change)
+            next_vs[idx] = vs_updated
+            next_damping[idx] = float(np.clip(damping_new, 0.0, 0.5))
+
+        cur_vs = next_vs
+        cur_damping = next_damping
+        cur_gamma_eff = next_gamma_eff
+        max_change_history.append(float(max_change))
+        if max_change < convergence_tol and iteration >= 2:
+            converged = True
+            break
+
+    if last_response is None:
+        raise RuntimeError("EQL solver did not produce a response.")
+
+    return EquivalentLinearResponse(
+        response=last_response,
+        iterations=len(max_change_history),
+        converged=converged,
+        max_change_history=max_change_history,
+        layer_vs_m_s=cur_vs,
+        layer_damping=cur_damping,
+        layer_gamma_eff=cur_gamma_eff,
+    )

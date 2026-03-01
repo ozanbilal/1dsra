@@ -19,7 +19,7 @@ from dsra1d.interop.opensees import (
     run_opensees,
     validate_tcl_script,
 )
-from dsra1d.linear import solve_linear_sh_response
+from dsra1d.linear import solve_equivalent_linear_sh_response, solve_linear_sh_response
 from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.post import compute_spectra, compute_transfer_function
@@ -121,6 +121,34 @@ def _write_linear_outputs(
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
 
 
+def _write_eql_outputs(
+    run_dir: Path,
+    config: ProjectConfig,
+    motion: Motion,
+) -> Path:
+    response = solve_equivalent_linear_sh_response(config, motion)
+    t = response.response.time
+    surface = response.response.surface_acc
+    np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
+    ru = np.zeros_like(t)
+    np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
+
+    summary = {
+        "iterations": response.iterations,
+        "converged": response.converged,
+        "max_change_history": response.max_change_history,
+        "layer_vs_m_s": {str(k): float(v) for k, v in response.layer_vs_m_s.items()},
+        "layer_damping": {str(k): float(v) for k, v in response.layer_damping.items()},
+        "layer_gamma_eff": {str(k): float(v) for k, v in response.layer_gamma_eff.items()},
+        "layer_max_abs_strain": {
+            str(k): float(v) for k, v in response.response.layer_max_abs_strain.items()
+        },
+    }
+    summary_path = run_dir / "eql_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary_path
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -216,6 +244,13 @@ def run_analysis(
             config=config,
             motion=processed,
         )
+    elif config.analysis.solver_backend == "eql":
+        eql_summary_path = _write_eql_outputs(
+            run_dir=run_dir,
+            config=config,
+            motion=processed,
+        )
+        artifacts.append(("eql_summary", str(eql_summary_path)))
     else:
         _write_mock_outputs(
             run_dir=run_dir,

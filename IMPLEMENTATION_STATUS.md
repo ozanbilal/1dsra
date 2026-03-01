@@ -139,9 +139,10 @@ Missing:
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, and `mkz-gqh-mock` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
-- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear`
+- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql`
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
+- `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
 - `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)
@@ -157,7 +158,7 @@ Missing:
 - Streamlit UI now shows transfer-function visualization (`|H(f)|`) when available
 - Streamlit UI includes campaign controls and inline campaign summary rendering
 - Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`)
-- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear`) and run-level OpenSees executable override
+- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear/eql`) and run-level OpenSees executable override
 - Streamlit UI now visualizes transfer function (`|H(f)|`) for runs with stored spectral ratio outputs
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
@@ -230,7 +231,7 @@ Status legend:
 | Masing/non-Masing production hysteresis rules | Partial | Masing-style loop generation helper exists | Add time-stepping constitutive update and non-Masing option |
 | Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
 | Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |
-| EQL solver (SHAKE-like + deconv/conv) | Pending | Not implemented | Implement iterative EQL and convergence diagnostics |
+| EQL solver (SHAKE-like + deconv/conv) | Partial | Native time-domain strain-compatible EQL backend (`solver_backend: eql`) is implemented with iterative MKZ/GQH modulus+damping updates and convergence tracking | Add frequency-domain deconvolution/convolution mode and published-reference validation |
 | f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path | Expose as common mesh service across backends |
 | Result store (HDF5 + SQLite) | Done | Implemented with deterministic run-id consistency checks | Add optional DuckDB/Parquet query utilities |
 | CLI coverage (`run/batch/benchmark/campaign/verify/report/ui`) | Done | End-to-end command set available | Maintain backward compatibility and docs |

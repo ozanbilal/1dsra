@@ -153,6 +153,10 @@ def _apply_runtime_backend(
         cfg_run.analysis.solver_backend = "linear"
         return cfg_run, "linear (forced)"
 
+    if backend_mode == "eql":
+        cfg_run.analysis.solver_backend = "eql"
+        return cfg_run, "eql (forced)"
+
     if backend_mode == "opensees":
         cfg_run.analysis.solver_backend = "opensees"
         resolved = resolve_opensees_executable(cfg_run.opensees.executable)
@@ -677,7 +681,7 @@ def main() -> None:
     )
     run_backend_mode = st.sidebar.selectbox(
         "Run Backend Mode",
-        options=["config", "auto", "opensees", "mock", "linear"],
+        options=["config", "auto", "opensees", "mock", "linear", "eql"],
         index=1,
     )
     run_opensees_executable = st.sidebar.text_input(

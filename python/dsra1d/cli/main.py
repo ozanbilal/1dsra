@@ -21,7 +21,7 @@ from dsra1d.post import render_summary_markdown, summarize_campaign, write_repor
 from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="1DSRA CLI")
-RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear"]
+RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear", "eql"]
 
 
 def _load_json_mapping(path: Path) -> dict[str, object]:
@@ -53,6 +53,10 @@ def _apply_runtime_backend(
     if backend == "linear":
         cfg_run.analysis.solver_backend = "linear"
         return cfg_run, "linear (forced)"
+
+    if backend == "eql":
+        cfg_run.analysis.solver_backend = "eql"
+        return cfg_run, "eql (forced)"
 
     if backend == "opensees":
         cfg_run.analysis.solver_backend = "opensees"

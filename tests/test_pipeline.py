@@ -113,3 +113,36 @@ def test_run_batch_deduplicates_identical_motions(tmp_path: Path) -> None:
     assert batch.results[0].status == "ok"
     run_dirs = [p for p in (tmp_path / "batch").iterdir() if p.is_dir()]
     assert len(run_dirs) == 1
+
+
+def test_run_analysis_mock_mkz_profile(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "mkz_mock.yml"
+    cfg_path.write_text(
+        """
+project_name: mkz-mock-run
+profile:
+  layers:
+    - name: crust
+      thickness_m: 4.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 190.0
+      material: mkz
+      material_params:
+        gmax: 70000.0
+        gamma_ref: 0.001
+        damping_min: 0.01
+        damping_max: 0.10
+analysis:
+  solver_backend: mock
+""".strip(),
+        encoding="utf-8",
+    )
+    cfg = load_project_config(cfg_path)
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "mkz-out")
+    assert result.status == "ok"
+    store = load_result(result.output_dir)
+    assert store.ru.size > 0
+    assert float(store.ru.max()) <= 0.25

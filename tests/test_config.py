@@ -239,3 +239,76 @@ opensees:
     )
     with pytest.raises(ValueError):
         load_project_config(cfg)
+
+
+def test_mkz_mock_backend_accepts_required_params(tmp_path: Path) -> None:
+    cfg = tmp_path / "mkz_mock.yml"
+    cfg.write_text(
+        """
+project_name: mkz-mock
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: mkz
+      material_params:
+        gmax: 65000.0
+        gamma_ref: 0.0012
+analysis:
+  solver_backend: mock
+""".strip(),
+        encoding="utf-8",
+    )
+    loaded = load_project_config(cfg)
+    assert loaded.profile.layers[0].material.value == "mkz"
+
+
+def test_gqh_missing_required_params_rejected(tmp_path: Path) -> None:
+    cfg = tmp_path / "gqh_bad.yml"
+    cfg.write_text(
+        """
+project_name: gqh-bad
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: gqh
+      material_params:
+        gmax: 65000.0
+analysis:
+  solver_backend: mock
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
+def test_opensees_backend_rejects_mkz_and_gqh(tmp_path: Path) -> None:
+    cfg = tmp_path / "mkz_opensees.yml"
+    cfg.write_text(
+        """
+project_name: mkz-opensees
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: mkz
+      material_params:
+        gmax: 65000.0
+        gamma_ref: 0.0012
+analysis:
+  solver_backend: opensees
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)

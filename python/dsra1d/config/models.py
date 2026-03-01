@@ -12,6 +12,8 @@ from dsra1d.units import normalize_accel_unit
 class MaterialType(StrEnum):
     PM4SAND = "pm4sand"
     PM4SILT = "pm4silt"
+    MKZ = "mkz"
+    GQH = "gqh"
     ELASTIC = "elastic"
 
 
@@ -101,6 +103,57 @@ class Layer(BaseModel):
                 val = self.material_params.get(key)
                 if val is not None and val <= 0.0:
                     raise ValueError(f"PM4Silt parameter '{key}' must be > 0.")
+        elif self.material == MaterialType.MKZ:
+            allowed = {"gmax", "gamma_ref", "tau_max", "damping_min", "damping_max"}
+            gmax = self.material_params.get("gmax")
+            gamma_ref = self.material_params.get("gamma_ref")
+            if gmax is None or gmax <= 0.0:
+                raise ValueError("MKZ parameter 'gmax' is required and must be > 0.")
+            if gamma_ref is None or gamma_ref <= 0.0:
+                raise ValueError("MKZ parameter 'gamma_ref' is required and must be > 0.")
+            tau_max = self.material_params.get("tau_max")
+            if tau_max is not None and tau_max <= 0.0:
+                raise ValueError("MKZ parameter 'tau_max' must be > 0 when provided.")
+            d_min = self.material_params.get("damping_min")
+            d_max = self.material_params.get("damping_max")
+            if d_min is not None and not (0.0 <= d_min <= 0.5):
+                raise ValueError("MKZ parameter 'damping_min' must be in [0, 0.5].")
+            if d_max is not None and not (0.0 <= d_max <= 0.5):
+                raise ValueError("MKZ parameter 'damping_max' must be in [0, 0.5].")
+            if d_min is not None and d_max is not None and d_min > d_max:
+                raise ValueError("MKZ requires damping_min <= damping_max.")
+        elif self.material == MaterialType.GQH:
+            allowed = {
+                "gmax",
+                "gamma_ref",
+                "a1",
+                "a2",
+                "m",
+                "tau_max",
+                "damping_min",
+                "damping_max",
+            }
+            gmax = self.material_params.get("gmax")
+            gamma_ref = self.material_params.get("gamma_ref")
+            if gmax is None or gmax <= 0.0:
+                raise ValueError("GQH parameter 'gmax' is required and must be > 0.")
+            if gamma_ref is None or gamma_ref <= 0.0:
+                raise ValueError("GQH parameter 'gamma_ref' is required and must be > 0.")
+            for key in ("a1", "a2", "m"):
+                val = self.material_params.get(key)
+                if val is not None and val <= 0.0:
+                    raise ValueError(f"GQH parameter '{key}' must be > 0 when provided.")
+            tau_max = self.material_params.get("tau_max")
+            if tau_max is not None and tau_max <= 0.0:
+                raise ValueError("GQH parameter 'tau_max' must be > 0 when provided.")
+            d_min = self.material_params.get("damping_min")
+            d_max = self.material_params.get("damping_max")
+            if d_min is not None and not (0.0 <= d_min <= 0.5):
+                raise ValueError("GQH parameter 'damping_min' must be in [0, 0.5].")
+            if d_max is not None and not (0.0 <= d_max <= 0.5):
+                raise ValueError("GQH parameter 'damping_max' must be in [0, 0.5].")
+            if d_min is not None and d_max is not None and d_min > d_max:
+                raise ValueError("GQH requires damping_min <= damping_max.")
         else:
             allowed = {"nu"}
             nu = self.material_params.get("nu")
@@ -166,6 +219,18 @@ class ProjectConfig(BaseModel):
     def validate_pm4_for_backend(self) -> ProjectConfig:
         if self.analysis.solver_backend != "opensees":
             return self
+
+        unsupported_materials = {MaterialType.MKZ, MaterialType.GQH}
+        unsupported_layers = [
+            layer.name
+            for layer in self.profile.layers
+            if layer.material in unsupported_materials
+        ]
+        if unsupported_layers:
+            raise ValueError(
+                "OpenSees backend currently supports pm4sand/pm4silt/elastic in this v1 pipeline. "
+                f"Unsupported layers for opensees: {unsupported_layers}"
+            )
 
         required_by_material: dict[MaterialType, set[str]] = {
             MaterialType.PM4SAND: {"Dr", "G0", "hpo"},

@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+import numpy as np
+import numpy.typing as npt
+
+from dsra1d.config import MaterialType
+
+FloatArray = npt.NDArray[np.float64]
+
+
+def _to_float_array(strain: npt.ArrayLike) -> FloatArray:
+    return np.asarray(strain, dtype=np.float64)
+
+
+def mkz_modulus_reduction(strain: npt.ArrayLike, gamma_ref: float) -> FloatArray:
+    if gamma_ref <= 0.0:
+        raise ValueError("gamma_ref must be > 0.")
+    gamma = np.abs(_to_float_array(strain))
+    return 1.0 / (1.0 + (gamma / gamma_ref))
+
+
+def mkz_backbone_stress(
+    strain: npt.ArrayLike,
+    gmax: float,
+    gamma_ref: float,
+    tau_max: float | None = None,
+) -> FloatArray:
+    if gmax <= 0.0:
+        raise ValueError("gmax must be > 0.")
+    reduction = mkz_modulus_reduction(strain, gamma_ref)
+    strain_arr = _to_float_array(strain)
+    tau = gmax * strain_arr * reduction
+    if tau_max is not None:
+        if tau_max <= 0.0:
+            raise ValueError("tau_max must be > 0 when provided.")
+        tau = np.sign(tau) * np.minimum(np.abs(tau), tau_max)
+    return tau
+
+
+def gqh_modulus_reduction(
+    strain: npt.ArrayLike,
+    gamma_ref: float,
+    a1: float = 1.0,
+    a2: float = 0.0,
+    m: float = 1.0,
+) -> FloatArray:
+    if gamma_ref <= 0.0:
+        raise ValueError("gamma_ref must be > 0.")
+    if a1 <= 0.0:
+        raise ValueError("a1 must be > 0.")
+    if a2 < 0.0:
+        raise ValueError("a2 must be >= 0.")
+    if m <= 0.0:
+        raise ValueError("m must be > 0.")
+    r = np.abs(_to_float_array(strain)) / gamma_ref
+    denom = 1.0 + (a1 * r) + (a2 * np.power(r, m))
+    return 1.0 / denom
+
+
+def gqh_backbone_stress(
+    strain: npt.ArrayLike,
+    gmax: float,
+    gamma_ref: float,
+    a1: float = 1.0,
+    a2: float = 0.0,
+    m: float = 1.0,
+    tau_max: float | None = None,
+) -> FloatArray:
+    if gmax <= 0.0:
+        raise ValueError("gmax must be > 0.")
+    reduction = gqh_modulus_reduction(strain, gamma_ref=gamma_ref, a1=a1, a2=a2, m=m)
+    strain_arr = _to_float_array(strain)
+    tau = gmax * strain_arr * reduction
+    if tau_max is not None:
+        if tau_max <= 0.0:
+            raise ValueError("tau_max must be > 0 when provided.")
+        tau = np.sign(tau) * np.minimum(np.abs(tau), tau_max)
+    return tau
+
+
+def bounded_damping_from_reduction(
+    reduction: npt.ArrayLike,
+    damping_min: float = 0.01,
+    damping_max: float = 0.15,
+) -> FloatArray:
+    if not (0.0 <= damping_min <= 0.5):
+        raise ValueError("damping_min must be in [0, 0.5].")
+    if not (0.0 <= damping_max <= 0.5):
+        raise ValueError("damping_max must be in [0, 0.5].")
+    if damping_min > damping_max:
+        raise ValueError("damping_min must be <= damping_max.")
+    red = np.clip(_to_float_array(reduction), 0.0, 1.0)
+    damp = damping_min + (1.0 - red) * (damping_max - damping_min)
+    return np.clip(damp, damping_min, damping_max)
+
+
+@dataclass(slots=True, frozen=True)
+class LayerHystereticProxy:
+    reduction: float
+    damping: float
+    ru_target: float
+
+
+def layer_hysteretic_proxy(
+    material: MaterialType,
+    material_params: Mapping[str, float],
+    strain_proxy: float,
+) -> LayerHystereticProxy:
+    strain = max(float(strain_proxy), 1.0e-9)
+    if material == MaterialType.MKZ:
+        gamma_ref = float(material_params.get("gamma_ref", 0.001))
+        g_red = float(mkz_modulus_reduction(np.array([strain]), gamma_ref=gamma_ref)[0])
+        damping = float(
+            bounded_damping_from_reduction(
+                np.array([g_red]),
+                damping_min=float(material_params.get("damping_min", 0.01)),
+                damping_max=float(material_params.get("damping_max", 0.12)),
+            )[0]
+        )
+        ru_target = float(np.clip(0.01 + 0.10 * (1.0 - g_red), 0.0, 0.20))
+        return LayerHystereticProxy(reduction=g_red, damping=damping, ru_target=ru_target)
+
+    if material == MaterialType.GQH:
+        gamma_ref = float(material_params.get("gamma_ref", 0.001))
+        g_red = float(
+            gqh_modulus_reduction(
+                np.array([strain]),
+                gamma_ref=gamma_ref,
+                a1=float(material_params.get("a1", 1.0)),
+                a2=float(material_params.get("a2", 0.0)),
+                m=float(material_params.get("m", 1.0)),
+            )[0]
+        )
+        damping = float(
+            bounded_damping_from_reduction(
+                np.array([g_red]),
+                damping_min=float(material_params.get("damping_min", 0.01)),
+                damping_max=float(material_params.get("damping_max", 0.12)),
+            )[0]
+        )
+        ru_target = float(np.clip(0.01 + 0.12 * (1.0 - g_red), 0.0, 0.25))
+        return LayerHystereticProxy(reduction=g_red, damping=damping, ru_target=ru_target)
+
+    if material == MaterialType.ELASTIC:
+        return LayerHystereticProxy(reduction=0.95, damping=0.01, ru_target=0.01)
+
+    # Effective-stress materials keep stronger pore-pressure potential in mock mode.
+    return LayerHystereticProxy(reduction=0.75, damping=0.08, ru_target=0.35)

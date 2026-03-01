@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from dsra1d.config import ProjectConfig, load_project_config
+from dsra1d.config import MaterialType, ProjectConfig, load_project_config
 from dsra1d.interop.opensees import (
     OpenSeesExecutionError,
     build_layer_slices,
@@ -19,6 +19,7 @@ from dsra1d.interop.opensees import (
     run_opensees,
     validate_tcl_script,
 )
+from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.post import compute_spectra
 from dsra1d.store import ResultStore, write_hdf5, write_sqlite
@@ -57,11 +58,54 @@ def _clone_run_result(result: RunResult) -> RunResult:
     )
 
 
-def _write_mock_outputs(run_dir: Path, acc: np.ndarray, dt: float) -> None:
-    surface = 0.8 * acc
+def _write_mock_outputs(
+    run_dir: Path,
+    config: ProjectConfig,
+    acc: np.ndarray,
+    dt: float,
+) -> None:
+    has_hysteretic_total_stress = any(
+        layer.material in {MaterialType.MKZ, MaterialType.GQH}
+        for layer in config.profile.layers
+    )
+    if not has_hysteretic_total_stress:
+        # Preserve benchmark-stable behavior for existing effective-stress mock suites.
+        surface = 0.8 * acc
+        np.savetxt(run_dir / "surface_acc.out", surface)
+        ru_t = np.arange(surface.size, dtype=np.float64) * dt
+        ru = np.clip(np.linspace(0.0, 0.3, surface.size), 0.0, 1.0)
+        np.savetxt(run_dir / "pwp_ru.out", np.column_stack([ru_t, ru]))
+        return
+
+    pga = float(np.max(np.abs(acc))) if acc.size > 0 else 0.0
+    strain_proxy = float(np.clip(pga / (9.81 * 200.0), 1.0e-6, 0.02))
+    total_thickness = sum(layer.thickness_m for layer in config.profile.layers)
+
+    weighted_reduction = 0.0
+    weighted_damping = 0.0
+    weighted_ru_target = 0.0
+    for layer in config.profile.layers:
+        weight = (
+            float(layer.thickness_m / total_thickness) if total_thickness > 0.0 else 0.0
+        )
+        proxy = layer_hysteretic_proxy(
+            material=layer.material,
+            material_params=layer.material_params,
+            strain_proxy=strain_proxy,
+        )
+        weighted_reduction += weight * proxy.reduction
+        weighted_damping += weight * proxy.damping
+        weighted_ru_target += weight * proxy.ru_target
+
+    mean_reduction = float(np.clip(weighted_reduction, 0.1, 1.0))
+    mean_damping = float(np.clip(weighted_damping, 0.0, 0.5))
+    mean_ru_target = float(np.clip(weighted_ru_target, 0.0, 1.0))
+
+    amplification = float(np.clip(0.25 + 1.10 * mean_reduction - 0.80 * mean_damping, 0.20, 1.20))
+    surface = amplification * acc
     np.savetxt(run_dir / "surface_acc.out", surface)
     ru_t = np.arange(surface.size, dtype=np.float64) * dt
-    ru = np.clip(np.linspace(0.0, 0.3, surface.size), 0.0, 1.0)
+    ru = np.clip(np.linspace(0.0, mean_ru_target, surface.size), 0.0, 1.0)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([ru_t, ru]))
 
 
@@ -147,10 +191,20 @@ def run_analysis(
                     status = "error"
                     message = str(exc)
                     # keep deterministic output shape for downstream writers
-                    _write_mock_outputs(run_dir, processed.acc, processed.dt)
+                    _write_mock_outputs(
+                        run_dir=run_dir,
+                        config=config,
+                        acc=processed.acc,
+                        dt=processed.dt,
+                    )
                     break
     else:
-        _write_mock_outputs(run_dir, processed.acc, processed.dt)
+        _write_mock_outputs(
+            run_dir=run_dir,
+            config=config,
+            acc=processed.acc,
+            dt=processed.dt,
+        )
 
     surface_t, acc_surface = read_surface_acc_with_time(
         run_dir / "surface_acc.out",

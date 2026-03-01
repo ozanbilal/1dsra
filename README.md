@@ -7,6 +7,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - JSON/YAML schema-validated project configs
 - Motion preprocessing (baseline correction + scaling)
 - OpenSees model generation and subprocess orchestration
+- MKZ/GQH hysteretic backbone helpers for native/mock-track prototyping
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
@@ -25,6 +26,7 @@ pip install -e .[dev]
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
+1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
@@ -63,6 +65,8 @@ u-p assembly constants are configurable per project via:
 - `gravity_steps`
 When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
+MKZ/GQH are currently enabled for `mock` backend prototyping and are intentionally rejected
+for `opensees` backend in v1 pipeline.
 For calibration-ready experiments, you can pass extra positional PM4 arguments with:
 - `layer.material_optional_args: [ ... ]`
 These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line in order.

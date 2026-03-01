@@ -27,7 +27,9 @@ Implemented:
 - YAML/JSON config load + template writer
 - Motion load and preprocessing (baseline correction, scale modes)
 - Material-level parameter validation for PM4Sand/PM4Silt/elastic (`material_params`)
+- Material-level parameter validation for MKZ/GQH (required params + damping bounds)
 - Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
+- Backend-aware guard: OpenSees backend rejects MKZ/GQH in v1 pipeline
 - PM4 validation profiles: `basic` and `strict` (strict adds conservative range checks)
 - Motion unit validation + conversion to SI (`m/s2`) for consistent downstream calculations
 
@@ -72,6 +74,7 @@ Not completed:
 - Full parameter coverage and robust validation of PM4 inputs
 - Verified physics-level parity against reference OpenSees/DEEPSOIL datasets
 - Dissipation model tuning and advanced pore-pressure workflows
+- MKZ/GQH native nonlinear solver coupling (currently helper/backbone + mock proxy only)
 
 ### Phase 4 - Result Store and Reporting
 Status: **Completed (v1 base)**
@@ -130,6 +133,8 @@ Missing:
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
 - Streamlit UI includes campaign controls and inline campaign summary rendering
+- MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
+- Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
 - Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`
 - Release tag/version consistency guard (`scripts/check_release_tag.py`, release workflow integration)

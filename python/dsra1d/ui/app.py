@@ -145,6 +145,43 @@ def _make_ru_plot(time: np.ndarray, ru: np.ndarray) -> go.Figure:
     return fig
 
 
+def _make_effective_stress_plot(
+    time: np.ndarray,
+    delta_u: np.ndarray,
+    sigma_v_eff: np.ndarray,
+) -> go.Figure:
+    fig = go.Figure()
+    if time.size == delta_u.size and delta_u.size > 0:
+        fig.add_trace(
+            go.Scatter(
+                x=time,
+                y=delta_u,
+                mode="lines",
+                line={"width": 1.5, "color": "#555555"},
+                name="delta_u",
+            )
+        )
+    if time.size == sigma_v_eff.size and sigma_v_eff.size > 0:
+        fig.add_trace(
+            go.Scatter(
+                x=time,
+                y=sigma_v_eff,
+                mode="lines",
+                line={"width": 1.6, "color": "#2d6a6a"},
+                name="sigma_v_eff",
+            )
+        )
+    fig.update_layout(
+        template="plotly_white",
+        title="Effective Stress Proxies",
+        xaxis_title="Time (s)",
+        yaxis_title="kPa (proxy)",
+        height=300,
+        margin={"l": 30, "r": 20, "t": 55, "b": 35},
+    )
+    return fig
+
+
 def _render_run_outputs(run_dir: Path) -> None:
     h5_path = run_dir / "results.h5"
     sqlite_path = run_dir / "results.sqlite"
@@ -152,31 +189,55 @@ def _render_run_outputs(run_dir: Path) -> None:
         st.warning("Result files are missing for the selected run.")
         return
 
+    rs = load_result(run_dir)
+
     with h5py.File(h5_path, "r") as h5:
-        time = np.array(h5["/time"], dtype=np.float64) if "/time" in h5 else np.array([])
-        acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
-        periods = np.array(h5["/spectra/periods"], dtype=np.float64)
-        psa = np.array(h5["/spectra/psa"], dtype=np.float64)
-        ru_time = np.array(h5["/pwp/time"], dtype=np.float64)
-        ru = np.array(h5["/pwp/ru"], dtype=np.float64)
         mesh_dz = np.array(h5["/mesh/dz"], dtype=np.float64) if "/mesh/dz" in h5 else np.array([])
 
-    if time.size != acc.size:
-        dt = 0.0 if acc.size <= 1 else (ru_time[1] - ru_time[0] if ru_time.size > 1 else 0.0)
-        time = np.arange(acc.size, dtype=np.float64) * dt
-    metrics = _load_metrics(sqlite_path)
+    time = rs.time
+    acc = rs.acc_surface
+    periods = rs.spectra_periods
+    psa = rs.spectra_psa
+    ru_time = rs.ru_time
+    ru = rs.ru
+    delta_u = rs.delta_u
+    sigma_v_eff = rs.sigma_v_eff
 
-    c1, c2, c3 = st.columns(3)
+    metrics = _load_metrics(sqlite_path)
+    delta_u_max_default = float(np.max(delta_u)) if delta_u.size > 0 else float("nan")
+    sigma_v_eff_min_default = (
+        float(np.min(sigma_v_eff)) if sigma_v_eff.size > 0 else float("nan")
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("PGA (m/s²)", f"{metrics.get('pga', float(np.max(np.abs(acc)))):.5f}")
-    c2.metric("ru_max", f"{metrics.get('ru_max', float(np.max(ru))):.5f}")
+    c2.metric(
+        "ru_max",
+        f"{metrics.get('ru_max', float(np.max(ru)) if ru.size > 0 else float('nan')):.5f}",
+    )
     c3.metric("Mesh slices", int(mesh_dz.size) if mesh_dz.size else "-")
+    c4.metric(
+        "delta_u_max",
+        f"{metrics.get('delta_u_max', delta_u_max_default):.5f}",
+    )
+    c5.metric(
+        "sigma_v_eff_min",
+        f"{metrics.get('sigma_v_eff_min', sigma_v_eff_min_default):.5f}",
+    )
 
     pcol1, pcol2 = st.columns(2)
     with pcol1:
         st.plotly_chart(_make_acc_plot(time, acc), use_container_width=True)
     with pcol2:
         st.plotly_chart(_make_spectra_plot(periods, psa), use_container_width=True)
-    st.plotly_chart(_make_ru_plot(ru_time, ru), use_container_width=True)
+    pcol3, pcol4 = st.columns(2)
+    with pcol3:
+        st.plotly_chart(_make_ru_plot(ru_time, ru), use_container_width=True)
+    with pcol4:
+        st.plotly_chart(
+            _make_effective_stress_plot(ru_time, delta_u, sigma_v_eff),
+            use_container_width=True,
+        )
 
 
 def main() -> None:

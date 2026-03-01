@@ -39,6 +39,7 @@ pip install -e .[ui]
 1dsra ui --host 127.0.0.1 --port 8501
 ```
 Open `http://127.0.0.1:8501` in your browser.
+UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 
 ## OpenSees Integration
 Set the OpenSees executable in config:

@@ -11,6 +11,12 @@ def test_load_config_ok() -> None:
     assert cfg.analysis.dt > 0.0
 
 
+def test_load_strict_plus_example_config_ok() -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress_strict_plus.yml"))
+    assert cfg.project_name == "sample-effective-stress-strict-plus"
+    assert cfg.analysis.pm4_validation_profile == "strict_plus"
+
+
 def test_invalid_extension() -> None:
     with pytest.raises(ValueError):
         load_project_config(Path("examples/configs/effective_stress.txt"))

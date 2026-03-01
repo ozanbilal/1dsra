@@ -30,6 +30,24 @@ def test_cli_init_mkz_gqh_template(tmp_path: Path) -> None:
     assert "material: gqh" in content
 
 
+def test_cli_init_effective_stress_strict_plus_template(tmp_path: Path) -> None:
+    out = tmp_path / "effective_stress_strict_plus.yml"
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--template",
+            "effective-stress-strict-plus",
+            "--out",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "pm4_validation_profile: strict_plus" in content
+    assert "boundary_condition: elastic_halfspace" in content
+
+
 def test_cli_init_invalid_template_fails(tmp_path: Path) -> None:
     out = tmp_path / "bad.yml"
     result = runner.invoke(app, ["init", "--template", "does-not-exist", "--out", str(out)])

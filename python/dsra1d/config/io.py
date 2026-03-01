@@ -89,6 +89,74 @@ def _effective_stress_template() -> dict[str, Any]:
     }
 
 
+def _effective_stress_strict_plus_template() -> dict[str, Any]:
+    return {
+        "project_name": "effective-stress-strict-plus-template",
+        "seed": 42,
+        "profile": {
+            "layers": [
+                {
+                    "name": "Layer-1",
+                    "thickness_m": 6.0,
+                    "unit_weight_kN_m3": 18.5,
+                    "vs_m_s": 180.0,
+                    "material": "pm4sand",
+                    "material_params": {
+                        "Dr": 0.45,
+                        "G0": 600.0,
+                        "hpo": 0.53,
+                    },
+                    "material_optional_args": [],
+                },
+                {
+                    "name": "Layer-2",
+                    "thickness_m": 8.0,
+                    "unit_weight_kN_m3": 19.0,
+                    "vs_m_s": 240.0,
+                    "material": "pm4silt",
+                    "material_params": {
+                        "Su": 35.0,
+                        "Su_Rat": 0.25,
+                        "G_o": 500.0,
+                        "h_po": 0.6,
+                    },
+                    "material_optional_args": [],
+                },
+            ]
+        },
+        "boundary_condition": "elastic_halfspace",
+        "analysis": {
+            "dt": 0.002,
+            "f_max": 25.0,
+            "solver_backend": "opensees",
+            "pm4_validation_profile": "strict_plus",
+            "timeout_s": 180,
+            "retries": 1,
+        },
+        "motion": {
+            "units": "m/s2",
+            "baseline": "remove_mean",
+            "scale_mode": "none",
+        },
+        "output": {
+            "write_hdf5": True,
+            "write_sqlite": True,
+            "parquet_export": False,
+        },
+        "opensees": {
+            "executable": "OpenSees",
+            "extra_args": [],
+            "column_width_m": 1.0,
+            "thickness_m": 1.0,
+            "fluid_bulk_modulus": 2.2e6,
+            "fluid_mass_density": 1.0,
+            "h_perm": 1.0e-5,
+            "v_perm": 1.0e-5,
+            "gravity_steps": 20,
+        },
+    }
+
+
 def _mkz_gqh_mock_template() -> dict[str, Any]:
     return {
         "project_name": "mkz-gqh-mock-template",
@@ -163,6 +231,7 @@ def write_config_template(
 ) -> Path:
     templates: dict[str, dict[str, Any]] = {
         "effective-stress": _effective_stress_template(),
+        "effective-stress-strict-plus": _effective_stress_strict_plus_template(),
         "mkz-gqh-mock": _mkz_gqh_mock_template(),
     }
     if template not in templates:

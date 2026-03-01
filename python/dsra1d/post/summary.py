@@ -220,10 +220,15 @@ def summarize_campaign(
         verify_require_runs = _as_int(verify_policy_raw.get("require_runs", 0))
         verify_ok = bool(verify_batch_report.get("ok", False))
         verify_total_runs = _as_int(verify_batch_report.get("total_runs", 0))
+        verify_conditions_raw = _as_dict(verify_policy_raw.get("conditions"))
         verify_conditions = {
-            "verify_ok": verify_ok,
-            "verify_require_runs_ok": verify_total_runs >= verify_require_runs,
+            str(k): _as_bool(v)
+            for k, v in verify_conditions_raw.items()
         }
+        require_runs_ok = verify_total_runs >= verify_require_runs
+        verify_conditions["verify_ok"] = verify_ok
+        verify_conditions["require_runs_ok"] = require_runs_ok
+        verify_conditions["verify_require_runs_ok"] = require_runs_ok
         verify_policy_passed = all(verify_conditions.values())
         summary["verify_batch"] = {
             "ok": verify_ok,

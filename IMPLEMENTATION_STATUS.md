@@ -87,6 +87,7 @@ Implemented:
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
 - `verify` now also checks `pwp_effective_stats` table-level consistency vs HDF5
+- `verify-batch` now emits machine-readable policy verdicts (`require_runs`, condition flags, `passed`) including path/directory guards
 - HTML/PDF report generation (includes effective-stress KPI summary and additional time-history plots)
 
 ### Phase 5 - Benchmark and Regression
@@ -140,6 +141,7 @@ Missing:
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
 - CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
+- Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend`
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels

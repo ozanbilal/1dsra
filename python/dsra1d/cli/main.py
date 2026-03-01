@@ -145,9 +145,37 @@ def _annotate_verify_policy(
     *,
     require_runs: int,
 ) -> None:
-    verify_report["policy"] = {
-        "require_runs": require_runs,
-    }
+    policy_raw = verify_report.get("policy")
+    policy: dict[str, object] = dict(policy_raw) if isinstance(policy_raw, dict) else {}
+    conditions_raw = policy.get("conditions")
+    conditions: dict[str, bool] = (
+        {str(k): bool(v) for k, v in conditions_raw.items()}
+        if isinstance(conditions_raw, dict)
+        else {}
+    )
+
+    total_runs_raw = verify_report.get("total_runs", 0)
+    failed_runs_raw = verify_report.get("failed_runs", 0)
+    if isinstance(total_runs_raw, (int, float)):
+        total_runs = int(total_runs_raw)
+    elif isinstance(total_runs_raw, str) and total_runs_raw.isdigit():
+        total_runs = int(total_runs_raw)
+    else:
+        total_runs = 0
+    if isinstance(failed_runs_raw, (int, float)):
+        failed_runs = int(failed_runs_raw)
+    elif isinstance(failed_runs_raw, str) and failed_runs_raw.isdigit():
+        failed_runs = int(failed_runs_raw)
+    else:
+        failed_runs = 0
+
+    conditions["verify_ok"] = bool(verify_report.get("ok", False))
+    conditions["no_failed_runs"] = failed_runs == 0
+    conditions["require_runs_ok"] = total_runs >= require_runs
+    policy["require_runs"] = require_runs
+    policy["conditions"] = conditions
+    policy["passed"] = all(bool(v) for v in conditions.values())
+    verify_report["policy"] = policy
 
 
 def _print_benchmark_coverage(report: dict[str, object]) -> None:

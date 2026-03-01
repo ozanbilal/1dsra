@@ -417,6 +417,8 @@ def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:
     assert isinstance(benchmark_report["policy"], dict)
     assert isinstance(verify_report["policy"], dict)
     assert isinstance(summary_report["policy"], dict)
+    verify_policy = verify_report["policy"]
+    assert isinstance(verify_policy.get("conditions"), dict)
 
 
 def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:

@@ -262,6 +262,44 @@ def test_summarize_campaign_policy_passes_when_requirements_met() -> None:
     assert policy["campaign"]["passed"] is True
 
 
+def test_summarize_campaign_preserves_verify_policy_conditions() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "core-es",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 1,
+        "cases": [{"name": "case01", "status": "ok", "passed": True}],
+    }
+    verify_batch_report: dict[str, object] = {
+        "ok": False,
+        "total_runs": 0,
+        "passed_runs": 0,
+        "failed_runs": 0,
+        "reports": {"_batch": {"ok": False, "reason": "Path not found"}},
+        "policy": {
+            "require_runs": 1,
+            "conditions": {
+                "verify_ok": False,
+                "no_failed_runs": True,
+                "require_runs_ok": False,
+                "path_exists": False,
+                "is_directory": False,
+            },
+            "passed": False,
+        },
+    }
+    summary = summarize_campaign(benchmark_report, verify_batch_report)
+    policy = summary["policy"]
+    assert isinstance(policy, dict)
+    verify_policy = policy["verify_batch"]
+    assert isinstance(verify_policy, dict)
+    conditions = verify_policy["conditions"]
+    assert isinstance(conditions, dict)
+    assert conditions["path_exists"] is False
+    assert conditions["is_directory"] is False
+    assert verify_policy["passed"] is False
+
+
 def test_summarize_campaign_classifies_pwp_effective_mismatch() -> None:
     benchmark_report: dict[str, object] = {
         "suite": "core-es",

@@ -75,6 +75,14 @@ def test_verify_batch_passes_for_multiple_runs(tmp_path: Path) -> None:
     assert report.ok is True
     assert report.total_runs == 2
     assert report.failed_runs == 0
+    assert isinstance(report.policy, dict)
+    conditions = report.policy["conditions"]
+    assert isinstance(conditions, dict)
+    assert conditions["verify_ok"] is True
+    assert conditions["no_failed_runs"] is True
+    assert conditions["require_runs_ok"] is True
+    assert report.policy["passed"] is True
+    assert "policy" in report.as_dict()
 
 
 def test_verify_batch_require_runs_fails_when_insufficient(tmp_path: Path) -> None:
@@ -86,6 +94,11 @@ def test_verify_batch_require_runs_fails_when_insufficient(tmp_path: Path) -> No
     report = verify_batch(tmp_path / "runs", require_runs=2)
     assert report.ok is False
     assert report.total_runs == 1
+    assert isinstance(report.policy, dict)
+    assert report.policy["passed"] is False
+    conditions = report.policy["conditions"]
+    assert isinstance(conditions, dict)
+    assert conditions["require_runs_ok"] is False
 
 
 def test_verify_batch_handles_missing_path(tmp_path: Path) -> None:
@@ -93,6 +106,24 @@ def test_verify_batch_handles_missing_path(tmp_path: Path) -> None:
     assert report.ok is False
     assert report.total_runs == 0
     assert "_batch" in report.reports
+    assert isinstance(report.policy, dict)
+    assert report.policy["passed"] is False
+    conditions = report.policy["conditions"]
+    assert isinstance(conditions, dict)
+    assert conditions["path_exists"] is False
+    assert conditions["is_directory"] is False
+
+
+def test_verify_batch_handles_non_directory_path(tmp_path: Path) -> None:
+    target = tmp_path / "not_a_dir.txt"
+    target.write_text("x", encoding="utf-8")
+    report = verify_batch(target)
+    assert report.ok is False
+    assert isinstance(report.policy, dict)
+    conditions = report.policy["conditions"]
+    assert isinstance(conditions, dict)
+    assert conditions["path_exists"] is True
+    assert conditions["is_directory"] is False
 
 
 def test_verify_run_handles_corrupted_hdf5(tmp_path: Path) -> None:

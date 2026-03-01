@@ -129,6 +129,30 @@ def _run_benchmark_with_optional_override(
                 os.environ[env_key] = old_value
 
 
+def _annotate_verify_policy(
+    verify_report: dict[str, Any],
+    *,
+    require_runs: int,
+) -> None:
+    policy_raw = verify_report.get("policy")
+    policy: dict[str, Any] = dict(policy_raw) if isinstance(policy_raw, dict) else {}
+    conditions_raw = policy.get("conditions")
+    conditions: dict[str, bool] = (
+        {str(k): bool(v) for k, v in conditions_raw.items()}
+        if isinstance(conditions_raw, dict)
+        else {}
+    )
+    total_runs = int(verify_report.get("total_runs", 0) or 0)
+    failed_runs = int(verify_report.get("failed_runs", 0) or 0)
+    conditions["verify_ok"] = bool(verify_report.get("ok", False))
+    conditions["no_failed_runs"] = failed_runs == 0
+    conditions["require_runs_ok"] = total_runs >= require_runs
+    policy["require_runs"] = require_runs
+    policy["conditions"] = conditions
+    policy["passed"] = all(bool(v) for v in conditions.values())
+    verify_report["policy"] = policy
+
+
 def _run_campaign_bundle(
     suite: str,
     campaign_dir: Path,
@@ -188,9 +212,7 @@ def _run_campaign_bundle(
         campaign_dir,
         require_runs=verify_require_runs,
     ).as_dict()
-    verify_report["policy"] = {
-        "require_runs": verify_require_runs,
-    }
+    _annotate_verify_policy(verify_report, require_runs=verify_require_runs)
     verify_path = campaign_dir / "verify_batch_report.json"
     verify_path.write_text(json.dumps(verify_report, indent=2), encoding="utf-8")
 

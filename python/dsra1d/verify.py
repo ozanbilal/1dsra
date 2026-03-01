@@ -27,15 +27,19 @@ class BatchVerificationReport:
     passed_runs: int
     failed_runs: int
     reports: dict[str, dict[str, object]]
+    policy: dict[str, object] | None = None
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "ok": self.ok,
             "total_runs": self.total_runs,
             "passed_runs": self.passed_runs,
             "failed_runs": self.failed_runs,
             "reports": self.reports,
         }
+        if self.policy is not None:
+            result["policy"] = self.policy
+        return result
 
 
 def _sha256_file(path: Path) -> str:
@@ -315,22 +319,48 @@ def verify_batch(
     require_checksums: bool = True,
     require_runs: int = 1,
 ) -> BatchVerificationReport:
+    def _policy_payload(*, ok: bool, total_runs: int, failed_runs: int) -> dict[str, object]:
+        conditions = {
+            "verify_ok": ok,
+            "no_failed_runs": failed_runs == 0,
+            "require_runs_ok": total_runs >= require_runs,
+        }
+        return {
+            "require_runs": require_runs,
+            "conditions": conditions,
+            "passed": all(bool(v) for v in conditions.values()),
+        }
+
     root = Path(output_root)
     if not root.exists():
+        policy = _policy_payload(ok=False, total_runs=0, failed_runs=0)
+        conditions = policy.get("conditions")
+        if isinstance(conditions, dict):
+            conditions["path_exists"] = False
+            conditions["is_directory"] = False
+            policy["passed"] = all(bool(v) for v in conditions.values())
         return BatchVerificationReport(
             ok=False,
             total_runs=0,
             passed_runs=0,
             failed_runs=0,
             reports={"_batch": {"ok": False, "reason": f"Path not found: {root}"}},
+            policy=policy,
         )
     if not root.is_dir():
+        policy = _policy_payload(ok=False, total_runs=0, failed_runs=0)
+        conditions = policy.get("conditions")
+        if isinstance(conditions, dict):
+            conditions["path_exists"] = True
+            conditions["is_directory"] = False
+            policy["passed"] = all(bool(v) for v in conditions.values())
         return BatchVerificationReport(
             ok=False,
             total_runs=0,
             passed_runs=0,
             failed_runs=0,
             reports={"_batch": {"ok": False, "reason": f"Not a directory: {root}"}},
+            policy=policy,
         )
 
     run_dirs = sorted([p for p in root.iterdir() if _is_run_dir(p)])
@@ -360,10 +390,17 @@ def verify_batch(
 
     total = len(run_dirs)
     ok = (failed == 0) and (total >= require_runs)
+    policy = _policy_payload(ok=ok, total_runs=total, failed_runs=failed)
+    conditions = policy.get("conditions")
+    if isinstance(conditions, dict):
+        conditions["path_exists"] = True
+        conditions["is_directory"] = True
+        policy["passed"] = all(bool(v) for v in conditions.values())
     return BatchVerificationReport(
         ok=ok,
         total_runs=total,
         passed_runs=passed,
         failed_runs=failed,
         reports=reports,
+        policy=policy,
     )

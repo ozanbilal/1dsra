@@ -136,3 +136,17 @@ def test_verify_run_handles_corrupted_hdf5(tmp_path: Path) -> None:
     report = verify_run(result.output_dir)
     assert report.ok is False
     assert report.checks.get("hdf5_readable") is False
+
+
+def test_verify_run_checks_eql_summary_consistency(tmp_path: Path) -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_eql.yml"))
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "eql-run")
+    report = verify_run(result.output_dir)
+    assert report.ok is True
+    assert report.checks["eql_summary_table_readable"] is True
+    assert report.checks["eql_iterations_match"] is True
+    assert report.checks["eql_converged_match"] is True
+    assert report.checks["eql_layer_count_match"] is True

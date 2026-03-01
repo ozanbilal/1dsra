@@ -39,6 +39,16 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
     sigma_v_eff_min = _safe_min(result.sigma_v_eff)
     sigma_v_ref = result.sigma_v_ref
     transfer_max = _safe_max(result.transfer_abs)
+    eql_iterations = result.eql_iterations
+    eql_converged = result.eql_converged
+    eql_max_change_last = (
+        float(result.eql_max_change_history[-1])
+        if result.eql_max_change_history.size > 0
+        else float("nan")
+    )
+    eql_iterations_text = (
+        str(eql_iterations) if eql_iterations is not None else "n/a"
+    )
 
     if "html" in formats:
         html = out_dir / "report.html"
@@ -53,6 +63,13 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
                     f"<p>sigma_v_ref: {_fmt(sigma_v_ref)} kPa (proxy units)</p>",
                     f"<p>sigma_v_eff_min: {_fmt(sigma_v_eff_min)} kPa (proxy units)</p>",
                     f"<p>transfer_abs_max: {_fmt(transfer_max)}</p>",
+                    f"<p>EQL iterations: {eql_iterations_text}</p>",
+                    (
+                        f"<p>EQL converged: {eql_converged}</p>"
+                        if eql_converged is not None
+                        else "<p>EQL converged: n/a</p>"
+                    ),
+                    f"<p>EQL max_change_last: {_fmt(eql_max_change_last)}</p>",
                     f"<p>Spectra points: {len(periods)}</p>",
                     "</body></html>",
                 ]
@@ -123,6 +140,17 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
                 ax3.grid(True, alpha=0.3)
                 pdf.savefig(fig3)
                 plt.close(fig3)
+
+            if result.eql_max_change_history.size > 0:
+                fig4, ax4 = plt.subplots(figsize=(8, 4.5))
+                idx = np.arange(1, result.eql_max_change_history.size + 1, dtype=np.int64)
+                ax4.plot(idx, result.eql_max_change_history, marker="o", lw=1.2, color="#2f3a42")
+                ax4.set_title("EQL Convergence History")
+                ax4.set_xlabel("Iteration")
+                ax4.set_ylabel("Max Relative Vs Change")
+                ax4.grid(True, alpha=0.3)
+                pdf.savefig(fig4)
+                plt.close(fig4)
         written.append(pdf_path)
 
     return written

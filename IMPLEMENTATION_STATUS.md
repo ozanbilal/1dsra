@@ -84,6 +84,7 @@ Status: **Completed (v1 base)**
 Implemented:
 - HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
 - SQLite output tables (runs, layers, motions, metrics, spectra, transfer_function, pwp_stats, mesh_slices, artifacts)
+- EQL output persistence (`/eql` group in HDF5; `eql_summary` + `eql_layers` tables in SQLite)
 - Transfer-function outputs now persisted (`/spectra/freq_hz`, `/spectra/transfer_abs`, SQLite `transfer_function`)
 - SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
@@ -144,6 +145,7 @@ Missing:
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
 - `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
+- EQL convergence diagnostics are now stored and verifiable across HDF5/SQLite/report outputs
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
 - `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)

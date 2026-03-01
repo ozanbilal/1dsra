@@ -152,3 +152,31 @@ analysis:
     store = load_result(result.output_dir)
     assert store.ru.size > 0
     assert float(store.ru.max()) <= 0.25
+
+
+def test_run_analysis_eql_persists_hdf5_and_sqlite_summary(tmp_path: Path) -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_eql.yml"))
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "eql-out")
+    assert result.status == "ok"
+
+    with h5py.File(result.hdf5_path, "r") as h5:
+        assert "/eql/iterations" in h5
+        assert "/eql/converged" in h5
+        assert "/eql/max_change_history" in h5
+        assert "/eql/layer_idx" in h5
+
+    conn = sqlite3.connect(result.sqlite_path)
+    try:
+        eql_summary_rows = conn.execute("SELECT COUNT(*) FROM eql_summary").fetchone()[0]
+        eql_layers_rows = conn.execute("SELECT COUNT(*) FROM eql_layers").fetchone()[0]
+        eql_metrics_rows = conn.execute(
+            "SELECT COUNT(*) FROM metrics WHERE name IN ('eql_iterations', 'eql_converged')"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert eql_summary_rows == 1
+    assert eql_layers_rows >= 1
+    assert eql_metrics_rows == 2

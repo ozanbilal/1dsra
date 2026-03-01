@@ -93,6 +93,9 @@ def verify_run(
     details["run_id_meta"] = meta_run_id
     pwp_effective_row: tuple[object, ...] | None = None
     pwp_effective_error = ""
+    eql_summary_row: tuple[object, ...] | None = None
+    eql_summary_error = ""
+    eql_layer_count_sql = 0
 
     try:
         with sqlite3.connect(sqlite_path) as conn:
@@ -135,6 +138,28 @@ def verify_run(
             except sqlite3.OperationalError as exc:
                 pwp_effective_row = None
                 pwp_effective_error = str(exc)
+            try:
+                eql_summary_row = conn.execute(
+                    """
+                    SELECT iterations, converged, max_change_last, max_change_max
+                    FROM eql_summary
+                    WHERE run_id = ?
+                    """,
+                    (sqlite_run_id,),
+                ).fetchone()
+                eql_layer_count_sql_row = conn.execute(
+                    "SELECT COUNT(*) FROM eql_layers WHERE run_id = ?",
+                    (sqlite_run_id,),
+                ).fetchone()
+                eql_layer_count_sql = (
+                    int(_safe_float(eql_layer_count_sql_row[0], 0.0))
+                    if eql_layer_count_sql_row is not None
+                    else 0
+                )
+                eql_summary_error = ""
+            except sqlite3.OperationalError as exc:
+                eql_summary_row = None
+                eql_summary_error = str(exc)
     except sqlite3.Error as exc:
         checks["sqlite_readable"] = False
         details["sqlite_error"] = str(exc)
@@ -162,6 +187,26 @@ def verify_run(
                 np.array(h5["/pwp/sigma_v_eff"], dtype=np.float64)
                 if has_sigma_v_eff
                 else np.array([], dtype=np.float64)
+            )
+            eql_iterations_arr = (
+                np.array(h5["/eql/iterations"], dtype=np.int64)
+                if "/eql/iterations" in h5
+                else np.array([], dtype=np.int64)
+            )
+            eql_converged_arr = (
+                np.array(h5["/eql/converged"], dtype=np.int8)
+                if "/eql/converged" in h5
+                else np.array([], dtype=np.int8)
+            )
+            eql_max_change_hist = (
+                np.array(h5["/eql/max_change_history"], dtype=np.float64)
+                if "/eql/max_change_history" in h5
+                else np.array([], dtype=np.float64)
+            )
+            eql_layer_idx_h5 = (
+                np.array(h5["/eql/layer_idx"], dtype=np.int64)
+                if "/eql/layer_idx" in h5
+                else np.array([], dtype=np.int64)
             )
     except OSError as exc:
         checks["hdf5_readable"] = False
@@ -265,6 +310,46 @@ def verify_run(
             checks["pwp_effective_sigma_v_eff_min_match"] = (
                 abs(sigma_v_eff_min_sql_table - sigma_v_eff_min_h5_table) <= tolerance
             )
+
+    has_eql_h5 = eql_iterations_arr.size > 0
+    checks["eql_summary_table_readable"] = True
+    checks["eql_iterations_match"] = True
+    checks["eql_converged_match"] = True
+    checks["eql_layer_count_match"] = True
+    if has_eql_h5:
+        eql_iterations_h5 = int(eql_iterations_arr.reshape(-1)[0])
+        eql_converged_h5 = (
+            bool(int(eql_converged_arr.reshape(-1)[0]))
+            if eql_converged_arr.size > 0
+            else False
+        )
+        details["eql_iterations_hdf5"] = eql_iterations_h5
+        details["eql_converged_hdf5"] = eql_converged_h5
+        details["eql_layer_count_hdf5"] = int(eql_layer_idx_h5.size)
+        details["eql_max_change_last_hdf5"] = (
+            float(eql_max_change_hist[-1])
+            if eql_max_change_hist.size > 0
+            else float("nan")
+        )
+        if eql_summary_row is None:
+            checks["eql_summary_table_readable"] = False
+            checks["eql_iterations_match"] = False
+            checks["eql_converged_match"] = False
+            checks["eql_layer_count_match"] = False
+            details["eql_summary_error"] = eql_summary_error
+        else:
+            eql_iterations_sql = int(_safe_float(eql_summary_row[0], -1.0))
+            eql_converged_sql = bool(int(_safe_float(eql_summary_row[1], 0.0)))
+            details["eql_iterations_sqlite"] = eql_iterations_sql
+            details["eql_converged_sqlite"] = eql_converged_sql
+            details["eql_layer_count_sqlite"] = eql_layer_count_sql
+            checks["eql_iterations_match"] = eql_iterations_sql == eql_iterations_h5
+            checks["eql_converged_match"] = eql_converged_sql == eql_converged_h5
+            checks["eql_layer_count_match"] = eql_layer_count_sql == int(eql_layer_idx_h5.size)
+    elif eql_summary_row is not None:
+        details["eql_iterations_sqlite"] = int(_safe_float(eql_summary_row[0], -1.0))
+        details["eql_converged_sqlite"] = bool(int(_safe_float(eql_summary_row[1], 0.0)))
+        details["eql_layer_count_sqlite"] = eql_layer_count_sql
 
     h5_hash_actual = _sha256_file(h5_path)
     sqlite_hash_actual = _sha256_file(sqlite_path)

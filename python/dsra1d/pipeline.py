@@ -28,6 +28,23 @@ from dsra1d.store import load_result as _load_result
 from dsra1d.types import BatchResult, Motion, RunResult
 
 
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if np.isfinite(value):
+            return int(value)
+        return default
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
 def _stable_run_id(config: ProjectConfig, motion: Motion) -> str:
     config_payload = json.dumps(
         config.model_dump(mode="json", by_alias=True),
@@ -125,7 +142,7 @@ def _write_eql_outputs(
     run_dir: Path,
     config: ProjectConfig,
     motion: Motion,
-) -> Path:
+) -> tuple[Path, dict[str, object]]:
     response = solve_equivalent_linear_sh_response(config, motion)
     t = response.response.time
     surface = response.response.surface_acc
@@ -133,20 +150,20 @@ def _write_eql_outputs(
     ru = np.zeros_like(t)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
 
-    summary = {
+    summary: dict[str, object] = {
         "iterations": response.iterations,
         "converged": response.converged,
         "max_change_history": response.max_change_history,
-        "layer_vs_m_s": {str(k): float(v) for k, v in response.layer_vs_m_s.items()},
-        "layer_damping": {str(k): float(v) for k, v in response.layer_damping.items()},
-        "layer_gamma_eff": {str(k): float(v) for k, v in response.layer_gamma_eff.items()},
+        "layer_vs_m_s": {int(k): float(v) for k, v in response.layer_vs_m_s.items()},
+        "layer_damping": {int(k): float(v) for k, v in response.layer_damping.items()},
+        "layer_gamma_eff": {int(k): float(v) for k, v in response.layer_gamma_eff.items()},
         "layer_max_abs_strain": {
-            str(k): float(v) for k, v in response.response.layer_max_abs_strain.items()
+            int(k): float(v) for k, v in response.response.layer_max_abs_strain.items()
         },
     }
     summary_path = run_dir / "eql_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    return summary_path
+    return summary_path, summary
 
 
 def _sha256_file(path: Path) -> str:
@@ -200,6 +217,7 @@ def run_analysis(
     opensees_command: list[str] = []
     opensees_stdout_log: Path | None = None
     opensees_stderr_log: Path | None = None
+    eql_summary: dict[str, object] | None = None
 
     if config.analysis.solver_backend == "opensees":
         attempt = 0
@@ -245,7 +263,7 @@ def run_analysis(
             motion=processed,
         )
     elif config.analysis.solver_backend == "eql":
-        eql_summary_path = _write_eql_outputs(
+        eql_summary_path, eql_summary = _write_eql_outputs(
             run_dir=run_dir,
             config=config,
             motion=processed,
@@ -322,6 +340,7 @@ def run_analysis(
             mesh_z_bot=np.array([s.z_bot_m for s in slices], dtype=np.float64),
             mesh_dz=np.array([s.dz_m for s in slices], dtype=np.float64),
             mesh_n_sub=np.array([s.n_sublayers for s in slices], dtype=np.int64),
+            eql_summary=eql_summary,
         )
     hdf5_checksums: list[tuple[str, str]] = []
     if config.output.write_hdf5 and h5_path.exists():
@@ -345,6 +364,7 @@ def run_analysis(
             sigma_v_ref=sigma_v_ref,
             sigma_v_eff=sigma_v_eff,
             mesh_slices=slices,
+            eql_summary=eql_summary,
             artifacts=artifacts,
             checksums=hdf5_checksums,
         )
@@ -367,6 +387,11 @@ def run_analysis(
         "model_tcl": str(tcl_path),
         "checksums": checksum_map,
     }
+    if eql_summary is not None:
+        run_meta["eql"] = {
+            "iterations": _as_int(eql_summary.get("iterations", 0)),
+            "converged": bool(eql_summary.get("converged", False)),
+        }
     run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
     return RunResult(

@@ -127,6 +127,7 @@ Each run writes structured metadata/artifacts:
 - SQLite `artifacts` table entries for generated files
 - Effective-stress outputs in HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
 - Spectral outputs in HDF5 `/spectra`: `periods`, `psa`, `freq_hz`, `transfer_abs` (`|H(f)|`)
+- EQL runs persist convergence outputs in HDF5 `/eql` and SQLite (`eql_summary`, `eql_layers`)
 
 ## Project Layout
 - `python/dsra1d/`: SDK + CLI + adapters

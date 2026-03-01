@@ -8,6 +8,40 @@ import numpy as np
 from dsra1d.post.spectra import Spectra
 
 
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if np.isfinite(value):
+            return int(value)
+        return default
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
+def _layer_map(
+    eql_summary: dict[str, object],
+    key: str,
+) -> dict[int, float]:
+    raw = eql_summary.get(key)
+    if not isinstance(raw, dict):
+        return {}
+    mapped: dict[int, float] = {}
+    for k, v in raw.items():
+        try:
+            idx = int(k)
+            mapped[idx] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return mapped
+
+
 def write_hdf5(
     path: Path,
     time: np.ndarray,
@@ -25,6 +59,7 @@ def write_hdf5(
     mesh_z_bot: np.ndarray,
     mesh_dz: np.ndarray,
     mesh_n_sub: np.ndarray,
+    eql_summary: dict[str, object] | None = None,
 ) -> Path:
     with h5py.File(path, "w") as h5:
         h5.create_dataset("/time", data=time)
@@ -53,5 +88,53 @@ def write_hdf5(
         mesh.create_dataset("z_bot", data=mesh_z_bot)
         mesh.create_dataset("dz", data=mesh_dz)
         mesh.create_dataset("n_sub", data=mesh_n_sub)
+
+        if eql_summary is not None:
+            eql = h5.create_group("/eql")
+            iterations = _as_int(eql_summary.get("iterations", 0))
+            converged = bool(eql_summary.get("converged", False))
+            max_change_history_raw = eql_summary.get("max_change_history", [])
+            if isinstance(max_change_history_raw, list):
+                max_change_history = np.asarray(max_change_history_raw, dtype=np.float64)
+            else:
+                max_change_history = np.asarray([], dtype=np.float64)
+            eql.create_dataset("iterations", data=np.array([iterations], dtype=np.int64))
+            eql.create_dataset("converged", data=np.array([1 if converged else 0], dtype=np.int8))
+            eql.create_dataset("max_change_history", data=max_change_history)
+
+            layer_vs = _layer_map(eql_summary, "layer_vs_m_s")
+            layer_damp = _layer_map(eql_summary, "layer_damping")
+            layer_gamma = _layer_map(eql_summary, "layer_gamma_eff")
+            layer_gamma_max = _layer_map(eql_summary, "layer_max_abs_strain")
+            layer_idx_all = sorted(
+                set(layer_vs) | set(layer_damp) | set(layer_gamma) | set(layer_gamma_max)
+            )
+            layer_idx = np.asarray(layer_idx_all, dtype=np.int64)
+            eql.create_dataset("layer_idx", data=layer_idx)
+            eql.create_dataset(
+                "layer_vs_m_s",
+                data=np.asarray([layer_vs.get(i, np.nan) for i in layer_idx_all], dtype=np.float64),
+            )
+            eql.create_dataset(
+                "layer_damping",
+                data=np.asarray(
+                    [layer_damp.get(i, np.nan) for i in layer_idx_all],
+                    dtype=np.float64,
+                ),
+            )
+            eql.create_dataset(
+                "layer_gamma_eff",
+                data=np.asarray(
+                    [layer_gamma.get(i, np.nan) for i in layer_idx_all],
+                    dtype=np.float64,
+                ),
+            )
+            eql.create_dataset(
+                "layer_gamma_max",
+                data=np.asarray(
+                    [layer_gamma_max.get(i, np.nan) for i in layer_idx_all],
+                    dtype=np.float64,
+                ),
+            )
 
     return path

@@ -10,6 +10,36 @@ from dsra1d.config.models import ProjectConfig
 from dsra1d.interop.opensees.tcl import LayerSlice
 from dsra1d.post.spectra import Spectra
 
+
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if np.isfinite(value):
+            return int(value)
+        return default
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
+def _as_float(value: object, default: float = float("nan")) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _layer_value(layer_map: dict[object, object], idx: int) -> float:
+    val = layer_map.get(str(idx), layer_map.get(idx, float("nan")))
+    return _as_float(val)
+
+
 DDL = """
 CREATE TABLE IF NOT EXISTS runs (
   run_id TEXT PRIMARY KEY,
@@ -79,6 +109,21 @@ CREATE TABLE IF NOT EXISTS checksums (
   sha256 TEXT NOT NULL,
   PRIMARY KEY (run_id, artifact)
 );
+CREATE TABLE IF NOT EXISTS eql_summary (
+  run_id TEXT PRIMARY KEY,
+  iterations INTEGER NOT NULL,
+  converged INTEGER NOT NULL,
+  max_change_last REAL NOT NULL,
+  max_change_max REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS eql_layers (
+  run_id TEXT NOT NULL,
+  layer_idx INTEGER NOT NULL,
+  vs_m_s REAL NOT NULL,
+  damping REAL NOT NULL,
+  gamma_eff REAL NOT NULL,
+  gamma_max REAL NOT NULL
+);
 """
 
 
@@ -99,6 +144,7 @@ def write_sqlite(
     sigma_v_ref: float,
     sigma_v_eff: np.ndarray,
     mesh_slices: list[LayerSlice],
+    eql_summary: dict[str, object] | None = None,
     artifacts: Iterable[tuple[str, str]] = (),
     checksums: Iterable[tuple[str, str]] = (),
 ) -> Path:
@@ -117,6 +163,8 @@ def write_sqlite(
             "artifacts",
             "mesh_slices",
             "checksums",
+            "eql_summary",
+            "eql_layers",
         ):
             conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
         conn.execute(
@@ -226,6 +274,81 @@ def write_sqlite(
             "INSERT OR REPLACE INTO checksums(run_id, artifact, sha256) VALUES (?, ?, ?)",
             [(run_id, artifact, sha256) for artifact, sha256 in checksums],
         )
+        if eql_summary is not None:
+            iterations = _as_int(eql_summary.get("iterations", 0))
+            converged = 1 if bool(eql_summary.get("converged", False)) else 0
+            max_change_history_raw = eql_summary.get("max_change_history", [])
+            max_change_history = (
+                [float(v) for v in max_change_history_raw]
+                if isinstance(max_change_history_raw, list)
+                else []
+            )
+            max_change_last = (
+                float(max_change_history[-1]) if max_change_history else 0.0
+            )
+            max_change_max = float(max(max_change_history)) if max_change_history else 0.0
+            conn.execute(
+                """
+                INSERT INTO eql_summary(
+                  run_id, iterations, converged, max_change_last, max_change_max
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (run_id, iterations, converged, max_change_last, max_change_max),
+            )
+            conn.execute(
+                "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
+                (run_id, "eql_iterations", float(iterations)),
+            )
+            conn.execute(
+                "INSERT INTO metrics(run_id, name, value) VALUES (?, ?, ?)",
+                (run_id, "eql_converged", float(converged)),
+            )
+            layer_vs_raw = eql_summary.get("layer_vs_m_s", {})
+            layer_damping_raw = eql_summary.get("layer_damping", {})
+            layer_gamma_eff_raw = eql_summary.get("layer_gamma_eff", {})
+            layer_gamma_max_raw = eql_summary.get("layer_max_abs_strain", {})
+            layer_vs = layer_vs_raw if isinstance(layer_vs_raw, dict) else {}
+            layer_damping = layer_damping_raw if isinstance(layer_damping_raw, dict) else {}
+            layer_gamma_eff = (
+                layer_gamma_eff_raw if isinstance(layer_gamma_eff_raw, dict) else {}
+            )
+            layer_gamma_max = (
+                layer_gamma_max_raw if isinstance(layer_gamma_max_raw, dict) else {}
+            )
+            layer_vs_map = {k: v for k, v in layer_vs.items()}
+            layer_damping_map = {k: v for k, v in layer_damping.items()}
+            layer_gamma_eff_map = {k: v for k, v in layer_gamma_eff.items()}
+            layer_gamma_max_map = {k: v for k, v in layer_gamma_max.items()}
+            layer_ids = sorted(
+                {
+                    _as_int(k, -1)
+                    for k in (
+                        set(layer_vs_map.keys())
+                        | set(layer_damping_map.keys())
+                        | set(layer_gamma_eff_map.keys())
+                        | set(layer_gamma_max_map.keys())
+                    )
+                    if _as_int(k, -1) > 0
+                }
+            )
+            conn.executemany(
+                """
+                INSERT INTO eql_layers(
+                  run_id, layer_idx, vs_m_s, damping, gamma_eff, gamma_max
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        idx,
+                        _layer_value(layer_vs_map, idx),
+                        _layer_value(layer_damping_map, idx),
+                        _layer_value(layer_gamma_eff_map, idx),
+                        _layer_value(layer_gamma_max_map, idx),
+                    )
+                    for idx in layer_ids
+                ],
+            )
         conn.commit()
     finally:
         conn.close()

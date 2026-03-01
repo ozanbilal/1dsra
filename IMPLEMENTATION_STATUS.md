@@ -194,3 +194,44 @@ Priority 4:
 - To "engineering beta" (real OpenSees validated templates + extended benchmark): short-to-medium effort.
 - To "v1.0 release candidate" (hardening, docs, release automation): medium effort.
 - To "native effective-stress solver beyond OpenSees adapter": major follow-on phase.
+
+## 7. Deep Research Traceability Matrix
+
+This section maps `deep-research-report.md` scope items to current implementation state.
+Use it as the single backlog bridge once current v1 hardening tasks are completed.
+
+Status legend:
+- `Done`: implemented in repo and covered in tests/flows.
+- `Partial`: implemented scaffold or subset only.
+- `Pending`: planned but not implemented yet.
+- `Out-of-v1`: intentionally deferred beyond current delivery scope.
+
+| Deep-Research Workstream | Status | Current Coverage | Next Action |
+|---|---|---|---|
+| 1D SH effective-stress workflow via OpenSees adapter | Done | u-p style TCL generation, run orchestration, parsing, artifacts | Keep parity checks in CI and validate with real binaries |
+| Boundary conditions (`rigid`, `elastic_halfspace` + dashpot) | Done | Both modes available in TCL generator | Add stronger scenario assertions in parity suite |
+| Motion preprocessing (baseline/scaling/unit normalization) | Done | Motion load/preprocess and unit conversion in pipeline | Add advanced filters (optional) as separate enhancement |
+| Config schema + validation (`ProjectConfig` family) | Done | Pydantic schema, backend-aware checks, PM4 strict profiles | Extend with richer calibration catalogs |
+| PM4Sand support for effective-stress runs | Partial | Parameterized material blocks and strict validation profiles | Complete parameter coverage and reference-calibrated templates |
+| PM4Silt support for effective-stress runs | Partial | Material blocks, params, and strict_plus profile checks | Add deeper PM4Silt benchmark/validation matrix |
+| PWP output normalization (`ru`, `delta_u`, `sigma_v_eff`) | Done | Stored in HDF5/SQLite + verified in `verify` checks | Add richer depth-dependent diagnostics |
+| PWP model family (Dobry/Matasovic/GMP/Park-Ahn etc.) | Pending | Not implemented as native model family | Implement first simplified model + dissipation strategy |
+| Nonlinear total-stress MKZ/GQH native coupling | Partial | MKZ/GQH helpers, curve inspector, Masing loop preview | Integrate into native solver path (not only mock/proxy) |
+| Masing/non-Masing production hysteresis rules | Partial | Masing-style loop generation helper exists | Add time-stepping constitutive update and non-Masing option |
+| Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
+| Linear native solver (time/frequency domain) | Pending | C++ core scaffold exists but no production solver | Implement linear solver baseline and transfer-function tests |
+| EQL solver (SHAKE-like + deconv/conv) | Pending | Not implemented | Implement iterative EQL and convergence diagnostics |
+| f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path | Expose as common mesh service across backends |
+| Result store (HDF5 + SQLite) | Done | Implemented with deterministic run-id consistency checks | Add optional DuckDB/Parquet query utilities |
+| CLI coverage (`run/batch/benchmark/campaign/verify/report/ui`) | Done | End-to-end command set available | Maintain backward compatibility and docs |
+| Python SDK stable entry points | Done | `run_analysis`, `run_batch`, `load_result`, `compute_spectra` | Add examples for calibration and campaign automation |
+| GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
+| Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
+| Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
+| Real-binary OpenSees integration validation | Partial | Optional integration harness exists | Run and lock on machine/CI runner with installed OpenSees |
+| Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |
+| Release hardening and governance | Partial | Release/tag/changelog guards added | Finalize org sign-off, manuals, and artifact policy |
+| Native effective-stress solver beyond OpenSees interop | Out-of-v1 | Explicitly deferred | Start after linear/EQL native milestones |
+
+Tracking rule for continuation:
+- When a `Partial`/`Pending` item advances, update both this matrix and the corresponding phase section above in the same commit.

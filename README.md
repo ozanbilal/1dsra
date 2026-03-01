@@ -8,6 +8,7 @@ Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchma
 - Motion preprocessing (baseline correction + scaling)
 - OpenSees model generation and subprocess orchestration
 - HDF5 + SQLite result stores
+- HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
 - Batch deduplication for identical motions (avoids duplicate run collisions)
 - Windows + Linux CI matrix, Docker runtime

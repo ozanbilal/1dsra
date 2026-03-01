@@ -9,13 +9,35 @@ from matplotlib.backends.backend_pdf import PdfPages
 from dsra1d.store.result_store import ResultStore
 
 
+def _safe_max_abs(values: np.ndarray) -> float:
+    return float(np.max(np.abs(values))) if values.size > 0 else float("nan")
+
+
+def _safe_max(values: np.ndarray) -> float:
+    return float(np.max(values)) if values.size > 0 else float("nan")
+
+
+def _safe_min(values: np.ndarray) -> float:
+    return float(np.min(values)) if values.size > 0 else float("nan")
+
+
+def _fmt(value: float) -> str:
+    if np.isnan(value):
+        return "n/a"
+    return f"{value:.6f}"
+
+
 def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
     periods = result.spectra_periods
     psa = result.spectra_psa
-    pga = float(np.max(np.abs(result.acc_surface)))
+    pga = _safe_max_abs(result.acc_surface)
+    ru_max = _safe_max(result.ru)
+    delta_u_max = _safe_max(result.delta_u)
+    sigma_v_eff_min = _safe_min(result.sigma_v_eff)
+    sigma_v_ref = result.sigma_v_ref
 
     if "html" in formats:
         html = out_dir / "report.html"
@@ -24,7 +46,11 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
                 [
                     "<html><body>",
                     f"<h1>1DSRA Report: {result.run_id}</h1>",
-                    f"<p>PGA(surface): {pga:.6f} m/s^2</p>",
+                    f"<p>PGA(surface): {_fmt(pga)} m/s^2</p>",
+                    f"<p>ru_max: {_fmt(ru_max)}</p>",
+                    f"<p>delta_u_max: {_fmt(delta_u_max)} kPa (proxy units)</p>",
+                    f"<p>sigma_v_ref: {_fmt(sigma_v_ref)} kPa (proxy units)</p>",
+                    f"<p>sigma_v_eff_min: {_fmt(sigma_v_eff_min)} kPa (proxy units)</p>",
                     f"<p>Spectra points: {len(periods)}</p>",
                     "</body></html>",
                 ]
@@ -44,6 +70,43 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
             ax.grid(True, alpha=0.3)
             pdf.savefig(fig)
             plt.close(fig)
+
+            fig2, axes = plt.subplots(3, 1, figsize=(8, 8), sharex=False)
+            time_acc = result.time
+            if time_acc.size == result.acc_surface.size and time_acc.size > 0:
+                axes[0].plot(time_acc, result.acc_surface, lw=1.2, color="#8b4d2a")
+            else:
+                axes[0].plot(result.acc_surface, lw=1.2, color="#8b4d2a")
+            axes[0].set_title("Surface Acceleration")
+            axes[0].set_ylabel("Acc (m/s^2)")
+            axes[0].grid(True, alpha=0.3)
+
+            if result.ru_time.size == result.ru.size and result.ru.size > 0:
+                axes[1].plot(result.ru_time, result.ru, lw=1.2, color="#2f3a42")
+            else:
+                axes[1].plot(result.ru, lw=1.2, color="#2f3a42")
+            axes[1].set_title("Pore Pressure Ratio (ru)")
+            axes[1].set_ylabel("ru")
+            axes[1].grid(True, alpha=0.3)
+
+            sigma_time = result.ru_time
+            plotted_sigma = False
+            if result.sigma_v_eff.size > 0 and sigma_time.size == result.sigma_v_eff.size:
+                axes[2].plot(sigma_time, result.sigma_v_eff, lw=1.2, color="#2d6a6a")
+                plotted_sigma = True
+            if result.delta_u.size > 0 and result.ru_time.size == result.delta_u.size:
+                axes[2].plot(result.ru_time, result.delta_u, lw=1.0, color="#555555")
+            if plotted_sigma:
+                axes[2].set_title("Effective Stress and Delta-u")
+                axes[2].set_xlabel("Time (s)")
+            else:
+                axes[2].set_title("Delta-u")
+            axes[2].set_ylabel("kPa (proxy)")
+            axes[2].grid(True, alpha=0.3)
+
+            fig2.tight_layout()
+            pdf.savefig(fig2)
+            plt.close(fig2)
         written.append(pdf_path)
 
     return written

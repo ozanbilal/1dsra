@@ -48,6 +48,9 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
     store = load_result(result.output_dir)
     assert store.acc_surface.size > 0
     assert store.spectra_periods.size == 80
+    assert store.ru.size > 0
+    assert store.delta_u.size > 0
+    assert store.sigma_v_eff.size > 0
 
 
 def test_run_analysis_opensees_missing_executable_fallback(tmp_path: Path) -> None:

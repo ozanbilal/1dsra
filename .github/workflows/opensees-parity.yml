@@ -39,25 +39,27 @@ jobs:
         run: |
           1dsra validate --config benchmarks/opensees-parity/cases/parity01.yml --check-backend || true
 
-      - name: Run OpenSees Parity Suite
+      - name: Run OpenSees Parity Campaign
         env:
           DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ inputs.opensees_executable }}
         run: |
           if [ "${{ inputs.fail_on_skip }}" = "true" ]; then
-            1dsra benchmark --suite opensees-parity --out out/opensees-parity --fail-on-skip --require-runs ${{ inputs.require_runs }}
+            1dsra campaign \
+              --suite opensees-parity \
+              --out out/opensees-parity \
+              --fail-on-skip \
+              --require-runs ${{ inputs.require_runs }} \
+              --verify-require-runs ${{ inputs.require_runs }}
           else
-            1dsra benchmark --suite opensees-parity --out out/opensees-parity --require-runs ${{ inputs.require_runs }}
+            1dsra campaign \
+              --suite opensees-parity \
+              --out out/opensees-parity \
+              --require-runs ${{ inputs.require_runs }} \
+              --verify-require-runs ${{ inputs.require_runs }}
           fi
 
-      - name: Verify Parity Outputs
-        run: 1dsra verify-batch --in out/opensees-parity --require-runs ${{ inputs.require_runs }}
-
-      - name: Summarize Campaign
+      - name: Publish Campaign Summary
         run: |
-          1dsra summarize \
-            --benchmark-report out/opensees-parity/benchmark_opensees-parity.json \
-            --verify-batch-report out/opensees-parity/verify_batch_report.json \
-            --out out/opensees-parity
           cat out/opensees-parity/campaign_summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Parity Artifacts

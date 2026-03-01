@@ -33,6 +33,27 @@ def _load_json_mapping(path: Path) -> dict[str, object]:
     return cast(dict[str, object], parsed)
 
 
+def _enforce_benchmark_strict_policy(
+    report: dict[str, object],
+    *,
+    fail_on_skip: bool,
+    require_runs: int,
+) -> None:
+    skipped_raw = report.get("skipped", 0)
+    ran_raw = report.get("ran", 0)
+    skipped = int(skipped_raw) if isinstance(skipped_raw, (int, float, str)) else 0
+    ran = int(ran_raw) if isinstance(ran_raw, (int, float, str)) else 0
+    if fail_on_skip and skipped > 0:
+        print(f"[red]Benchmark strict policy failed:[/red] skipped={skipped}")
+        raise typer.Exit(code=7)
+    if ran < require_runs:
+        print(
+            "[red]Benchmark strict policy failed:[/red] "
+            f"ran={ran}, require_runs={require_runs}"
+        )
+        raise typer.Exit(code=7)
+
+
 @app.command("init")
 def init_config(
     template: str = typer.Option("effective-stress", "--template"),
@@ -110,19 +131,57 @@ def benchmark(
     print(f"[green]Benchmark report:[/green] {report_path}")
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
-    skipped_raw = report.get("skipped", 0)
-    ran_raw = report.get("ran", 0)
-    skipped = int(skipped_raw) if isinstance(skipped_raw, (int, float, str)) else 0
-    ran = int(ran_raw) if isinstance(ran_raw, (int, float, str)) else 0
-    if fail_on_skip and skipped > 0:
-        print(f"[red]Benchmark strict policy failed:[/red] skipped={skipped}")
-        raise typer.Exit(code=7)
-    if ran < require_runs:
-        print(
-            "[red]Benchmark strict policy failed:[/red] "
-            f"ran={ran}, require_runs={require_runs}"
-        )
-        raise typer.Exit(code=7)
+    _enforce_benchmark_strict_policy(
+        report,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+    )
+
+
+@app.command("campaign")
+def campaign(
+    suite: str = typer.Option("opensees-parity", "--suite"),
+    out: Path = typer.Option(Path("out/campaign"), "--out"),
+    fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
+    require_runs: int = typer.Option(0, "--require-runs"),
+    verify_require_runs: int = typer.Option(1, "--verify-require-runs"),
+    tolerance: float = typer.Option(1.0e-8, "--tolerance"),
+    require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
+) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    report = run_benchmark_suite(suite=suite, output_dir=out)
+    benchmark_path = out / f"benchmark_{suite}.json"
+    benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"[green]Benchmark report:[/green] {benchmark_path}")
+
+    verify = verify_batch(
+        out,
+        tolerance=tolerance,
+        require_checksums=require_checksums,
+        require_runs=verify_require_runs,
+    )
+    verify_path = out / "verify_batch_report.json"
+    verify_path.write_text(json.dumps(verify.as_dict(), indent=2), encoding="utf-8")
+    print(f"[green]Verify batch report:[/green] {verify_path}")
+
+    summary = summarize_campaign(report, verify.as_dict())
+    summary_json = out / "campaign_summary.json"
+    summary_md = out / "campaign_summary.md"
+    summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_md.write_text(render_summary_markdown(summary), encoding="utf-8")
+    print(f"[green]Campaign summary JSON:[/green] {summary_json}")
+    print(f"[green]Campaign summary Markdown:[/green] {summary_md}")
+
+    if not bool(report.get("all_passed", False)):
+        raise typer.Exit(code=3)
+    _enforce_benchmark_strict_policy(
+        report,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+    )
+    if not verify.ok:
+        print("[red]Batch verification failed[/red]")
+        raise typer.Exit(code=9)
 
 
 @app.command("summarize")

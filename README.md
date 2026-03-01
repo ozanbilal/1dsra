@@ -28,6 +28,7 @@ pip install -e .[dev]
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
 ```
 
 ## Web UI (Streamlit)
@@ -108,6 +109,7 @@ You can override executable path without editing benchmark configs:
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
+Use `campaign` to execute benchmark + verify-batch + summarize in one command.
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`

@@ -4,6 +4,16 @@
       "name": "hyst01",
       "config": "cases/hyst01.yml",
       "motion": "cases/hyst01_motion.csv"
+    },
+    {
+      "name": "hyst02",
+      "config": "cases/hyst02.yml",
+      "motion": "cases/hyst02_motion.csv"
+    },
+    {
+      "name": "hyst03",
+      "config": "cases/hyst03.yml",
+      "motion": "cases/hyst03_motion.csv"
     }
   ]
 }

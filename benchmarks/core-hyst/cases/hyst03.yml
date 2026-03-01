@@ -1,0 +1,42 @@
+project_name: benchmark-hyst-03
+seed: 2103
+profile:
+  layers:
+    - name: GQH-Shallow
+      thickness_m: 7.0
+      unit_weight_kN_m3: 18.8
+      vs_m_s: 230.0
+      material: gqh
+      material_params:
+        gmax: 82000.0
+        gamma_ref: 0.0011
+        a1: 1.1
+        a2: 0.35
+        m: 2.2
+        damping_min: 0.01
+        damping_max: 0.12
+    - name: MKZ-Base
+      thickness_m: 8.0
+      unit_weight_kN_m3: 19.2
+      vs_m_s: 310.0
+      material: mkz
+      material_params:
+        gmax: 98000.0
+        gamma_ref: 0.0013
+        damping_min: 0.01
+        damping_max: 0.10
+analysis:
+  dt: 0.01
+  f_max: 25.0
+  solver_backend: mock
+boundary_condition: elastic_halfspace
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: scale_to_pga
+  target_pga: 0.5
+output:
+  write_hdf5: true
+  write_sqlite: true
+opensees:
+  executable: OpenSees

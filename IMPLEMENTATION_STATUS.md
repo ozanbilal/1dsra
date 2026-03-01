@@ -94,7 +94,7 @@ Status: **Completed (basic) / Partial (scientific depth)**
 Implemented:
 - `benchmark` command
 - Core benchmark suite with multi-case pass/fail output and metric-level tolerance checks
-- Added `core-hyst` benchmark suite for MKZ/GQH mock regression coverage
+- Added `core-hyst` benchmark suite for MKZ/GQH mock regression coverage (3-case matrix)
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input

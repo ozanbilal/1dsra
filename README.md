@@ -39,6 +39,7 @@ pip install -e .[dev]
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
+1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
 
 ## Web UI (Streamlit)

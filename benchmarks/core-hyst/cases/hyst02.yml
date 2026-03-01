@@ -1,0 +1,29 @@
+project_name: benchmark-hyst-02
+seed: 2102
+profile:
+  layers:
+    - name: MKZ-Only
+      thickness_m: 10.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 220.0
+      material: mkz
+      material_params:
+        gmax: 76000.0
+        gamma_ref: 0.0009
+        damping_min: 0.01
+        damping_max: 0.11
+analysis:
+  dt: 0.01
+  f_max: 25.0
+  solver_backend: mock
+boundary_condition: rigid
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: scale_by
+  scale_factor: 1.5
+output:
+  write_hdf5: true
+  write_sqlite: true
+opensees:
+  executable: OpenSees

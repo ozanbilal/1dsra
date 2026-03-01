@@ -314,9 +314,9 @@ def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:
             "--out",
             str(out_dir),
             "--require-runs",
-            "1",
+            "3",
             "--verify-require-runs",
-            "1",
+            "3",
         ],
     )
     assert result.exit_code == 0

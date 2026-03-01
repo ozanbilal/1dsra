@@ -14,5 +14,37 @@
     "dt_sensitivity": {
       "threshold": 5.0
     }
+  },
+  "hyst02": {
+    "checks": {
+      "pga": { "expected": 0.036, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.011670564650851981, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 1.0503508185766783, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 88.94964918142333, "abs_tol": 1.0e-6, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  },
+  "hyst03": {
+    "checks": {
+      "pga": { "expected": 0.5610382874186369, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "ru_max": { "expected": 0.03060747339215533, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "delta_u_max": { "expected": 4.36462570572135, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
+      "sigma_v_eff_min": { "expected": 138.23537429427864, "abs_tol": 1.0e-6, "rel_tol": 0.0 }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
   }
 }

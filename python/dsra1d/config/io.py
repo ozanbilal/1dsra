@@ -76,6 +76,13 @@ def write_config_template(path: str | Path) -> Path:
         "opensees": {
             "executable": "OpenSees",
             "extra_args": [],
+            "column_width_m": 1.0,
+            "thickness_m": 1.0,
+            "fluid_bulk_modulus": 2.2e6,
+            "fluid_mass_density": 1.0,
+            "h_perm": 1.0e-5,
+            "v_perm": 1.0e-5,
+            "gravity_steps": 20,
         },
     }
 

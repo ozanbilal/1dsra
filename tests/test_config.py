@@ -183,3 +183,31 @@ opensees:
     )
     with pytest.raises(ValueError):
         load_project_config(cfg)
+
+
+def test_opensees_u_p_parameters_must_be_positive(tmp_path: Path) -> None:
+    cfg = tmp_path / "bad_up_params.yml"
+    cfg.write_text(
+        """
+project_name: bad-up-params
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+opensees:
+  executable: OpenSees
+  h_perm: -1.0e-5
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)

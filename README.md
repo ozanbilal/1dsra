@@ -44,6 +44,14 @@ opensees:
   executable: OpenSees
 ```
 You can also use an absolute path for deterministic environments.
+u-p assembly constants are configurable per project via:
+- `column_width_m`
+- `thickness_m`
+- `fluid_bulk_modulus`
+- `fluid_mass_density`
+- `h_perm`
+- `v_perm`
+- `gravity_steps`
 When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
 PM4 validation profile can be configured via:

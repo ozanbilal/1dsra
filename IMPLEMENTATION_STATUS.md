@@ -47,6 +47,8 @@ Implemented:
 - Boundary-condition aware TCL assembly:
   - `rigid` base fixity
   - `elastic_halfspace` base with Lysmer-style dashpot (`uniaxialMaterial Viscous` + `zeroLength`)
+- Configurable u-p assembly constants in `opensees` config:
+  - `column_width_m`, `thickness_m`, `fluid_bulk_modulus`, `fluid_mass_density`, `h_perm`, `v_perm`, `gravity_steps`
 - CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
 - Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
 

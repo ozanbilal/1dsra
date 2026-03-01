@@ -124,6 +124,13 @@ class SoilProfile(BaseModel):
 class OpenseesConfig(BaseModel):
     executable: str = "OpenSees"
     extra_args: list[str] = Field(default_factory=list)
+    column_width_m: PositiveFloat = 1.0
+    thickness_m: PositiveFloat = 1.0
+    fluid_bulk_modulus: PositiveFloat = 2.2e6
+    fluid_mass_density: PositiveFloat = 1.0
+    h_perm: PositiveFloat = 1.0e-5
+    v_perm: PositiveFloat = 1.0e-5
+    gravity_steps: int = Field(default=20, ge=1)
 
 
 class ProjectConfig(BaseModel):

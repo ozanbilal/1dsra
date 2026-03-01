@@ -151,6 +151,13 @@ def validate_tcl_script(script: str) -> None:
 def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> str:
     dt = config.analysis.dt or (1.0 / (20.0 * config.analysis.f_max))
     g = 9.81
+    column_width = config.opensees.column_width_m
+    thickness = config.opensees.thickness_m
+    fluid_bulk = config.opensees.fluid_bulk_modulus
+    fluid_mass = config.opensees.fluid_mass_density
+    h_perm = config.opensees.h_perm
+    v_perm = config.opensees.v_perm
+    gravity_steps = config.opensees.gravity_steps
     layer_slices = build_layer_slices(config)
     element_slices = build_element_slices(layer_slices)
     total_depth = sum(layer.thickness_m for layer in config.profile.layers)
@@ -176,13 +183,13 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append(f"set output_dir \"{output_dir.as_posix()}\"")
     lines.append("file mkdir $output_dir")
     lines.append(f"set dt {dt:.8f}")
-    lines.append("set colWidth 1.000000")
-    lines.append("set thickness 1.000000")
+    lines.append(f"set colWidth {column_width:.8f}")
+    lines.append(f"set thickness {thickness:.8f}")
     lines.append(f"set g {g:.8f}")
-    lines.append("set fBulk 2.200000e+06")
-    lines.append("set fMass 1.000000")
-    lines.append("set hPerm 1.000000e-05")
-    lines.append("set vPerm 1.000000e-05")
+    lines.append(f"set fBulk {fluid_bulk:.8f}")
+    lines.append(f"set fMass {fluid_mass:.8f}")
+    lines.append(f"set hPerm {h_perm:.8f}")
+    lines.append(f"set vPerm {v_perm:.8f}")
     lines.append(f"set sigmaVRef {sigma_v_ref:.8f}")
     lines.append(f"set nLayers {len(layer_slices)}")
     lines.append(f"set nElemY {len(element_slices)}")
@@ -264,7 +271,7 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append("algorithm Newton")
     lines.append("integrator Newmark 0.5 0.25")
     lines.append("analysis Transient")
-    lines.append("set okG [analyze 20 $dt]")
+    lines.append(f"set okG [analyze {gravity_steps} $dt]")
     lines.append("if {$okG != 0} {")
     lines.append("    puts \"Gravity stage did not converge.\"")
     lines.append("}")

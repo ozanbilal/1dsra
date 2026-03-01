@@ -65,6 +65,29 @@ def test_render_tcl_boundary_elastic_halfspace_dashpot() -> None:
     assert "element zeroLength 9001" in script
 
 
+def test_render_tcl_uses_opensees_u_p_parameters_from_config() -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.opensees.column_width_m = 2.5
+    cfg.opensees.thickness_m = 1.3
+    cfg.opensees.fluid_bulk_modulus = 3.1e6
+    cfg.opensees.fluid_mass_density = 1.2
+    cfg.opensees.h_perm = 2.0e-5
+    cfg.opensees.v_perm = 4.0e-5
+    cfg.opensees.gravity_steps = 33
+    script = render_tcl(
+        cfg,
+        motion_file=Path("examples/motions/sample_motion.csv"),
+        output_dir=Path("out/test"),
+    )
+    assert "set colWidth 2.50000000" in script
+    assert "set thickness 1.30000000" in script
+    assert "set fBulk 3100000.00000000" in script
+    assert "set fMass 1.20000000" in script
+    assert "set hPerm 0.00002000" in script
+    assert "set vPerm 0.00004000" in script
+    assert "set okG [analyze 33 $dt]" in script
+
+
 def test_build_element_slices_total_matches_subdivisions() -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
     layer_slices = build_layer_slices(cfg)

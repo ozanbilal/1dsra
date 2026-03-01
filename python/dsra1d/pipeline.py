@@ -47,6 +47,14 @@ def _write_mock_outputs(run_dir: Path, acc: np.ndarray, dt: float) -> None:
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([ru_t, ru]))
 
 
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def run_analysis(
     config: ProjectConfig,
     motion: Motion,
@@ -124,6 +132,8 @@ def run_analysis(
 
     surface_out = run_dir / "surface_acc.out"
     pwp_out = run_dir / "pwp_ru.out"
+    artifacts.append(("results_hdf5", str(run_dir / "results.h5")))
+    artifacts.append(("results_sqlite", str(run_dir / "results.sqlite")))
     if surface_out.exists():
         artifacts.append(("surface_acc", str(surface_out)))
     if pwp_out.exists():
@@ -132,21 +142,6 @@ def run_analysis(
         artifacts.append(("opensees_stdout", str(opensees_stdout_log)))
     if opensees_stderr_log and opensees_stderr_log.exists():
         artifacts.append(("opensees_stderr", str(opensees_stderr_log)))
-
-    run_meta_path = run_dir / "run_meta.json"
-    run_meta = {
-        "run_id": run_id,
-        "timestamp_utc": datetime.now(UTC).isoformat(),
-        "solver_backend": config.analysis.solver_backend,
-        "status": status,
-        "message": message,
-        "opensees_command": opensees_command,
-        "input_motion": str(motion.source) if motion.source else "",
-        "processed_motion": str(motion_file),
-        "model_tcl": str(tcl_path),
-    }
-    run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
-    artifacts.append(("run_meta", str(run_meta_path)))
 
     h5_path = run_dir / "results.h5"
     sqlite_path = run_dir / "results.sqlite"
@@ -165,6 +160,10 @@ def run_analysis(
             mesh_dz=np.array([s.dz_m for s in slices], dtype=np.float64),
             mesh_n_sub=np.array([s.n_sublayers for s in slices], dtype=np.int64),
         )
+    hdf5_checksums: list[tuple[str, str]] = []
+    if config.output.write_hdf5 and h5_path.exists():
+        hdf5_checksums.append(("results.h5", _sha256_file(h5_path)))
+
     if config.output.write_sqlite:
         write_sqlite(
             sqlite_path,
@@ -179,7 +178,28 @@ def run_analysis(
             ru=ru,
             mesh_slices=slices,
             artifacts=artifacts,
+            checksums=hdf5_checksums,
         )
+
+    checksum_map = {name: digest for name, digest in hdf5_checksums}
+    if config.output.write_sqlite and sqlite_path.exists():
+        sqlite_hash = _sha256_file(sqlite_path)
+        checksum_map["results.sqlite"] = sqlite_hash
+
+    run_meta_path = run_dir / "run_meta.json"
+    run_meta = {
+        "run_id": run_id,
+        "timestamp_utc": datetime.now(UTC).isoformat(),
+        "solver_backend": config.analysis.solver_backend,
+        "status": status,
+        "message": message,
+        "opensees_command": opensees_command,
+        "input_motion": str(motion.source) if motion.source else "",
+        "processed_motion": str(motion_file),
+        "model_tcl": str(tcl_path),
+        "checksums": checksum_map,
+    }
+    run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
     return RunResult(
         run_id=run_id,

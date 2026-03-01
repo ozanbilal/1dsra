@@ -72,6 +72,7 @@ Status: **Completed (v1 base)**
 Implemented:
 - HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
 - SQLite output tables (runs, layers, motions, metrics, spectra, pwp_stats, mesh_slices, artifacts)
+- Checksum table + run verification command (`verify`) for HDF5/SQLite/meta consistency checks
 - HTML/PDF report generation
 
 ### Phase 5 - Benchmark and Regression
@@ -104,9 +105,9 @@ Missing:
 
 ## 3. What Is Working Today
 
-- CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `report`, `ui`
+- CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `report`, `dt-check`, `verify`, `ui`
 - CLI backend preflight: `validate --check-backend`
-- Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`
+- Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
 - Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`

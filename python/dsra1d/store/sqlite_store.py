@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS mesh_slices (
   dz REAL NOT NULL,
   n_sub INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS checksums (
+  run_id TEXT NOT NULL,
+  artifact TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  PRIMARY KEY (run_id, artifact)
+);
 """
 
 
@@ -78,6 +84,7 @@ def write_sqlite(
     ru: np.ndarray,
     mesh_slices: list[LayerSlice],
     artifacts: Iterable[tuple[str, str]] = (),
+    checksums: Iterable[tuple[str, str]] = (),
 ) -> Path:
     conn = sqlite3.connect(path)
     try:
@@ -159,8 +166,29 @@ def write_sqlite(
             "INSERT INTO artifacts(run_id, kind, path) VALUES (?, ?, ?)",
             [(run_id, kind, path) for kind, path in artifacts],
         )
+        conn.executemany(
+            "INSERT OR REPLACE INTO checksums(run_id, artifact, sha256) VALUES (?, ?, ?)",
+            [(run_id, artifact, sha256) for artifact, sha256 in checksums],
+        )
         conn.commit()
     finally:
         conn.close()
 
     return path
+
+
+def write_checksums(
+    path: Path,
+    run_id: str,
+    checksums: Iterable[tuple[str, str]],
+) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(DDL)
+        conn.executemany(
+            "INSERT OR REPLACE INTO checksums(run_id, artifact, sha256) VALUES (?, ?, ?)",
+            [(run_id, artifact, sha256) for artifact, sha256 in checksums],
+        )
+        conn.commit()
+    finally:
+        conn.close()

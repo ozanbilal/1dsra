@@ -25,6 +25,7 @@ pip install -e .[dev]
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 1
+1dsra verify --in out/run001/run-xxxxxxxxxxxx
 ```
 
 ## Web UI (Streamlit)
@@ -88,3 +89,9 @@ cases when `opensees.executable` is not found.
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
+
+## Run Verification
+Use `verify` to validate post-run integrity:
+- run-id consistency between directory, `run_meta.json`, and SQLite `runs`
+- metric consistency between HDF5 and SQLite (`pga`, `ru_max`)
+- checksum consistency for `results.h5` and `results.sqlite`

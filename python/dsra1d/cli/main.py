@@ -15,6 +15,7 @@ from dsra1d.interop.opensees import resolve_opensees_executable
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import write_report
+from dsra1d.verify import verify_run
 
 app = typer.Typer(help="1DSRA CLI")
 
@@ -175,6 +176,26 @@ def dt_check(
 
     if max_rel > threshold:
         raise typer.Exit(code=6)
+
+
+@app.command("verify")
+def verify(
+    input_dir: Path = typer.Option(..., "--in"),
+    tolerance: float = typer.Option(1.0e-8, "--tolerance"),
+    require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
+) -> None:
+    report = verify_run(
+        input_dir,
+        tolerance=tolerance,
+        require_checksums=require_checksums,
+    )
+    report_path = input_dir / "verify_report.json"
+    report_path.write_text(json.dumps(report.as_dict(), indent=2), encoding="utf-8")
+    print(f"[green]Verify report:[/green] {report_path}")
+    if not report.ok:
+        print("[red]Verification failed[/red]")
+        raise typer.Exit(code=9)
+    print("[green]Verification passed[/green]")
 
 
 @app.command("ui")

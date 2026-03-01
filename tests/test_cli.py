@@ -109,3 +109,34 @@ def test_cli_benchmark_fail_on_skip_fails_when_backend_missing(
         ],
     )
     assert result.exit_code == 7
+
+
+def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
+    cfg = Path("examples/configs/effective_stress.yml")
+    motion = Path("examples/motions/sample_motion.csv")
+    run_result = runner.invoke(
+        app,
+        [
+            "run",
+            "--config",
+            str(cfg),
+            "--motion",
+            str(motion),
+            "--out",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert run_result.exit_code == 0
+
+    run_dirs = [p for p in (tmp_path / "out").iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1
+    result = runner.invoke(
+        app,
+        [
+            "verify",
+            "--in",
+            str(run_dirs[0]),
+        ],
+    )
+    assert result.exit_code == 0
+    assert (run_dirs[0] / "verify_report.json").exists()

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -26,11 +27,18 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
     try:
         n_mesh = conn.execute("SELECT COUNT(*) FROM mesh_slices").fetchone()[0]
         n_artifacts = conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
+        n_checksums = conn.execute("SELECT COUNT(*) FROM checksums").fetchone()[0]
     finally:
         conn.close()
     assert n_mesh >= 1
     assert n_artifacts >= 4
+    assert n_checksums >= 1
     assert (result.output_dir / "run_meta.json").exists()
+    run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
+    checksums = run_meta.get("checksums", {})
+    assert isinstance(checksums, dict)
+    assert "results.h5" in checksums
+    assert "results.sqlite" in checksums
 
     store = load_result(result.output_dir)
     assert store.acc_surface.size > 0

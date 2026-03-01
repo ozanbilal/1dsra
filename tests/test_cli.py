@@ -462,6 +462,12 @@ def test_cli_campaign_require_opensees_fails_when_backend_missing(
         ],
     )
     assert result.exit_code == 10
+    benchmark_path = out_dir / "benchmark_opensees-parity.json"
+    assert benchmark_path.exists()
+    benchmark_report = json.loads(benchmark_path.read_text(encoding="utf-8"))
+    policy = benchmark_report["policy"]
+    assert isinstance(policy, dict)
+    assert policy["require_opensees"] is True
 
 
 def test_cli_campaign_min_execution_coverage_fails_when_no_runs(
@@ -485,3 +491,5 @@ def test_cli_campaign_min_execution_coverage_fails_when_no_runs(
         ],
     )
     assert result.exit_code == 11
+    benchmark_path = out_dir / "benchmark_opensees-parity.json"
+    assert benchmark_path.exists()

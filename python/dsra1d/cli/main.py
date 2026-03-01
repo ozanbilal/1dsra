@@ -336,6 +336,11 @@ def campaign(
         require_opensees=require_opensees,
         min_execution_coverage=min_execution_coverage,
     )
+    benchmark_path = out / f"benchmark_{suite}.json"
+    benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"[green]Benchmark report:[/green] {benchmark_path}")
+    _print_benchmark_coverage(report)
+
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
     _enforce_benchmark_strict_policy(
@@ -352,11 +357,6 @@ def campaign(
         report,
         min_execution_coverage=min_execution_coverage,
     )
-
-    benchmark_path = out / f"benchmark_{suite}.json"
-    benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"[green]Benchmark report:[/green] {benchmark_path}")
-    _print_benchmark_coverage(report)
 
     verify = verify_batch(
         out,

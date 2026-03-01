@@ -185,6 +185,108 @@ opensees:
         load_project_config(cfg)
 
 
+def test_pm4_strict_plus_profile_accepts_valid_config(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_plus_ok.yml"
+    cfg.write_text(
+        """
+project_name: strict-plus-ok
+profile:
+  layers:
+    - name: L1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+    - name: L2
+      thickness_m: 8.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 240.0
+      material: pm4silt
+      material_params:
+        Su: 35.0
+        Su_Rat: 0.25
+        G_o: 500.0
+        h_po: 0.60
+boundary_condition: elastic_halfspace
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+opensees:
+  executable: OpenSees
+  h_perm: 1.0e-5
+  v_perm: 1.0e-5
+  gravity_steps: 20
+""".strip(),
+        encoding="utf-8",
+    )
+    loaded = load_project_config(cfg)
+    assert loaded.analysis.pm4_validation_profile == "strict_plus"
+
+
+def test_pm4_strict_plus_rejects_rigid_boundary(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_plus_rigid.yml"
+    cfg.write_text(
+        """
+project_name: strict-plus-rigid
+profile:
+  layers:
+    - name: L1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+boundary_condition: rigid
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
+def test_pm4_strict_plus_rejects_invalid_permeability(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_plus_perm.yml"
+    cfg.write_text(
+        """
+project_name: strict-plus-perm
+profile:
+  layers:
+    - name: L1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.5
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+boundary_condition: elastic_halfspace
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+opensees:
+  executable: OpenSees
+  h_perm: 5.0e-1
+  v_perm: 1.0e-5
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
 def test_opensees_u_p_parameters_must_be_positive(tmp_path: Path) -> None:
     cfg = tmp_path / "bad_up_params.yml"
     cfg.write_text(

@@ -31,6 +31,7 @@ Implemented:
 - Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
 - Backend-aware guard: OpenSees backend rejects MKZ/GQH in v1 pipeline
 - PM4 validation profiles: `basic` and `strict` (strict adds conservative range checks)
+- PM4 validation profiles: `basic`, `strict`, and `strict_plus` (`strict_plus` adds u-p setup sanity checks for OpenSees)
 - Motion unit validation + conversion to SI (`m/s2`) for consistent downstream calculations
 
 Notes:

@@ -66,7 +66,7 @@ class AnalysisControl(BaseModel):
     t_end: PositiveFloat | None = None
     f_max: PositiveFloat = 25.0
     solver_backend: Literal["opensees", "mock"] = "opensees"
-    pm4_validation_profile: Literal["basic", "strict"] = "basic"
+    pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
     timeout_s: int = 180
     retries: int = 1
 
@@ -249,6 +249,9 @@ class ProjectConfig(BaseModel):
                 "h_po": (0.01, 5.0),
             },
         }
+        is_strict = self.analysis.pm4_validation_profile in {"strict", "strict_plus"}
+        is_strict_plus = self.analysis.pm4_validation_profile == "strict_plus"
+
         for layer in self.profile.layers:
             required = required_by_material.get(layer.material)
             if required is None:
@@ -259,7 +262,7 @@ class ProjectConfig(BaseModel):
                     f"Layer '{layer.name}' ({layer.material.value}) is missing required "
                     f"material_params for opensees backend: {missing}"
                 )
-            if self.analysis.pm4_validation_profile == "strict":
+            if is_strict:
                 bounds = strict_ranges[layer.material]
                 for key, (lo, hi) in bounds.items():
                     val = layer.material_params[key]
@@ -269,4 +272,73 @@ class ProjectConfig(BaseModel):
                             f"({layer.material.value}) strict validation failed: "
                             f"{key}={val} is outside ({lo}, {hi}]."
                         )
+
+        if is_strict_plus:
+            if self.boundary_condition != BoundaryCondition.ELASTIC_HALFSPACE:
+                raise ValueError(
+                    "strict_plus requires boundary_condition=elastic_halfspace "
+                    "for PM4 effective-stress workflows."
+                )
+
+            total_depth = sum(layer.thickness_m for layer in self.profile.layers)
+            if not (5.0 <= total_depth <= 200.0):
+                raise ValueError(
+                    "strict_plus profile depth check failed: "
+                    f"total depth {total_depth} m is outside [5, 200]."
+                )
+
+            if not (0.2 <= self.opensees.column_width_m <= 10.0):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    f"column_width_m={self.opensees.column_width_m} outside [0.2, 10]."
+                )
+            if not (0.2 <= self.opensees.thickness_m <= 10.0):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    f"thickness_m={self.opensees.thickness_m} outside [0.2, 10]."
+                )
+            if not (1.0e5 <= self.opensees.fluid_bulk_modulus <= 1.0e8):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    "fluid_bulk_modulus outside [1e5, 1e8]."
+                )
+            if not (0.5 <= self.opensees.fluid_mass_density <= 2.0):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    "fluid_mass_density outside [0.5, 2.0]."
+                )
+            if not (1.0e-8 <= self.opensees.h_perm <= 1.0e-2):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    "h_perm outside [1e-8, 1e-2]."
+                )
+            if not (1.0e-8 <= self.opensees.v_perm <= 1.0e-2):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    "v_perm outside [1e-8, 1e-2]."
+                )
+            if not (10 <= self.opensees.gravity_steps <= 2000):
+                raise ValueError(
+                    "strict_plus OpenSees check failed: "
+                    "gravity_steps outside [10, 2000]."
+                )
+
+            for layer in self.profile.layers:
+                if layer.material not in {MaterialType.PM4SAND, MaterialType.PM4SILT}:
+                    continue
+                if not (10.0 <= layer.unit_weight_kn_m3 <= 25.0):
+                    raise ValueError(
+                        f"strict_plus layer check failed for '{layer.name}': "
+                        f"unit_weight_kN_m3={layer.unit_weight_kn_m3} outside [10, 25]."
+                    )
+                if not (30.0 <= layer.vs_m_s <= 800.0):
+                    raise ValueError(
+                        f"strict_plus layer check failed for '{layer.name}': "
+                        f"vs_m_s={layer.vs_m_s} outside [30, 800]."
+                    )
+                if len(layer.material_optional_args) > 30:
+                    raise ValueError(
+                        f"strict_plus layer check failed for '{layer.name}': "
+                        "material_optional_args length exceeds 30."
+                    )
         return self

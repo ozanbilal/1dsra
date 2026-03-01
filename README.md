@@ -78,6 +78,8 @@ These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line
 PM4 validation profile can be configured via:
 - `analysis.pm4_validation_profile: basic` (presence + positivity checks)
 - `analysis.pm4_validation_profile: strict` (adds conservative range checks)
+- `analysis.pm4_validation_profile: strict_plus` (adds strict checks + u-p setup sanity guards:
+  elastic-halfspace boundary, permeability/fluid/gravity bounds, and PM4 layer envelope checks)
 Motion units are validated and converted to SI internally (`m/s2`).
 Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 

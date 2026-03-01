@@ -9,6 +9,7 @@ import h5py
 import numpy as np
 
 from dsra1d.config import ProjectConfig, load_project_config
+from dsra1d.interop.opensees import resolve_opensees_executable
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
@@ -145,11 +146,11 @@ def _evaluate_dt_sensitivity(
 
 
 def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
-    if suite != "core-es":
+    if suite not in {"core-es", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
 
     repo_root = Path(__file__).resolve().parents[2]
-    suite_dir = repo_root / "benchmarks" / "core-es"
+    suite_dir = repo_root / "benchmarks" / suite
     cases_path = suite_dir / "cases" / "case_list.json"
     golden_path = suite_dir / "golden" / "golden_metrics.json"
 
@@ -157,11 +158,32 @@ def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
     golden = json.loads(golden_path.read_text(encoding="utf-8"))
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    report: dict[str, object] = {"suite": suite, "cases": [], "all_passed": True}
+    report: dict[str, object] = {
+        "suite": suite,
+        "cases": [],
+        "all_passed": True,
+    }
+    skipped_count = 0
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
         motion_path = suite_dir / case["motion"]
+
+        if cfg.analysis.solver_backend == "opensees":
+            resolved = resolve_opensees_executable(cfg.opensees.executable)
+            if resolved is None:
+                report_case = {
+                    "name": case["name"],
+                    "status": "skipped",
+                    "reason": f"OpenSees executable not found: {cfg.opensees.executable}",
+                    "passed": True,
+                }
+                cast_cases = report["cases"]
+                if isinstance(cast_cases, list):
+                    cast_cases.append(report_case)
+                skipped_count += 1
+                continue
+
         run_result, motion = _run_case(cfg, motion_path, output_dir)
         acc, ru = _load_case_outputs(run_result.hdf5_path)
         pga = float(np.max(np.abs(acc)))
@@ -259,4 +281,5 @@ def run_benchmark_suite(suite: str, output_dir: Path) -> dict[str, object]:
         if not report_case["passed"]:
             report["all_passed"] = False
 
+    report["skipped"] = skipped_count
     return report

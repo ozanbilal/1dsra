@@ -1,0 +1,12 @@
+{
+  "parity01": {
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 5.0
+    }
+  }
+}

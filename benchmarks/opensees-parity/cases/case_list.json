@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {
+      "name": "parity01",
+      "config": "cases/parity01.yml",
+      "motion": "cases/parity01_motion.csv"
+    }
+  ]
+}

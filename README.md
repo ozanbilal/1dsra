@@ -22,6 +22,8 @@ pip install -e .[dev]
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
+1dsra benchmark --suite core-es --out out/benchmarks
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
 ```
 
 ## Web UI (Streamlit)
@@ -77,3 +79,5 @@ set OPENSEES_EXE=OpenSees
 pytest tests/test_opensees_integration_optional.py
 ```
 On Linux/macOS, use `export` instead of `set`.
+`opensees-parity` benchmark suite also supports real-binary verification and auto-skips
+cases when `opensees.executable` is not found.

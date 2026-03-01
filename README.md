@@ -44,6 +44,7 @@ pip install -e .[ui]
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
+UI also includes a campaign panel (`core-es` / `opensees-parity`) with inline benchmark+verify summaries.
 
 ## OpenSees Integration
 Set the OpenSees executable in config:

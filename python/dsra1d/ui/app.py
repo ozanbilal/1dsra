@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import h5py
 import numpy as np
@@ -13,7 +15,8 @@ from dsra1d.benchmark import run_benchmark_suite
 from dsra1d.config import load_project_config
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis
-from dsra1d.post import write_report
+from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
+from dsra1d.verify import verify_batch
 
 
 def _repo_root() -> Path:
@@ -77,6 +80,72 @@ def _load_metrics(sqlite_path: Path) -> dict[str, float]:
     finally:
         conn.close()
     return {name: float(value) for name, value in rows}
+
+
+def _find_run_dirs(output_root: Path) -> list[Path]:
+    if not output_root.exists() or not output_root.is_dir():
+        return []
+    runs: list[Path] = []
+    for p in sorted(output_root.iterdir()):
+        if (
+            p.is_dir()
+            and (p / "results.h5").exists()
+            and (p / "results.sqlite").exists()
+            and (p / "run_meta.json").exists()
+        ):
+            runs.append(p)
+    return runs
+
+
+def _run_benchmark_with_optional_override(
+    suite: str,
+    output_dir: Path,
+    opensees_executable: str,
+) -> dict[str, Any]:
+    env_key = "DSRA1D_OPENSEES_EXE_OVERRIDE"
+    old_value = os.environ.get(env_key)
+    try:
+        exe = opensees_executable.strip()
+        if exe:
+            os.environ[env_key] = exe
+        return run_benchmark_suite(suite=suite, output_dir=output_dir)
+    finally:
+        if opensees_executable.strip():
+            if old_value is None:
+                os.environ.pop(env_key, None)
+            else:
+                os.environ[env_key] = old_value
+
+
+def _run_campaign_bundle(
+    suite: str,
+    campaign_dir: Path,
+    *,
+    opensees_executable: str,
+    verify_require_runs: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_report = _run_benchmark_with_optional_override(
+        suite=suite,
+        output_dir=campaign_dir,
+        opensees_executable=opensees_executable,
+    )
+    benchmark_path = campaign_dir / f"benchmark_{suite}.json"
+    benchmark_path.write_text(json.dumps(benchmark_report, indent=2), encoding="utf-8")
+
+    verify_report = verify_batch(
+        campaign_dir,
+        require_runs=verify_require_runs,
+    ).as_dict()
+    verify_path = campaign_dir / "verify_batch_report.json"
+    verify_path.write_text(json.dumps(verify_report, indent=2), encoding="utf-8")
+
+    summary = summarize_campaign(benchmark_report, verify_report)
+    summary_json = campaign_dir / "campaign_summary.json"
+    summary_md = campaign_dir / "campaign_summary.md"
+    summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_md.write_text(render_summary_markdown(summary), encoding="utf-8")
+    return benchmark_report, verify_report, summary
 
 
 def _make_acc_plot(time: np.ndarray, acc: np.ndarray) -> go.Figure:
@@ -273,9 +342,51 @@ def main() -> None:
     motion_path = Path(st.sidebar.text_input("Motion Path", str(default_motion)))
     out_dir = Path(st.sidebar.text_input("Output Directory", str(default_out)))
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_dirs = _find_run_dirs(out_dir)
 
-    act1, act2, act3, act4 = st.columns(4)
-    run_dir: Path | None = st.session_state.get("run_dir")
+    st.sidebar.header("Campaign Control")
+    campaign_suite = st.sidebar.selectbox(
+        "Benchmark Suite",
+        options=["core-es", "opensees-parity"],
+        index=0,
+    )
+    opensees_executable = st.sidebar.text_input(
+        "OpenSees Executable (optional)",
+        "",
+    )
+    verify_require_runs = int(
+        st.sidebar.number_input(
+            "Verify Require Runs",
+            min_value=1,
+            value=3 if campaign_suite == "core-es" else 1,
+            step=1,
+        )
+    )
+    campaign_root = out_dir / "campaign" / campaign_suite
+
+    run_dir_raw = st.session_state.get("run_dir")
+    run_dir: Path | None
+    if isinstance(run_dir_raw, str) and run_dir_raw:
+        run_dir = Path(run_dir_raw)
+    else:
+        run_dir = run_dirs[-1] if run_dirs else None
+
+    if run_dirs:
+        options = [p.name for p in run_dirs]
+        current_name = (
+            run_dir.name
+            if run_dir is not None and run_dir.name in options
+            else options[-1]
+        )
+        selected_name = st.selectbox(
+            "Select Run Directory",
+            options=options,
+            index=options.index(current_name),
+        )
+        run_dir = out_dir / selected_name
+        st.session_state["run_dir"] = str(run_dir)
+
+    act1, act2, act3, act4, act5 = st.columns(5)
 
     if act1.button("Validate Config", use_container_width=True):
         try:
@@ -290,7 +401,7 @@ def main() -> None:
             dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
             motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
             result = run_analysis(cfg, motion, output_dir=out_dir)
-            st.session_state["run_dir"] = result.output_dir
+            st.session_state["run_dir"] = str(result.output_dir)
             run_dir = result.output_dir
             if result.status != "ok":
                 st.error(result.message)
@@ -299,13 +410,25 @@ def main() -> None:
         except Exception as exc:
             st.error(str(exc))
 
-    if act3.button("Run Benchmark", use_container_width=True):
+    if act3.button("Run Campaign", use_container_width=True):
         try:
-            report = run_benchmark_suite("core-es", out_dir / "benchmarks")
-            report_path = out_dir / "benchmarks" / "benchmark_core-es.json"
-            report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-            st.success(f"Benchmark report written: {report_path}")
-            st.json(report)
+            benchmark_report, verify_report, summary = _run_campaign_bundle(
+                suite=campaign_suite,
+                campaign_dir=campaign_root,
+                opensees_executable=opensees_executable,
+                verify_require_runs=verify_require_runs,
+            )
+            st.session_state["campaign_dir"] = str(campaign_root)
+            st.success(f"Campaign completed: {campaign_root}")
+            with st.expander("Campaign Summary", expanded=True):
+                st.markdown(render_summary_markdown(summary))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.caption("Benchmark Report")
+                st.json(benchmark_report)
+            with c2:
+                st.caption("Verify Batch Report")
+                st.json(verify_report)
         except Exception as exc:
             st.error(str(exc))
 
@@ -320,6 +443,9 @@ def main() -> None:
             except Exception as exc:
                 st.error(str(exc))
 
+    if act5.button("Refresh Runs", use_container_width=True):
+        st.rerun()
+
     st.divider()
     st.subheader("Latest Run")
     if run_dir and run_dir.exists():
@@ -327,6 +453,22 @@ def main() -> None:
         _render_run_outputs(run_dir)
     else:
         st.info("No run selected yet. Start with Validate/Run.")
+
+    st.divider()
+    st.subheader("Latest Campaign")
+    campaign_raw = st.session_state.get("campaign_dir")
+    campaign_dir = (
+        Path(campaign_raw)
+        if isinstance(campaign_raw, str) and campaign_raw
+        else campaign_root
+    )
+    summary_md = campaign_dir / "campaign_summary.md"
+    summary_json = campaign_dir / "campaign_summary.json"
+    if summary_md.exists() and summary_json.exists():
+        st.code(str(campaign_dir))
+        st.markdown(summary_md.read_text(encoding="utf-8"))
+    else:
+        st.info("No campaign summary yet. Use Run Campaign.")
 
 
 if __name__ == "__main__":

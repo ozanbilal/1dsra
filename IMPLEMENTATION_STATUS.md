@@ -129,6 +129,7 @@ Missing:
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels
 - Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
+- Streamlit UI includes campaign controls and inline campaign summary rendering
 - OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
 - Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`
 - Release tag/version consistency guard (`scripts/check_release_tag.py`, release workflow integration)

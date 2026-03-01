@@ -64,6 +64,7 @@ class AnalysisControl(BaseModel):
     t_end: PositiveFloat | None = None
     f_max: PositiveFloat = 25.0
     solver_backend: Literal["opensees", "mock"] = "opensees"
+    pm4_validation_profile: Literal["basic", "strict"] = "basic"
     timeout_s: int = 180
     retries: int = 1
 
@@ -157,6 +158,19 @@ class ProjectConfig(BaseModel):
             MaterialType.PM4SAND: {"Dr", "G0", "hpo"},
             MaterialType.PM4SILT: {"Su", "Su_Rat", "G_o", "h_po"},
         }
+        strict_ranges: dict[MaterialType, dict[str, tuple[float, float]]] = {
+            MaterialType.PM4SAND: {
+                "Dr": (0.0, 1.0),
+                "G0": (50.0, 3000.0),
+                "hpo": (0.01, 5.0),
+            },
+            MaterialType.PM4SILT: {
+                "Su": (1.0e-6, 1000.0),
+                "Su_Rat": (0.0, 1.0),
+                "G_o": (50.0, 3000.0),
+                "h_po": (0.01, 5.0),
+            },
+        }
         for layer in self.profile.layers:
             required = required_by_material.get(layer.material)
             if required is None:
@@ -167,4 +181,14 @@ class ProjectConfig(BaseModel):
                     f"Layer '{layer.name}' ({layer.material.value}) is missing required "
                     f"material_params for opensees backend: {missing}"
                 )
+            if self.analysis.pm4_validation_profile == "strict":
+                bounds = strict_ranges[layer.material]
+                for key, (lo, hi) in bounds.items():
+                    val = layer.material_params[key]
+                    if not (lo < val <= hi):
+                        raise ValueError(
+                            f"Layer '{layer.name}' "
+                            f"({layer.material.value}) strict validation failed: "
+                            f"{key}={val} is outside ({lo}, {hi}]."
+                        )
         return self

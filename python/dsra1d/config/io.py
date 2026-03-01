@@ -59,6 +59,7 @@ def write_config_template(path: str | Path) -> Path:
             "dt": 0.002,
             "f_max": 25.0,
             "solver_backend": "opensees",
+            "pm4_validation_profile": "basic",
             "timeout_s": 180,
             "retries": 1,
         },

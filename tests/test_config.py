@@ -127,3 +127,59 @@ analysis:
     )
     with pytest.raises(ValueError):
         load_project_config(cfg)
+
+
+def test_pm4_strict_profile_accepts_valid_ranges(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_ok.yml"
+    cfg.write_text(
+        """
+project_name: strict-ok
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    loaded = load_project_config(cfg)
+    assert loaded.analysis.pm4_validation_profile == "strict"
+
+
+def test_pm4_strict_profile_rejects_out_of_range(tmp_path: Path) -> None:
+    cfg = tmp_path / "strict_bad.yml"
+    cfg.write_text(
+        """
+project_name: strict-bad
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 50000.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+  pm4_validation_profile: strict
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)

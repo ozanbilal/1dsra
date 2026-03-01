@@ -254,6 +254,15 @@ def test_cli_benchmark_opensees_executable_option_overrides_env(
     assert "Benchmark coverage:" in result.stdout
     assert seen
     assert all(val == "FROM_OPTION" for val in seen)
+    report = json.loads(
+        (tmp_path / "bench" / "benchmark_opensees-parity.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy = report["policy"]
+    assert isinstance(policy, dict)
+    assert policy["require_opensees"] is False
+    assert float(policy["min_execution_coverage"]) == 0.0
 
 
 def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
@@ -402,6 +411,12 @@ def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:
     assert (out_dir / "verify_batch_report.json").exists()
     assert (out_dir / "campaign_summary.json").exists()
     assert (out_dir / "campaign_summary.md").exists()
+    benchmark_report = json.loads((out_dir / "benchmark_core-es.json").read_text(encoding="utf-8"))
+    verify_report = json.loads((out_dir / "verify_batch_report.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((out_dir / "campaign_summary.json").read_text(encoding="utf-8"))
+    assert isinstance(benchmark_report["policy"], dict)
+    assert isinstance(verify_report["policy"], dict)
+    assert isinstance(summary_report["policy"], dict)
 
 
 def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:

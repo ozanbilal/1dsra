@@ -154,6 +154,10 @@ Campaign summary now includes backend coverage indicators:
 - `skipped_backend`
 - `execution_coverage`
 - `backend_missing_cases`
+Campaign summary JSON also includes policy evaluation blocks:
+- `policy.benchmark`
+- `policy.verify_batch`
+- `policy.campaign`
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`

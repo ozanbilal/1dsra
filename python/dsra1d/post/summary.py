@@ -105,6 +105,33 @@ def _as_int(value: object) -> int:
     return 0
 
 
+def _as_float(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _as_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return default
+
+
 def summarize_campaign(
     benchmark_report: dict[str, object],
     verify_batch_report: dict[str, object] | None = None,
@@ -142,6 +169,25 @@ def summarize_campaign(
         denom = benchmark_total_cases if benchmark_total_cases > 0 else 1
         benchmark_execution_coverage = benchmark_ran / denom
     backend_missing_cases = _as_str_list(benchmark_report.get("backend_missing_cases"))
+    benchmark_policy_raw = _as_dict(benchmark_report.get("policy"))
+    fail_on_skip = _as_bool(benchmark_policy_raw.get("fail_on_skip"), default=False)
+    require_runs = _as_int(benchmark_policy_raw.get("require_runs", 0))
+    require_opensees = _as_bool(
+        benchmark_policy_raw.get("require_opensees"),
+        default=False,
+    )
+    min_execution_coverage = _as_float(
+        benchmark_policy_raw.get("min_execution_coverage", 0.0),
+        default=0.0,
+    )
+    benchmark_conditions = {
+        "all_passed": bool(benchmark_report.get("all_passed", False)),
+        "fail_on_skip_ok": (not fail_on_skip) or (benchmark_skipped == 0),
+        "require_runs_ok": benchmark_ran >= require_runs,
+        "require_opensees_ok": (not require_opensees) or benchmark_backend_ready,
+        "min_execution_coverage_ok": benchmark_execution_coverage >= min_execution_coverage,
+    }
+    benchmark_policy_passed = all(benchmark_conditions.values())
 
     summary: dict[str, object] = {
         "generated_utc": datetime.now(UTC).isoformat(),
@@ -158,16 +204,45 @@ def summarize_campaign(
             "classification_counts": dict(benchmark_classes),
             "failed_or_nonpass_cases": failed_cases,
         },
+        "policy": {
+            "benchmark": {
+                "fail_on_skip": fail_on_skip,
+                "require_runs": require_runs,
+                "require_opensees": require_opensees,
+                "min_execution_coverage": min_execution_coverage,
+                "conditions": benchmark_conditions,
+                "passed": benchmark_policy_passed,
+            }
+        },
     }
     if verify_batch_report is not None:
+        verify_policy_raw = _as_dict(verify_batch_report.get("policy"))
+        verify_require_runs = _as_int(verify_policy_raw.get("require_runs", 0))
+        verify_ok = bool(verify_batch_report.get("ok", False))
+        verify_total_runs = _as_int(verify_batch_report.get("total_runs", 0))
+        verify_conditions = {
+            "verify_ok": verify_ok,
+            "verify_require_runs_ok": verify_total_runs >= verify_require_runs,
+        }
+        verify_policy_passed = all(verify_conditions.values())
         summary["verify_batch"] = {
-            "ok": bool(verify_batch_report.get("ok", False)),
-            "total_runs": _as_int(verify_batch_report.get("total_runs", 0)),
+            "ok": verify_ok,
+            "total_runs": verify_total_runs,
             "passed_runs": _as_int(verify_batch_report.get("passed_runs", 0)),
             "failed_runs": _as_int(verify_batch_report.get("failed_runs", 0)),
             "classification_counts": dict(verify_classes),
             "failed_or_nonpass_runs": failed_runs,
         }
+        summary_policy = _as_dict(summary.get("policy"))
+        summary_policy["verify_batch"] = {
+            "require_runs": verify_require_runs,
+            "conditions": verify_conditions,
+            "passed": verify_policy_passed,
+        }
+        summary_policy["campaign"] = {
+            "passed": benchmark_policy_passed and verify_policy_passed,
+        }
+        summary["policy"] = summary_policy
     return summary
 
 
@@ -199,6 +274,18 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
         for key in sorted(bench_counts):
             lines.append(f"  - `{key}`: {bench_counts[key]}")
 
+    policy = _as_dict(summary.get("policy"))
+    benchmark_policy = _as_dict(policy.get("benchmark"))
+    if benchmark_policy:
+        lines.append(
+            "- Benchmark policy: "
+            f"passed={benchmark_policy.get('passed')} "
+            f"fail_on_skip={benchmark_policy.get('fail_on_skip')} "
+            f"require_runs={benchmark_policy.get('require_runs')} "
+            f"require_opensees={benchmark_policy.get('require_opensees')} "
+            f"min_execution_coverage={benchmark_policy.get('min_execution_coverage')}"
+        )
+
     verify_batch = _as_dict(summary.get("verify_batch"))
     if verify_batch:
         lines.append(
@@ -212,5 +299,15 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
             lines.append("- Verify classifications:")
             for key in sorted(verify_counts):
                 lines.append(f"  - `{key}`: {verify_counts[key]}")
+        verify_policy = _as_dict(policy.get("verify_batch"))
+        if verify_policy:
+            lines.append(
+                "- Verify policy: "
+                f"passed={verify_policy.get('passed')} "
+                f"require_runs={verify_policy.get('require_runs')}"
+            )
+    campaign_policy = _as_dict(policy.get("campaign"))
+    if campaign_policy:
+        lines.append(f"- Campaign policy: passed={campaign_policy.get('passed')}")
 
     return "\n".join(lines) + "\n"

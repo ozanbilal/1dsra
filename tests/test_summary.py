@@ -14,6 +14,12 @@ def test_summarize_campaign_benchmark_only() -> None:
         "backend_ready": False,
         "execution_coverage": 2.0 / 3.0,
         "backend_missing_cases": ["case_skip"],
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 2,
+            "require_opensees": True,
+            "min_execution_coverage": 0.5,
+        },
         "cases": [
             {"name": "case_pass", "status": "ok", "passed": True},
             {"name": "case_skip", "status": "skipped", "reason": "OpenSees executable not found"},
@@ -43,6 +49,11 @@ def test_summarize_campaign_benchmark_only() -> None:
     nonpass = benchmark["failed_or_nonpass_cases"]
     assert isinstance(nonpass, list)
     assert sorted(nonpass) == ["case_metric_fail", "case_skip"]
+    policy = summary["policy"]
+    assert isinstance(policy, dict)
+    bench_policy = policy["benchmark"]
+    assert isinstance(bench_policy, dict)
+    assert bench_policy["passed"] is False
 
 
 def test_summarize_campaign_classifies_generic_constraint_fail() -> None:
@@ -97,6 +108,7 @@ def test_summarize_campaign_with_verify_batch() -> None:
                 },
             },
         },
+        "policy": {"require_runs": 2},
     }
     summary = summarize_campaign(
         benchmark_report=benchmark_report,
@@ -112,6 +124,12 @@ def test_summarize_campaign_with_verify_batch() -> None:
     failed_runs = verify["failed_or_nonpass_runs"]
     assert isinstance(failed_runs, list)
     assert failed_runs == ["run_bad"]
+    policy = summary["policy"]
+    assert isinstance(policy, dict)
+    assert isinstance(policy["verify_batch"], dict)
+    assert policy["verify_batch"]["passed"] is False
+    assert isinstance(policy["campaign"], dict)
+    assert policy["campaign"]["passed"] is False
 
 
 def test_render_summary_markdown_contains_key_sections() -> None:
@@ -135,12 +153,26 @@ def test_render_summary_markdown_contains_key_sections() -> None:
             "failed_runs": 0,
             "classification_counts": {"passed": 2},
         },
+        "policy": {
+            "benchmark": {
+                "passed": True,
+                "fail_on_skip": False,
+                "require_runs": 0,
+                "require_opensees": False,
+                "min_execution_coverage": 0.0,
+            },
+            "verify_batch": {"passed": True, "require_runs": 0},
+            "campaign": {"passed": True},
+        },
     }
     md = render_summary_markdown(summary)
     assert "# 1DSRA Campaign Summary" in md
     assert "Suite: `core-es`" in md
     assert "backend_ready=True" in md
     assert "execution_coverage=1.0" in md
+    assert "Benchmark policy:" in md
+    assert "Verify policy:" in md
+    assert "Campaign policy:" in md
     assert "Benchmark classifications" in md
     assert "Verify classifications" in md
 
@@ -184,6 +216,50 @@ def test_summarize_campaign_computes_execution_coverage_fallback() -> None:
     assert isinstance(benchmark, dict)
     assert benchmark["total_cases"] == 4
     assert benchmark["execution_coverage"] == 0.75
+
+
+def test_summarize_campaign_policy_passes_when_requirements_met() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "opensees-parity",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 3,
+        "total_cases": 3,
+        "backend_ready": True,
+        "execution_coverage": 1.0,
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 3,
+            "require_opensees": True,
+            "min_execution_coverage": 1.0,
+        },
+        "cases": [
+            {"name": "c1", "status": "ok", "passed": True},
+            {"name": "c2", "status": "ok", "passed": True},
+            {"name": "c3", "status": "ok", "passed": True},
+        ],
+    }
+    verify_batch_report: dict[str, object] = {
+        "ok": True,
+        "total_runs": 3,
+        "passed_runs": 3,
+        "failed_runs": 0,
+        "reports": {
+            "r1": {"ok": True, "checks": {}},
+            "r2": {"ok": True, "checks": {}},
+            "r3": {"ok": True, "checks": {}},
+        },
+        "policy": {"require_runs": 3},
+    }
+    summary = summarize_campaign(benchmark_report, verify_batch_report)
+    policy = summary["policy"]
+    assert isinstance(policy, dict)
+    assert isinstance(policy["benchmark"], dict)
+    assert policy["benchmark"]["passed"] is True
+    assert isinstance(policy["verify_batch"], dict)
+    assert policy["verify_batch"]["passed"] is True
+    assert isinstance(policy["campaign"], dict)
+    assert policy["campaign"]["passed"] is True
 
 
 def test_summarize_campaign_classifies_pwp_effective_mismatch() -> None:

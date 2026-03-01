@@ -144,6 +144,12 @@ def _run_campaign_bundle(
         output_dir=campaign_dir,
         opensees_executable=opensees_executable,
     )
+    benchmark_report["policy"] = {
+        "fail_on_skip": False,
+        "require_runs": 0,
+        "require_opensees": require_opensees,
+        "min_execution_coverage": min_execution_coverage,
+    }
     backend_ready = bool(benchmark_report.get("backend_ready", True))
     skipped_backend_raw = benchmark_report.get("skipped_backend", 0)
     if isinstance(skipped_backend_raw, (int, float, str)):
@@ -182,6 +188,9 @@ def _run_campaign_bundle(
         campaign_dir,
         require_runs=verify_require_runs,
     ).as_dict()
+    verify_report["policy"] = {
+        "require_runs": verify_require_runs,
+    }
     verify_path = campaign_dir / "verify_batch_report.json"
     verify_path.write_text(json.dumps(verify_report, indent=2), encoding="utf-8")
 

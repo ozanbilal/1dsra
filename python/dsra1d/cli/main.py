@@ -124,6 +124,32 @@ def _run_benchmark_with_optional_override(
                 os.environ[env_key] = old_value
 
 
+def _annotate_benchmark_policy(
+    report: dict[str, object],
+    *,
+    fail_on_skip: bool,
+    require_runs: int,
+    require_opensees: bool,
+    min_execution_coverage: float,
+) -> None:
+    report["policy"] = {
+        "fail_on_skip": fail_on_skip,
+        "require_runs": require_runs,
+        "require_opensees": require_opensees,
+        "min_execution_coverage": min_execution_coverage,
+    }
+
+
+def _annotate_verify_policy(
+    verify_report: dict[str, object],
+    *,
+    require_runs: int,
+) -> None:
+    verify_report["policy"] = {
+        "require_runs": require_runs,
+    }
+
+
 def _print_benchmark_coverage(report: dict[str, object]) -> None:
     total_raw = report.get("total_cases", 0)
     ran_raw = report.get("ran", 0)
@@ -257,6 +283,13 @@ def benchmark(
     if not (0.0 <= min_execution_coverage <= 1.0):
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
+    _annotate_benchmark_policy(
+        report,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+        require_opensees=require_opensees,
+        min_execution_coverage=min_execution_coverage,
+    )
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {report_path}")
@@ -296,6 +329,13 @@ def campaign(
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
     out.mkdir(parents=True, exist_ok=True)
     report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
+    _annotate_benchmark_policy(
+        report,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+        require_opensees=require_opensees,
+        min_execution_coverage=min_execution_coverage,
+    )
     if not bool(report.get("all_passed", False)):
         raise typer.Exit(code=3)
     _enforce_benchmark_strict_policy(
@@ -324,11 +364,13 @@ def campaign(
         require_checksums=require_checksums,
         require_runs=verify_require_runs,
     )
+    verify_dict = verify.as_dict()
+    _annotate_verify_policy(verify_dict, require_runs=verify_require_runs)
     verify_path = out / "verify_batch_report.json"
-    verify_path.write_text(json.dumps(verify.as_dict(), indent=2), encoding="utf-8")
+    verify_path.write_text(json.dumps(verify_dict, indent=2), encoding="utf-8")
     print(f"[green]Verify batch report:[/green] {verify_path}")
 
-    summary = summarize_campaign(report, verify.as_dict())
+    summary = summarize_campaign(report, verify_dict)
     summary_json = out / "campaign_summary.json"
     summary_md = out / "campaign_summary.md"
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")

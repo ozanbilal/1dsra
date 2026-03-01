@@ -36,12 +36,10 @@ jobs:
           python -m pytest
 
       - name: Core ES Campaign Gate
-        run: |
-          1dsra campaign \
-            --suite core-es \
-            --out out/release-core-es \
-            --require-runs 3 \
-            --verify-require-runs 3
+        run: python -m dsra1d.cli.main campaign --suite core-es --out out/release-core-es --require-runs 3 --verify-require-runs 3
+
+      - name: Core HYST Campaign Gate
+        run: python -m dsra1d.cli.main campaign --suite core-hyst --out out/release-core-hyst --require-runs 1 --verify-require-runs 1
 
       - name: Build Distributions
         run: python -m build

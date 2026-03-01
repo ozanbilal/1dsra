@@ -301,3 +301,26 @@ def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:
     assert (out_dir / "verify_batch_report.json").exists()
     assert (out_dir / "campaign_summary.json").exists()
     assert (out_dir / "campaign_summary.md").exists()
+
+
+def test_cli_campaign_core_hyst_writes_all_reports(tmp_path: Path) -> None:
+    out_dir = tmp_path / "campaign_hyst"
+    result = runner.invoke(
+        app,
+        [
+            "campaign",
+            "--suite",
+            "core-hyst",
+            "--out",
+            str(out_dir),
+            "--require-runs",
+            "1",
+            "--verify-require-runs",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (out_dir / "benchmark_core-hyst.json").exists()
+    assert (out_dir / "verify_batch_report.json").exists()
+    assert (out_dir / "campaign_summary.json").exists()
+    assert (out_dir / "campaign_summary.md").exists()

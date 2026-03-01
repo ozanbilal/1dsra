@@ -106,6 +106,7 @@ Apache-2.0
 - Implementation status: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - CI/release workflows enforce a `core-es` campaign gate (`benchmark + verify + summary`)
+- CI/release workflows enforce `core-es` and `core-hyst` campaign gates (`benchmark + verify + summary`)
 - Version bump helper: `python scripts/release_bump.py --version 1.0.0`
 - Release tag guard: `python scripts/check_release_tag.py --tag v1.0.0`
 - Changelog guard: `python scripts/check_changelog.py --tag v1.0.0`

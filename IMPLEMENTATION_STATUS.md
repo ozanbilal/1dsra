@@ -124,6 +124,7 @@ Missing:
 ## 3. What Is Working Today
 
 - CLI commands: `init`, `validate`, `run`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - CLI backend preflight: `validate --check-backend`
 - Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
 - Streamlit UI with run/benchmark/report controls and plot panels

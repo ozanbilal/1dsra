@@ -28,11 +28,13 @@ pip install -e .[dev]
 1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 1dsra benchmark --suite core-es --out out/benchmarks
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
 ```
 
 ## Web UI (Streamlit)
@@ -112,6 +114,8 @@ On Linux/macOS, use `export` instead of `set`.
 cases when `opensees.executable` is not found.
 You can override executable path without editing benchmark configs:
 - `DSRA1D_OPENSEES_EXE_OVERRIDE=/path/to/OpenSees`
+You can also pass override directly via CLI:
+- `--opensees-executable /path/to/OpenSees`
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`

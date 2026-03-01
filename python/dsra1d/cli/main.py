@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,25 @@ def _enforce_benchmark_strict_policy(
             f"ran={ran}, require_runs={require_runs}"
         )
         raise typer.Exit(code=7)
+
+
+def _run_benchmark_with_optional_override(
+    suite: str,
+    out: Path,
+    opensees_executable: str | None,
+) -> dict[str, object]:
+    env_key = "DSRA1D_OPENSEES_EXE_OVERRIDE"
+    old_value = os.environ.get(env_key)
+    try:
+        if opensees_executable:
+            os.environ[env_key] = opensees_executable
+        return run_benchmark_suite(suite=suite, output_dir=out)
+    finally:
+        if opensees_executable:
+            if old_value is None:
+                os.environ.pop(env_key, None)
+            else:
+                os.environ[env_key] = old_value
 
 
 @app.command("init")
@@ -124,8 +144,9 @@ def benchmark(
     out: Path = typer.Option(Path("out/benchmarks"), "--out"),
     fail_on_skip: bool = typer.Option(False, "--fail-on-skip"),
     require_runs: int = typer.Option(0, "--require-runs"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
-    report = run_benchmark_suite(suite=suite, output_dir=out)
+    report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {report_path}")
@@ -147,9 +168,10 @@ def campaign(
     verify_require_runs: int = typer.Option(1, "--verify-require-runs"),
     tolerance: float = typer.Option(1.0e-8, "--tolerance"),
     require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
+    opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    report = run_benchmark_suite(suite=suite, output_dir=out)
+    report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {benchmark_path}")

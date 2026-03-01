@@ -112,6 +112,35 @@ def test_cli_benchmark_fail_on_skip_fails_when_backend_missing(
     assert result.exit_code == 7
 
 
+def test_cli_benchmark_opensees_executable_option_overrides_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seen: list[str] = []
+
+    def fake_resolve(executable: str):
+        seen.append(executable)
+        return None
+
+    monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "FROM_ENV")
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", fake_resolve)
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(tmp_path / "bench"),
+            "--opensees-executable",
+            "FROM_OPTION",
+        ],
+    )
+    assert result.exit_code == 0
+    assert seen
+    assert all(val == "FROM_OPTION" for val in seen)
+
+
 def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     motion = Path("examples/motions/sample_motion.csv")

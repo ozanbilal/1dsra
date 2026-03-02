@@ -111,8 +111,10 @@ Implemented:
 - CI now includes optional OpenSees parity gate job when `DSRA1D_CI_OPENSEES_EXE` is configured
 - CI includes optional OpenSeesPy parity gate (`DSRA1D_CI_OPENSEESPY=1`)
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
+- Parity suite now distinguishes missing executable vs failed backend probe (`missing_opensees` / `probe_failed`)
 - Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
 - Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
+- Golden envelope locking command (`lock-golden`) to generate explicit check matrices from benchmark reports
 - Parity workflow now publishes campaign summary into GitHub Step Summary
 - Parity suite now treats failed backend probes as backend-unavailable (`skip_kind=probe_failed`) for deterministic gating
 - Automated test coverage including TCL generation, parser robustness, fallback behavior
@@ -143,7 +145,7 @@ Missing:
 
 ## 3. What Is Working Today
 
-- CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `lock-golden`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
@@ -156,6 +158,7 @@ Missing:
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
 - `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)
+- `benchmark`/`campaign` support explicit-checks enforcement: `--require-explicit-checks` (parity envelopes must be explicitly locked)
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
 - CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)

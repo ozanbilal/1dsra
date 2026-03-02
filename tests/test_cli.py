@@ -333,6 +333,104 @@ def test_cli_benchmark_opensees_executable_option_overrides_env(
     assert float(policy["min_execution_coverage"]) == 0.0
 
 
+def test_cli_benchmark_require_explicit_checks_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run_suite(*, suite: str, output_dir: Path):
+        _ = suite
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return {
+            "suite": "opensees-parity",
+            "cases": [
+                {
+                    "name": "parity01",
+                    "status": "ok",
+                    "passed": True,
+                    "checks_explicit": False,
+                }
+            ],
+            "all_passed": True,
+            "skipped": 0,
+            "ran": 1,
+            "total_cases": 1,
+            "skipped_backend": 0,
+            "backend_ready": True,
+            "execution_coverage": 1.0,
+            "backend_missing_cases": [],
+        }
+
+    monkeypatch.setattr(cli_main, "run_benchmark_suite", fake_run_suite)
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "--suite",
+            "opensees-parity",
+            "--out",
+            str(tmp_path / "bench"),
+            "--require-explicit-checks",
+        ],
+    )
+    assert result.exit_code == 12
+
+
+def test_cli_lock_golden_writes_expected_schema(tmp_path: Path) -> None:
+    report = {
+        "suite": "opensees-parity",
+        "all_passed": True,
+        "skipped": 0,
+        "cases": [
+            {
+                "name": "parity01",
+                "status": "ok",
+                "actual": {
+                    "pga": 0.12,
+                    "ru_max": 0.42,
+                    "delta_u_max": 11.5,
+                    "sigma_v_eff_min": 35.0,
+                },
+                "expected": {
+                    "constraints": {"ru_min": 0.0, "ru_max": 1.0},
+                    "deterministic": True,
+                    "dt_sensitivity": {"threshold": 3.0},
+                },
+            }
+        ],
+    }
+    report_path = tmp_path / "benchmark_opensees-parity.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    golden_path = tmp_path / "golden_metrics.json"
+    result = runner.invoke(
+        app,
+        [
+            "lock-golden",
+            "--benchmark-report",
+            str(report_path),
+            "--golden-out",
+            str(golden_path),
+            "--metrics",
+            "pga,ru_max",
+            "--rel-tol",
+            "0.1",
+            "--abs-tol-min",
+            "1e-6",
+        ],
+    )
+    assert result.exit_code == 0
+    assert golden_path.exists()
+    golden = json.loads(golden_path.read_text(encoding="utf-8"))
+    assert "parity01" in golden
+    case = golden["parity01"]
+    assert isinstance(case, dict)
+    checks = case["checks"]
+    assert isinstance(checks, dict)
+    assert "pga" in checks
+    assert "ru_max" in checks
+    assert abs(float(checks["pga"]["expected"]) - 0.12) < 1.0e-12
+    assert abs(float(checks["ru_max"]["expected"]) - 0.42) < 1.0e-12
+
+
 def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     motion = Path("examples/motions/sample_motion.csv")

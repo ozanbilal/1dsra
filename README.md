@@ -57,6 +57,8 @@ pip install -e .[dev]
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 3 --verify-require-runs 3
 1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
+1dsra lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min --rel-tol 0.05
 1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
 
@@ -170,6 +172,8 @@ You can also pass override directly via CLI:
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
+Use explicit-checks policy to enforce locked parity envelopes:
+- `--require-explicit-checks` (fails if executed cases do not have explicit `checks` in golden metrics)
 Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 CI can run parity automatically when repository variable `DSRA1D_CI_OPENSEES_EXE` is set
@@ -180,6 +184,7 @@ and uses `scripts/opensees_pyshim.py`.
 Use execution coverage policy for campaign/benchmark suites:
 - `--min-execution-coverage <0..1>` (fails if executed case ratio is below target)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.
+Use `lock-golden` to freeze benchmark actual metrics into explicit golden `checks` envelopes.
 Campaign summary now includes backend coverage indicators:
 - `backend_ready`
 - `skipped_backend`

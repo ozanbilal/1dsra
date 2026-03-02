@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from math import isfinite
 from pathlib import Path
 from typing import Literal, cast
 
@@ -189,6 +190,35 @@ def _enforce_execution_coverage_policy(
         raise typer.Exit(code=11)
 
 
+def _enforce_explicit_checks_policy(
+    report: dict[str, object],
+    *,
+    require_explicit_checks: bool,
+) -> None:
+    if not require_explicit_checks:
+        return
+    cases_raw = report.get("cases")
+    if not isinstance(cases_raw, list):
+        print("[red]Explicit checks policy failed:[/red] benchmark report has no cases list")
+        raise typer.Exit(code=12)
+    executed: list[dict[str, object]] = [
+        case
+        for case in cases_raw
+        if isinstance(case, dict) and str(case.get("status", "")) == "ok"
+    ]
+    missing: list[str] = []
+    for case in executed:
+        explicit = bool(case.get("checks_explicit", False))
+        if not explicit:
+            missing.append(str(case.get("name", "unknown")))
+    if missing:
+        print(
+            "[red]Explicit checks policy failed:[/red] "
+            f"{len(missing)} executed case(s) without explicit checks: {missing}"
+        )
+        raise typer.Exit(code=12)
+
+
 def _run_benchmark_with_optional_override(
     suite: str,
     out: Path,
@@ -242,12 +272,14 @@ def _annotate_benchmark_policy(
     require_runs: int,
     require_opensees: bool,
     min_execution_coverage: float,
+    require_explicit_checks: bool,
 ) -> None:
     report["policy"] = {
         "fail_on_skip": fail_on_skip,
         "require_runs": require_runs,
         "require_opensees": require_opensees,
         "min_execution_coverage": min_execution_coverage,
+        "require_explicit_checks": require_explicit_checks,
     }
 
 
@@ -318,6 +350,94 @@ def _print_benchmark_coverage(report: dict[str, object]) -> None:
         f"skipped_backend={skipped_backend}, "
         f"execution_coverage={coverage:.3f}"
     )
+
+
+VALID_GOLDEN_METRICS: set[str] = {
+    "pga",
+    "ru_max",
+    "delta_u_max",
+    "sigma_v_eff_min",
+    "transfer_abs_max",
+    "transfer_peak_freq_hz",
+}
+
+
+def _parse_metric_names(raw: str) -> list[str]:
+    parsed = [item.strip() for item in raw.split(",") if item.strip()]
+    if not parsed:
+        raise typer.BadParameter("At least one metric must be provided.")
+    unknown = sorted(set(parsed) - VALID_GOLDEN_METRICS)
+    if unknown:
+        raise typer.BadParameter(
+            f"Unknown metric(s): {unknown}. Valid metrics: {sorted(VALID_GOLDEN_METRICS)}"
+        )
+    return parsed
+
+
+def _default_golden_path_from_suite(suite: str) -> Path:
+    return _repo_root() / "benchmarks" / suite / "golden" / "golden_metrics.json"
+
+
+def _build_locked_golden(
+    benchmark_report: dict[str, object],
+    *,
+    metrics: list[str],
+    rel_tol: float,
+    abs_tol_min: float,
+) -> dict[str, object]:
+    cases_raw = benchmark_report.get("cases")
+    if not isinstance(cases_raw, list):
+        raise typer.BadParameter("benchmark report does not contain a valid 'cases' list.")
+
+    locked: dict[str, object] = {}
+    for case in cases_raw:
+        if not isinstance(case, dict):
+            continue
+        if str(case.get("status", "")) != "ok":
+            continue
+        name = str(case.get("name", "")).strip()
+        if not name:
+            continue
+
+        actual_raw = case.get("actual")
+        if not isinstance(actual_raw, dict):
+            continue
+        actual = {str(k): float(v) for k, v in actual_raw.items() if isinstance(v, (int, float))}
+
+        expected_raw = case.get("expected")
+        expected = expected_raw if isinstance(expected_raw, dict) else {}
+        constraints_raw = expected.get("constraints")
+        constraints = constraints_raw if isinstance(constraints_raw, dict) else {}
+        deterministic = bool(expected.get("deterministic", True))
+        dt_spec_raw = expected.get("dt_sensitivity")
+        dt_spec = dt_spec_raw if isinstance(dt_spec_raw, dict) else {"threshold": 5.0}
+
+        checks: dict[str, dict[str, float]] = {}
+        for metric in metrics:
+            value = actual.get(metric)
+            if value is None or not isfinite(value):
+                continue
+            abs_tol = max(abs_tol_min, abs(value) * rel_tol)
+            checks[metric] = {
+                "expected": float(value),
+                "abs_tol": float(abs_tol),
+                "rel_tol": 0.0,
+            }
+
+        if not checks:
+            continue
+        locked[name] = {
+            "checks": checks,
+            "constraints": constraints,
+            "deterministic": deterministic,
+            "dt_sensitivity": dt_spec,
+        }
+
+    if not locked:
+        raise typer.BadParameter(
+            "No executable cases with finite metrics found in benchmark report."
+        )
+    return locked
 
 
 @app.command("init")
@@ -517,6 +637,7 @@ def benchmark(
     require_runs: int = typer.Option(0, "--require-runs"),
     require_opensees: bool = typer.Option(False, "--require-opensees"),
     min_execution_coverage: float = typer.Option(0.0, "--min-execution-coverage"),
+    require_explicit_checks: bool = typer.Option(False, "--require-explicit-checks"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
 ) -> None:
     if not (0.0 <= min_execution_coverage <= 1.0):
@@ -528,6 +649,7 @@ def benchmark(
         require_runs=require_runs,
         require_opensees=require_opensees,
         min_execution_coverage=min_execution_coverage,
+        require_explicit_checks=require_explicit_checks,
     )
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -549,6 +671,10 @@ def benchmark(
         report,
         min_execution_coverage=min_execution_coverage,
     )
+    _enforce_explicit_checks_policy(
+        report,
+        require_explicit_checks=require_explicit_checks,
+    )
 
 
 @app.command("campaign")
@@ -559,6 +685,7 @@ def campaign(
     require_runs: int = typer.Option(0, "--require-runs"),
     require_opensees: bool = typer.Option(False, "--require-opensees"),
     min_execution_coverage: float = typer.Option(0.0, "--min-execution-coverage"),
+    require_explicit_checks: bool = typer.Option(False, "--require-explicit-checks"),
     verify_require_runs: int = typer.Option(1, "--verify-require-runs"),
     tolerance: float = typer.Option(1.0e-8, "--tolerance"),
     require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
@@ -574,6 +701,7 @@ def campaign(
         require_runs=require_runs,
         require_opensees=require_opensees,
         min_execution_coverage=min_execution_coverage,
+        require_explicit_checks=require_explicit_checks,
     )
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -595,6 +723,10 @@ def campaign(
     _enforce_execution_coverage_policy(
         report,
         min_execution_coverage=min_execution_coverage,
+    )
+    _enforce_explicit_checks_policy(
+        report,
+        require_explicit_checks=require_explicit_checks,
     )
 
     verify = verify_batch(
@@ -645,6 +777,54 @@ def summarize(
     )
     print(f"[green]Campaign summary JSON:[/green] {json_path}")
     print(f"[green]Campaign summary Markdown:[/green] {markdown_path}")
+
+
+@app.command("lock-golden")
+def lock_golden(
+    benchmark_report: Path = typer.Option(..., "--benchmark-report"),
+    suite: str | None = typer.Option(None, "--suite"),
+    golden_out: Path | None = typer.Option(None, "--golden-out"),
+    metrics: str = typer.Option(
+        "pga,ru_max,delta_u_max,sigma_v_eff_min",
+        "--metrics",
+    ),
+    rel_tol: float = typer.Option(0.05, "--rel-tol"),
+    abs_tol_min: float = typer.Option(1.0e-6, "--abs-tol-min"),
+    require_all_passed: bool = typer.Option(True, "--require-all-passed/--allow-failed"),
+    require_no_skip: bool = typer.Option(False, "--require-no-skip"),
+) -> None:
+    if rel_tol < 0.0:
+        raise typer.BadParameter("--rel-tol must be >= 0.")
+    if abs_tol_min < 0.0:
+        raise typer.BadParameter("--abs-tol-min must be >= 0.")
+    report = _load_json_mapping(benchmark_report)
+    report_suite_raw = report.get("suite")
+    report_suite = str(report_suite_raw) if isinstance(report_suite_raw, str) else ""
+    selected_suite = suite or report_suite
+    if not selected_suite:
+        raise typer.BadParameter("Suite could not be determined. Provide --suite.")
+
+    if require_all_passed and not bool(report.get("all_passed", False)):
+        raise typer.BadParameter("Benchmark report is not all_passed; cannot lock golden.")
+    skipped_raw = report.get("skipped", 0)
+    skipped = int(skipped_raw) if isinstance(skipped_raw, (int, float, str)) else 0
+    if require_no_skip and skipped > 0:
+        raise typer.BadParameter(
+            f"Benchmark report has skipped={skipped}; use --allow-failed or rerun without skips."
+        )
+
+    metric_names = _parse_metric_names(metrics)
+    golden = _build_locked_golden(
+        report,
+        metrics=metric_names,
+        rel_tol=rel_tol,
+        abs_tol_min=abs_tol_min,
+    )
+    out_path = golden_out or _default_golden_path_from_suite(selected_suite)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(golden, indent=2), encoding="utf-8")
+    print(f"[green]Golden metrics written:[/green] {out_path}")
+    print(f"[cyan]Locked cases:[/cyan] {len(golden)}")
 
 
 @app.command("report")

@@ -316,6 +316,7 @@ def run_benchmark_suite(
     skipped_count = 0
     skipped_backend_count = 0
     ran_count = 0
+    checks_explicit_runs = 0
     total_cases = len(cases)
     backend_missing_cases: list[str] = []
     probe_available = True
@@ -412,6 +413,9 @@ def run_benchmark_suite(
         signature = _result_signature(series)
 
         expected = golden.get(case["name"], {})
+        checks_explicit = isinstance(expected.get("checks"), dict)
+        if checks_explicit:
+            checks_explicit_runs += 1
         checks = _build_check_specs(expected, actual_metrics=actual_metrics)
         check_results: dict[str, dict[str, float | bool]] = {}
         all_checks_ok = True
@@ -484,6 +488,7 @@ def run_benchmark_suite(
             "status": run_result.status,
             "actual": actual_metrics,
             "expected": expected,
+            "checks_explicit": checks_explicit,
             "checks": check_results,
             "constraints": constraint_results,
             "deterministic": {
@@ -511,5 +516,6 @@ def run_benchmark_suite(
         if total_cases > 0
         else 0.0
     )
+    report["checks_explicit_runs"] = checks_explicit_runs
     report["backend_missing_cases"] = backend_missing_cases
     return report

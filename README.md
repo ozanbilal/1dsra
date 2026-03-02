@@ -84,6 +84,8 @@ pip install -e .[web]
 ```
 Open `http://127.0.0.1:8010`.
 Primary UI path is now React + FastAPI; Streamlit remains as engineering/debug panel.
+If `--port` is already occupied, CLI auto-scans next ports (`+20` by default).
+You can tune it with `--port-scan <N>`.
 
 ### Wizard Workflow (Wave-1)
 DEEPSOIL-style 5-step wizard is available:

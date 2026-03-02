@@ -3,6 +3,8 @@ from pathlib import Path
 
 import dsra1d.benchmark as benchmark_mod
 import dsra1d.cli.main as cli_main
+import pytest
+import typer
 from dsra1d.cli.main import app
 from typer.testing import CliRunner
 
@@ -13,6 +15,28 @@ def test_cli_validate() -> None:
     cfg = Path("examples/configs/effective_stress.yml")
     result = runner.invoke(app, ["validate", "--config", str(cfg)])
     assert result.exit_code == 0
+
+
+def test_cli_resolve_web_port_prefers_requested(monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "_can_bind_tcp", lambda host, port: True)
+    port, shifted = cli_main._resolve_web_port("127.0.0.1", 8010, scan_limit=5)
+    assert port == 8010
+    assert shifted is False
+
+
+def test_cli_resolve_web_port_scans_next_available(monkeypatch) -> None:
+    blocked = {8010, 8011}
+    monkeypatch.setattr(cli_main, "_can_bind_tcp", lambda host, port: port not in blocked)
+    port, shifted = cli_main._resolve_web_port("127.0.0.1", 8010, scan_limit=5)
+    assert port == 8012
+    assert shifted is True
+
+
+def test_cli_resolve_web_port_fails_when_no_ports(monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "_can_bind_tcp", lambda host, port: False)
+    with pytest.raises(typer.Exit) as exc:
+        cli_main._resolve_web_port("127.0.0.1", 8010, scan_limit=1)
+    assert exc.value.exit_code == 6
 
 
 def test_cli_init(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 from math import isfinite
@@ -118,6 +119,35 @@ def _apply_runtime_backend(
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _can_bind_tcp(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _resolve_web_port(host: str, requested_port: int, *, scan_limit: int = 20) -> tuple[int, bool]:
+    if _can_bind_tcp(host, requested_port):
+        return requested_port, False
+
+    max_scan = max(scan_limit, 0)
+    for offset in range(1, max_scan + 1):
+        candidate = requested_port + offset
+        if candidate > 65535:
+            break
+        if _can_bind_tcp(host, candidate):
+            return candidate, True
+
+    print(
+        "[red]No available port found for web UI.[/red] "
+        f"Requested={requested_port}, scanned=+{max_scan}."
+    )
+    raise typer.Exit(code=6)
 
 
 def _enforce_benchmark_strict_policy(
@@ -1083,6 +1113,7 @@ def web(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8010, "--port"),
     reload: bool = typer.Option(False, "--reload"),
+    port_scan: int = typer.Option(20, "--port-scan", min=0, max=200),
 ) -> None:
     try:
         import fastapi  # noqa: F401
@@ -1094,6 +1125,13 @@ def web(
         )
         raise typer.Exit(code=4) from exc
 
+    selected_port, shifted = _resolve_web_port(host, port, scan_limit=port_scan)
+    if shifted:
+        print(
+            "[yellow]Port is already in use; switched web UI port automatically:[/yellow] "
+            f"{port} -> {selected_port}"
+        )
+
     cmd = [
         sys.executable,
         "-m",
@@ -1102,7 +1140,7 @@ def web(
         "--host",
         host,
         "--port",
-        str(port),
+        str(selected_port),
     ]
     if reload:
         cmd.append("--reload")

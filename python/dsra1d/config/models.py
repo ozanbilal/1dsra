@@ -32,6 +32,7 @@ class BaselineMode(StrEnum):
     NONE = "none"
     REMOVE_MEAN = "remove_mean"
     DETREND_LINEAR = "detrend_linear"
+    DEEPSOIL_BAP_LIKE = "deepsoil_bap_like"
 
 
 class OutputConfig(BaseModel):

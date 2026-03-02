@@ -83,16 +83,41 @@ pip install -e .[web]
 1dsra web --host 127.0.0.1 --port 8010
 ```
 Open `http://127.0.0.1:8010`.
-This stack is designed as the long-term path for production UI; current Streamlit remains available for rapid engineering workflows.
-Web/React run charts recompute PSA from `surface_acc` and run `dt` to avoid stale spectra visuals after reruns.
-Web sidebar includes a Model Builder panel that generates template-based config files and auto-fills `Config Path` for direct runs.
+Primary UI path is now React + FastAPI; Streamlit remains as engineering/debug panel.
+
+### Wizard Workflow (Wave-1)
+DEEPSOIL-style 5-step wizard is available:
+- `Analysis Type`
+- `Soil Profile`
+- `Input Motion`
+- `Damping`
+- `Analysis Control`
+
+Run flow (no manual YAML editing required):
+1. Fill 5 wizard steps.
+2. Click `Generate Config`.
+3. Click `Run Now`.
+4. Inspect results tabs (`Time Histories`, `Spectral`, `Profile`, `Convergence`) and download artifacts.
+
+### Motion Tools (Wave-1)
+- Motion import: CSV + PEER AT2
+- Baseline modes: `none`, `remove_mean`, `detrend_linear`, `deepsoil_bap_like`
+- Scaling modes: `none`, `scale_by`, `scale_to_pga`
+- Motion preview plots: processed acceleration, PSA, FAS ratio
+- Motion outputs: processed CSV + metrics JSON
 
 Included API endpoints:
 - `GET /api/health`
 - `GET /api/runs?output_root=<path>`
+- `GET /api/runs/tree?output_root=<path>`
 - `GET /api/runs/{run_id}/signals?output_root=<path>`
+- `GET /api/runs/{run_id}/results/summary?output_root=<path>`
 - `GET /api/runs/{run_id}/surface-acc.csv?output_root=<path>`
 - `GET /api/runs/{run_id}/pwp-effective.csv?output_root=<path>`
+- `GET /api/wizard/schema`
+- `POST /api/config/from-wizard`
+- `POST /api/motion/import/peer-at2`
+- `POST /api/motion/process`
 - `POST /api/run` (run analysis from config + motion paths)
 
 ## OpenSees Integration

@@ -16,3 +16,4 @@ It is the single table used for release sign-off discussions.
 Notes:
 - “Published/reference alignment” means comparison against external references (published studies, official example sets, or locked real-binary parity envelopes).
 - After dedicated runner lock, update `opensees-parity` tolerances from broad placeholders to measured envelopes and raise confidence tier.
+- UI parity note: React/FastAPI wizard and motion tools only orchestrate config/motion/run flow; scientific confidence remains gated by numerical backend benchmarks and parity suites, not by UI layer behavior alone.

@@ -6,16 +6,27 @@ from pathlib import Path
 from typing import Literal, cast
 
 import numpy as np
+import yaml
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from dsra1d.config import load_project_config, write_config_template
+from dsra1d.config.models import (
+    BaselineMode,
+    BoundaryCondition,
+    MaterialType,
+    MotionConfig,
+    ProjectConfig,
+    ScaleMode,
+)
 from dsra1d.interop.opensees import resolve_opensees_executable
-from dsra1d.motion import load_motion
+from dsra1d.motion import import_peer_at2_to_csv, load_motion, load_motion_series, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
-from dsra1d.post import compute_spectra
+from dsra1d.post import compute_spectra, compute_transfer_function
+from dsra1d.types import Motion
+from dsra1d.units import accel_factor_to_si
 
 RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"]
 ResolvedBackend = Literal["opensees", "mock", "linear", "eql", "nonlinear"]
@@ -44,6 +55,9 @@ class RunSummary(BaseModel):
     solver_backend: str = "unknown"
     status: str = "unknown"
     message: str = ""
+    project_name: str = ""
+    input_motion: str = ""
+    motion_name: str = ""
     pga: float | None = None
     ru_max: float | None = None
     delta_u_max: float | None = None
@@ -67,6 +81,123 @@ class ConfigTemplateResponse(BaseModel):
     config_path: str
     status: str
     message: str
+
+
+class WizardAnalysisStep(BaseModel):
+    project_name: str = "wizard-project"
+    boundary_condition: BoundaryCondition = BoundaryCondition.ELASTIC_HALFSPACE
+    solver_backend: RunBackendMode = "opensees"
+    pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
+
+
+class WizardLayer(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    thickness_m: float = Field(gt=0.0)
+    unit_weight_kn_m3: float = Field(gt=0.0, alias="unit_weight_kN_m3")
+    vs_m_s: float = Field(gt=0.0)
+    material: MaterialType
+    material_params: dict[str, float] = Field(default_factory=dict)
+    material_optional_args: list[float] = Field(default_factory=list)
+
+
+class WizardProfileStep(BaseModel):
+    layers: list[WizardLayer] = Field(default_factory=list)
+
+
+class WizardMotionStep(BaseModel):
+    units: str = "m/s2"
+    baseline: BaselineMode = BaselineMode.REMOVE_MEAN
+    scale_mode: ScaleMode = ScaleMode.NONE
+    scale_factor: float | None = None
+    target_pga: float | None = None
+    motion_path: str = ""
+
+
+class WizardDampingStep(BaseModel):
+    mode: Literal["frequency_independent", "rayleigh"] = "frequency_independent"
+    update_matrix: bool = False
+    mode_1: float | None = None
+    mode_2: float | None = None
+
+
+class WizardControlStep(BaseModel):
+    dt: float | None = Field(default=None, gt=0.0)
+    f_max: float = Field(default=25.0, gt=0.0)
+    timeout_s: int = Field(default=180, ge=1)
+    retries: int = Field(default=1, ge=0)
+    write_hdf5: bool = True
+    write_sqlite: bool = True
+    parquet_export: bool = False
+    opensees_executable: str = "OpenSees"
+    output_dir: str = "out/web"
+    config_output_dir: str = ""
+    config_file_name: str = ""
+
+
+class WizardConfigRequest(BaseModel):
+    analysis_step: WizardAnalysisStep
+    profile_step: WizardProfileStep
+    motion_step: WizardMotionStep
+    damping_step: WizardDampingStep
+    control_step: WizardControlStep
+
+
+class WizardConfigResponse(BaseModel):
+    config_path: str
+    config_yaml: str
+    warnings: list[str]
+    status: str
+
+
+class MotionImportRequest(BaseModel):
+    path: str
+    units_hint: str = "g"
+    dt_override: float | None = Field(default=None, gt=0.0)
+    output_dir: str = ""
+    output_name: str = ""
+
+
+class MotionImportResponse(BaseModel):
+    converted_csv_path: str
+    npts: int
+    dt_s: float
+    pga_si: float
+    status: str
+
+
+class MotionProcessRequest(BaseModel):
+    motion_path: str
+    units_hint: str = "m/s2"
+    dt_override: float | None = Field(default=None, gt=0.0)
+    baseline_mode: BaselineMode = BaselineMode.REMOVE_MEAN
+    scale_mode: ScaleMode = ScaleMode.NONE
+    scale_factor: float | None = None
+    target_pga: float | None = None
+    output_dir: str = ""
+    output_name: str = ""
+
+
+class MotionProcessResponse(BaseModel):
+    processed_motion_path: str
+    metrics_path: str
+    metrics: dict[str, float]
+    spectra_preview: dict[str, list[float]]
+    status: str
+
+
+class ResultSummaryResponse(BaseModel):
+    run_id: str
+    status: str
+    solver_backend: str
+    project_name: str = ""
+    input_motion: str = ""
+    metrics: dict[str, float]
+    convergence: dict[str, object]
+    output_layers: list[str]
+    artifacts: list[dict[str, str]]
+    solver_notes: str
 
 
 def _repo_root() -> Path:
@@ -129,11 +260,244 @@ def _read_run_meta(run_dir: Path) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
     out: dict[str, str] = {}
-    for key in ("timestamp_utc", "solver_backend", "status", "message"):
+    for key in (
+        "timestamp_utc",
+        "solver_backend",
+        "status",
+        "message",
+        "input_motion",
+        "dt_s",
+        "delta_t_s",
+    ):
         value = raw.get(key)
         if isinstance(value, str):
             out[key] = value
+        elif isinstance(value, (int, float)):
+            out[key] = str(value)
     return out
+
+
+def _read_project_name(sqlite_path: Path) -> str:
+    if not sqlite_path.exists():
+        return ""
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        row = conn.execute("SELECT project_name FROM runs LIMIT 1").fetchone()
+        if row is None or row[0] is None:
+            return ""
+        return str(row[0])
+    finally:
+        conn.close()
+
+
+def _read_artifacts(sqlite_path: Path) -> list[dict[str, str]]:
+    if not sqlite_path.exists():
+        return []
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        rows = conn.execute(
+            "SELECT kind, path FROM artifacts ORDER BY kind ASC, path ASC"
+        ).fetchall()
+        out: list[dict[str, str]] = []
+        for kind, path in rows:
+            out.append({"kind": str(kind), "path": str(path)})
+        return out
+    finally:
+        conn.close()
+
+
+def _read_output_layers(sqlite_path: Path) -> list[str]:
+    if not sqlite_path.exists():
+        return []
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT layer_name FROM mesh_slices ORDER BY layer_name ASC"
+        ).fetchall()
+        return [str(r[0]) for r in rows if r and r[0] is not None]
+    finally:
+        conn.close()
+
+
+def _read_convergence(sqlite_path: Path) -> dict[str, object]:
+    if not sqlite_path.exists():
+        return {"available": False}
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        row = conn.execute(
+            "SELECT iterations, converged, max_change_last, max_change_max FROM eql_summary LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return {"available": False}
+        return {
+            "available": True,
+            "iterations": int(row[0]),
+            "converged": bool(int(row[1])),
+            "max_change_last": float(row[2]),
+            "max_change_max": float(row[3]),
+        }
+    finally:
+        conn.close()
+
+
+def _build_wizard_schema() -> dict[str, object]:
+    return {
+        "steps": [
+            {"id": "analysis_step", "title": "Analysis Type"},
+            {"id": "profile_step", "title": "Soil Profile"},
+            {"id": "motion_step", "title": "Input Motion"},
+            {"id": "damping_step", "title": "Damping"},
+            {"id": "control_step", "title": "Analysis Control"},
+        ],
+        "fields": {
+            "analysis_step": [
+                "project_name",
+                "boundary_condition",
+                "solver_backend",
+                "pm4_validation_profile",
+            ],
+            "profile_step": ["layers[]"],
+            "motion_step": [
+                "motion_path",
+                "units",
+                "baseline",
+                "scale_mode",
+                "scale_factor",
+                "target_pga",
+            ],
+            "damping_step": ["mode", "update_matrix", "mode_1", "mode_2"],
+            "control_step": [
+                "dt",
+                "f_max",
+                "timeout_s",
+                "retries",
+                "write_hdf5",
+                "write_sqlite",
+                "parquet_export",
+                "opensees_executable",
+                "output_dir",
+                "config_output_dir",
+                "config_file_name",
+            ],
+        },
+        "defaults": {
+            "analysis_step": WizardAnalysisStep().model_dump(mode="json"),
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "Layer-1",
+                        "thickness_m": 5.0,
+                        "unit_weight_kN_m3": 18.0,
+                        "vs_m_s": 180.0,
+                        "material": "pm4sand",
+                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material_optional_args": [],
+                    }
+                ]
+            },
+            "motion_step": WizardMotionStep().model_dump(mode="json"),
+            "damping_step": WizardDampingStep().model_dump(mode="json"),
+            "control_step": WizardControlStep().model_dump(mode="json"),
+        },
+        "enum_options": {
+            "boundary_condition": [e.value for e in BoundaryCondition],
+            "solver_backend": ["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"],
+            "baseline": [e.value for e in BaselineMode],
+            "scale_mode": [e.value for e in ScaleMode],
+            "material": [e.value for e in MaterialType],
+            "pm4_validation_profile": ["basic", "strict", "strict_plus"],
+        },
+        "constraints": {
+            "dt": {"gt": 0.0},
+            "f_max": {"gt": 0.0},
+            "thickness_m": {"gt": 0.0},
+            "unit_weight_kN_m3": {"gt": 0.0},
+            "vs_m_s": {"gt": 0.0},
+        },
+    }
+
+
+def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, object], list[str]]:
+    warnings: list[str] = []
+    if req.damping_step.mode == "rayleigh":
+        warnings.append(
+            "damping_step.mode=rayleigh is recorded for UI parity "
+            "but native damping routing is not yet wired."
+        )
+    if req.damping_step.update_matrix:
+        warnings.append(
+            "damping_step.update_matrix is accepted but currently acts as metadata only."
+        )
+
+    layers: list[dict[str, object]] = []
+    for layer in req.profile_step.layers:
+        layers.append(
+            {
+                "name": layer.name,
+                "thickness_m": layer.thickness_m,
+                "unit_weight_kN_m3": layer.unit_weight_kn_m3,
+                "vs_m_s": layer.vs_m_s,
+                "material": layer.material.value,
+                "material_params": layer.material_params,
+                "material_optional_args": layer.material_optional_args,
+            }
+        )
+
+    payload: dict[str, object] = {
+        "project_name": req.analysis_step.project_name,
+        "profile": {"layers": layers},
+        "boundary_condition": req.analysis_step.boundary_condition.value,
+        "analysis": {
+            "dt": req.control_step.dt,
+            "f_max": req.control_step.f_max,
+            "solver_backend": req.analysis_step.solver_backend,
+            "pm4_validation_profile": req.analysis_step.pm4_validation_profile,
+            "timeout_s": req.control_step.timeout_s,
+            "retries": req.control_step.retries,
+        },
+        "motion": {
+            "units": req.motion_step.units,
+            "baseline": req.motion_step.baseline.value,
+            "scale_mode": req.motion_step.scale_mode.value,
+            "scale_factor": req.motion_step.scale_factor,
+            "target_pga": req.motion_step.target_pga,
+        },
+        "output": {
+            "write_hdf5": req.control_step.write_hdf5,
+            "write_sqlite": req.control_step.write_sqlite,
+            "parquet_export": req.control_step.parquet_export,
+        },
+        "opensees": {
+            "executable": req.control_step.opensees_executable,
+        },
+    }
+    return payload, warnings
+
+
+def _safe_duration_5_95(arias: np.ndarray, dt: float) -> float:
+    if arias.size < 2 or dt <= 0.0:
+        return 0.0
+    total = float(arias[-1])
+    if total <= 0.0:
+        return 0.0
+    t = np.arange(arias.size, dtype=np.float64) * dt
+    i5 = int(np.searchsorted(arias, 0.05 * total, side="left"))
+    i95 = int(np.searchsorted(arias, 0.95 * total, side="left"))
+    i5 = min(max(i5, 0), t.size - 1)
+    i95 = min(max(i95, 0), t.size - 1)
+    return float(max(0.0, t[i95] - t[i5]))
+
+
+def _downsample_np(
+    x: np.ndarray,
+    y: np.ndarray,
+    max_points: int = 2000,
+) -> tuple[np.ndarray, np.ndarray]:
+    n = int(min(x.size, y.size))
+    if n <= max_points:
+        return x[:n], y[:n]
+    step = max(1, n // max_points)
+    return x[:n:step], y[:n:step]
 
 
 def _downsample_pair(
@@ -240,13 +604,170 @@ def create_app() -> FastAPI:
             message="Config template created.",
         )
 
+    @app.get("/api/wizard/schema")
+    def get_wizard_schema() -> dict[str, object]:
+        return _build_wizard_schema()
+
+    @app.post("/api/config/from-wizard", response_model=WizardConfigResponse)
+    def create_config_from_wizard(payload: WizardConfigRequest) -> WizardConfigResponse:
+        cfg_payload, warnings = _wizard_to_config_payload(payload)
+        validated = ProjectConfig.model_validate(cfg_payload)
+        rendered = yaml.safe_dump(
+            validated.model_dump(mode="json", by_alias=True),
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        out_root = (
+            _safe_real_path(payload.control_step.config_output_dir)
+            if payload.control_step.config_output_dir.strip()
+            else _default_config_root()
+        )
+        out_root.mkdir(parents=True, exist_ok=True)
+        file_name = payload.control_step.config_file_name.strip() or "wizard_generated.yml"
+        if not file_name.lower().endswith((".yml", ".yaml")):
+            file_name = f"{file_name}.yml"
+        out_path = out_root / file_name
+        out_path.write_text(rendered, encoding="utf-8")
+        return WizardConfigResponse(
+            config_path=str(out_path),
+            config_yaml=rendered,
+            warnings=warnings,
+            status="ok",
+        )
+
+    @app.post("/api/motion/import/peer-at2", response_model=MotionImportResponse)
+    def motion_import_peer_at2(payload: MotionImportRequest) -> MotionImportResponse:
+        output_dir = (
+            _safe_real_path(payload.output_dir)
+            if payload.output_dir.strip()
+            else (_repo_root() / "out" / "ui" / "motions")
+        )
+        output_name = payload.output_name.strip() or None
+        result = import_peer_at2_to_csv(
+            payload.path,
+            output_dir=output_dir,
+            units_hint=payload.units_hint,
+            dt_override=payload.dt_override,
+            output_name=output_name,
+        )
+        return MotionImportResponse(
+            converted_csv_path=str(result.csv_path),
+            npts=result.npts,
+            dt_s=result.dt_s,
+            pga_si=result.pga_si,
+            status="ok",
+        )
+
+    @app.post("/api/motion/process", response_model=MotionProcessResponse)
+    def motion_process(payload: MotionProcessRequest) -> MotionProcessResponse:
+        t_raw, acc_raw = load_motion_series(payload.motion_path, dt_override=payload.dt_override)
+        dt_s = _estimate_dt(np.asarray(t_raw, dtype=np.float64))
+        factor = accel_factor_to_si(payload.units_hint)
+        acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
+
+        cfg = MotionConfig(
+            units=payload.units_hint,
+            baseline=payload.baseline_mode,
+            scale_mode=payload.scale_mode,
+            scale_factor=payload.scale_factor,
+            target_pga=payload.target_pga,
+        )
+        mot = Motion(
+            dt=float(dt_s),
+            acc=acc_si,
+            unit="m/s2",
+            source=Path(payload.motion_path),
+        )
+        processed = preprocess_motion(mot, cfg)
+        acc_proc = np.asarray(processed.acc, dtype=np.float64)
+        t_proc = np.arange(acc_proc.size, dtype=np.float64) * float(processed.dt)
+
+        out_root = (
+            _safe_real_path(payload.output_dir)
+            if payload.output_dir.strip()
+            else (_repo_root() / "out" / "ui" / "motions")
+        )
+        out_root.mkdir(parents=True, exist_ok=True)
+        stem = payload.output_name.strip() or f"{Path(payload.motion_path).stem}_processed"
+        csv_path = out_root / f"{stem}.csv"
+        np.savetxt(
+            csv_path,
+            np.column_stack([t_proc, acc_proc]),
+            delimiter=",",
+            header="time_s,acc_m_s2",
+            comments="",
+        )
+
+        vel = np.cumsum(acc_proc, dtype=np.float64) * float(processed.dt)
+        disp = np.cumsum(vel, dtype=np.float64) * float(processed.dt)
+        arias = (
+            np.cumsum(acc_proc**2, dtype=np.float64)
+            * float(processed.dt)
+            * np.pi
+            / (2.0 * 9.80665)
+        )
+        spectra = compute_spectra(acc_proc, dt=float(processed.dt), damping=0.05)
+        freq_hz, fas_ratio = compute_transfer_function(acc_si, acc_proc, dt=float(processed.dt))
+        n = int(acc_proc.size)
+        fft_raw = np.abs(np.fft.rfft(acc_si[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
+        fft_proc = np.abs(np.fft.rfft(acc_proc[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
+        freq_fft = (
+            np.fft.rfftfreq(n, d=float(processed.dt))
+            if n > 1
+            else np.array([0.0], dtype=np.float64)
+        )
+
+        metrics = {
+            "pga": float(np.max(np.abs(acc_proc))) if acc_proc.size > 0 else 0.0,
+            "arias": float(arias[-1]) if arias.size > 0 else 0.0,
+            "duration_5_95": _safe_duration_5_95(arias, float(processed.dt)),
+            "dt_s": float(processed.dt),
+            "npts": float(acc_proc.size),
+        }
+        metrics_path = out_root / f"{stem}_metrics.json"
+        metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+        t_d, acc_d = _downsample_np(t_proc, acc_proc, max_points=2400)
+        _, vel_d = _downsample_np(t_proc, vel, max_points=2400)
+        _, disp_d = _downsample_np(t_proc, disp, max_points=2400)
+        _, arias_d = _downsample_np(t_proc, arias, max_points=2400)
+        p_d, psa_d = _downsample_np(spectra.periods, spectra.psa, max_points=800)
+        f_d, fr_d = _downsample_np(freq_hz, fas_ratio, max_points=1200)
+        ff_d, raw_d = _downsample_np(freq_fft, fft_raw, max_points=1200)
+        _, proc_d = _downsample_np(freq_fft, fft_proc, max_points=1200)
+
+        preview = {
+            "time_s": [float(v) for v in t_d],
+            "acc_m_s2": [float(v) for v in acc_d],
+            "vel_m_s": [float(v) for v in vel_d],
+            "disp_m": [float(v) for v in disp_d],
+            "arias": [float(v) for v in arias_d],
+            "period_s": [float(v) for v in p_d],
+            "psa_m_s2": [float(v) for v in psa_d],
+            "freq_hz": [float(v) for v in f_d],
+            "fas_ratio": [float(v) for v in fr_d],
+            "fas_raw": [float(v) for v in raw_d],
+            "fas_processed": [float(v) for v in proc_d],
+            "fas_freq_hz": [float(v) for v in ff_d],
+        }
+
+        return MotionProcessResponse(
+            processed_motion_path=str(csv_path),
+            metrics_path=str(metrics_path),
+            metrics=metrics,
+            spectra_preview=preview,
+            status="ok",
+        )
+
     @app.get("/api/runs", response_model=list[RunSummary])
     def list_runs(output_root: str = Query(default="")) -> list[RunSummary]:
         root = _safe_real_path(output_root) if output_root else _default_output_root()
         items: list[RunSummary] = []
         for run_dir in reversed(_collect_runs(root)):
             meta = _read_run_meta(run_dir)
-            metrics = _read_metrics(run_dir / "results.sqlite")
+            sqlite_path = run_dir / "results.sqlite"
+            metrics = _read_metrics(sqlite_path)
+            input_motion = meta.get("input_motion", "")
             items.append(
                 RunSummary(
                     run_id=run_dir.name,
@@ -255,6 +776,9 @@ def create_app() -> FastAPI:
                     solver_backend=meta.get("solver_backend", "unknown"),
                     status=meta.get("status", "unknown"),
                     message=meta.get("message", ""),
+                    project_name=_read_project_name(sqlite_path),
+                    input_motion=input_motion,
+                    motion_name=Path(input_motion).name if input_motion else "",
                     pga=metrics.get("pga"),
                     ru_max=metrics.get("ru_max"),
                     delta_u_max=metrics.get("delta_u_max"),
@@ -262,6 +786,25 @@ def create_app() -> FastAPI:
                 )
             )
         return items
+
+    @app.get("/api/runs/tree")
+    def runs_tree(output_root: str = Query(default="")) -> dict[str, object]:
+        root = _safe_real_path(output_root) if output_root else _default_output_root()
+        grouped: dict[str, dict[str, list[dict[str, str]]]] = {}
+        for run_dir in reversed(_collect_runs(root)):
+            meta = _read_run_meta(run_dir)
+            project_name = _read_project_name(run_dir / "results.sqlite") or "unknown-project"
+            input_motion = meta.get("input_motion", "")
+            motion_name = Path(input_motion).name if input_motion else "unknown-motion"
+            grouped.setdefault(project_name, {}).setdefault(motion_name, []).append(
+                {
+                    "run_id": run_dir.name,
+                    "output_dir": str(run_dir),
+                    "status": meta.get("status", "unknown"),
+                    "solver_backend": meta.get("solver_backend", "unknown"),
+                }
+            )
+        return {"tree": grouped}
 
     @app.get("/api/runs/{run_id}/signals")
     def run_signals(
@@ -370,6 +913,30 @@ def create_app() -> FastAPI:
             "sigma_v_eff_min": float(sigma_v_eff_min),
         }
 
+    @app.get("/api/runs/{run_id}/results/summary", response_model=ResultSummaryResponse)
+    def run_results_summary(
+        run_id: str,
+        output_root: str = Query(default=""),
+    ) -> ResultSummaryResponse:
+        root = _safe_real_path(output_root) if output_root else _default_output_root()
+        run_dir = root / run_id
+        if not run_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        meta = _read_run_meta(run_dir)
+        sqlite_path = run_dir / "results.sqlite"
+        return ResultSummaryResponse(
+            run_id=run_id,
+            status=meta.get("status", "unknown"),
+            solver_backend=meta.get("solver_backend", "unknown"),
+            project_name=_read_project_name(sqlite_path),
+            input_motion=meta.get("input_motion", ""),
+            metrics=_read_metrics(sqlite_path),
+            convergence=_read_convergence(sqlite_path),
+            output_layers=_read_output_layers(sqlite_path),
+            artifacts=_read_artifacts(sqlite_path),
+            solver_notes=meta.get("message", ""),
+        )
+
     @app.get("/api/runs/{run_id}/surface-acc.csv")
     def download_surface_csv(
         run_id: str,
@@ -436,6 +1003,8 @@ def create_app() -> FastAPI:
             "results.h5": "results.h5",
             "results.sqlite": "results.sqlite",
             "surface_acc.out": "surface_acc.out",
+            "surface_acc.csv": "surface_acc.csv",
+            "pwp_effective.csv": "pwp_effective.csv",
             "run_meta.json": "run_meta.json",
         }
         if artifact not in allowed:

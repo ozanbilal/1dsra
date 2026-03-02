@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -26,6 +28,20 @@ def test_web_runs_endpoint_returns_list() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert isinstance(payload, list)
+
+
+def test_web_static_assets_served() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    root = client.get("/")
+    assert root.status_code == 200
+    assert "/assets/app.js" in root.text
+
+    app_js = client.get("/assets/app.js")
+    assert app_js.status_code == 200
+    assert "WIZARD_STEPS" in app_js.text
 
 
 def test_web_list_config_templates_endpoint() -> None:
@@ -146,3 +162,155 @@ def test_web_download_pwp_effective_csv_endpoint(tmp_path) -> None:
     text = resp.text
     assert "time_s,ru,delta_u,sigma_v_eff,delta_t_s" in text
     assert len(text.splitlines()) > 5
+
+
+def test_web_wizard_schema_endpoint() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.get("/api/wizard/schema")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "steps" in payload
+    assert "defaults" in payload
+    assert payload["steps"][0]["id"] == "analysis_step"
+    assert "deepsoil_bap_like" in payload["enum_options"]["baseline"]
+
+
+def test_web_config_from_wizard_endpoint(tmp_path) -> None:
+    from dsra1d.config import load_project_config
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/config/from-wizard",
+        json={
+            "analysis_step": {
+                "project_name": "wizard-case",
+                "boundary_condition": "elastic_halfspace",
+                "solver_backend": "opensees",
+                "pm4_validation_profile": "basic",
+            },
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "L1",
+                        "thickness_m": 5.0,
+                        "unit_weight_kN_m3": 18.0,
+                        "vs_m_s": 180.0,
+                        "material": "pm4sand",
+                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material_optional_args": [],
+                    }
+                ]
+            },
+            "motion_step": {
+                "motion_path": "examples/motions/sample_motion.csv",
+                "units": "m/s2",
+                "baseline": "remove_mean",
+                "scale_mode": "none",
+            },
+            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
+            "control_step": {
+                "f_max": 25.0,
+                "timeout_s": 120,
+                "retries": 1,
+                "write_hdf5": True,
+                "write_sqlite": True,
+                "parquet_export": False,
+                "opensees_executable": "OpenSees",
+                "output_dir": str(tmp_path / "out"),
+                "config_output_dir": str(tmp_path),
+                "config_file_name": "wizard_case.yml",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    cfg_path = Path(payload["config_path"])
+    assert cfg_path.exists()
+    _ = load_project_config(cfg_path)
+
+
+def test_web_motion_import_peer_at2_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    at2 = tmp_path / "motion.at2"
+    at2.write_text(
+        "AT2 EXAMPLE\nNPTS= 5, DT=0.01 SEC\n0.01 0.02 -0.03 0.00 0.01\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/motion/import/peer-at2",
+        json={
+            "path": str(at2),
+            "units_hint": "g",
+            "output_dir": str(tmp_path),
+            "output_name": "converted.csv",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["npts"] == 5
+    assert payload["dt_s"] == pytest.approx(0.01)
+    assert Path(payload["converted_csv_path"]).exists()
+
+
+def test_web_motion_process_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    motion = tmp_path / "motion.csv"
+    motion.write_text("0.0,0.0\n0.01,0.1\n0.02,-0.05\n0.03,0.0\n", encoding="utf-8")
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/motion/process",
+        json={
+            "motion_path": str(motion),
+            "units_hint": "m/s2",
+            "baseline_mode": "remove_mean",
+            "scale_mode": "scale_by",
+            "scale_factor": 2.0,
+            "output_dir": str(tmp_path),
+            "output_name": "processed_motion",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert Path(payload["processed_motion_path"]).exists()
+    assert Path(payload["metrics_path"]).exists()
+    assert payload["metrics"]["dt_s"] == pytest.approx(0.01)
+    assert len(payload["spectra_preview"]["period_s"]) > 0
+
+
+def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    root = tmp_path / "web-runs"
+    client = TestClient(create_app())
+
+    tree_resp = client.get("/api/runs/tree", params={"output_root": str(root)})
+    assert tree_resp.status_code == 200
+    tree_payload = tree_resp.json()
+    assert "tree" in tree_payload
+    assert len(tree_payload["tree"]) >= 1
+
+    summary_resp = client.get(
+        f"/api/runs/{result.run_id}/results/summary",
+        params={"output_root": str(root)},
+    )
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()
+    assert summary["run_id"] == result.run_id
+    assert "metrics" in summary
+    assert "convergence" in summary

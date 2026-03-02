@@ -191,7 +191,9 @@ Missing:
 - FastAPI + React migration starter is now available (`1dsra web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
-- Web UI now includes Model Builder (template list + file target) to generate config files directly from UI and run without manual YAML creation
+- Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
+- Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
+- React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
 - MKZ/GQH helper module now includes `generate_masing_loop` for calibration-oriented loop generation
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
@@ -284,6 +286,21 @@ Status legend:
 
 Tracking rule for continuation:
 - When a `Partial`/`Pending` item advances, update both this matrix and the corresponding phase section above in the same commit.
+
+## 7A. DEEPSOIL UI Parity Backlog
+
+| Wave-1 (zorunlu) | Durum | Wave-2 (sonraki) | Durum |
+|---|---|---|---|
+| 5-step wizard state + config üretimi | Done | Auto-profile generation (fmax tabanlı) | Pending |
+| Motion import (`CSV`, `PEER AT2`) | Done | Thickness/Vs/dynamic curve randomization UI | Pending |
+| Baseline pipeline opsiyonları (`deepsoil_bap_like` dahil) | Done | Genişletilmiş database browser parity | Pending |
+| Scale by / scale to PGA | Done | Multi-profile random batch scenario editor | Pending |
+| Results tab yapısı (`Time Histories`, `Spectral`, `Profile`, `Convergence`) | Partial | Advanced mobilized strength and convergence diagnostics parity | Pending |
+| Run tree (`project -> motion -> run`) | Done | DEEPSOIL-style batch navigator parity (full) | Pending |
+
+Notes:
+- Wave-1 UI parity is orchestration-focused; numerik çekirdek değişiklikleri bu dalgada hedeflenmez.
+- `Stress-Strain` ve `Mobilized Strength` tabları mevcut, fakat detay veri kanalı için ek recorder/çıktı şeması gereklidir.
 
 ## 8. Scientific Confidence Matrix
 

@@ -48,6 +48,7 @@ jobs:
         run: python -m dsra1d.cli.main campaign --suite core-eql --out out/ci_bench_core_eql --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
 
   opensees-parity-dedicated:
+    if: ${{ vars.DSRA1D_CI_DEDICATED_OPENSEES == '1' }}
     needs: test
     runs-on: [self-hosted, linux, x64, opensees]
     timeout-minutes: 90

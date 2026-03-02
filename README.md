@@ -233,6 +233,8 @@ Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 CI can run parity automatically when repository variable `DSRA1D_CI_OPENSEES_EXE` is set
 to a valid executable path/name on the runner.
+Dedicated self-hosted parity job in CI is opt-in via:
+- `DSRA1D_CI_DEDICATED_OPENSEES=1`
 Optional OpenSeesPy parity gate can be enabled with repository variable:
 - `DSRA1D_CI_OPENSEESPY=1`
 and uses `scripts/opensees_pyshim.py`.

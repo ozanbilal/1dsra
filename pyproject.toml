@@ -90,6 +90,10 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["dsra1d.web.app"]
+disable_error_code = ["untyped-decorator"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-q"

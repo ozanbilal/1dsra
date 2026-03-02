@@ -12,25 +12,37 @@ class Spectra:
 
 
 def _sdof_response(acc: np.ndarray, dt: float, omega: float, xi: float) -> np.ndarray:
-    n = acc.shape[0]
+    n = int(acc.shape[0])
+    if n == 0:
+        return np.array([], dtype=np.float64)
+    if dt <= 0.0:
+        raise ValueError("dt must be > 0 for SDOF response.")
+    if omega <= 0.0:
+        raise ValueError("omega must be > 0 for SDOF response.")
+
+    # Relative displacement response of:
+    # u¨ + 2*xi*omega*u˙ + omega^2*u = -ag(t)
     u = np.zeros(n, dtype=np.float64)
     v = np.zeros(n, dtype=np.float64)
+    a_rel = np.zeros(n, dtype=np.float64)
 
     beta = 0.25
     gamma = 0.5
     k = omega**2
-    c = 2 * xi * omega
+    c = 2.0 * xi * omega
+    p = -np.asarray(acc, dtype=np.float64)
 
-    a0 = 1.0 / (beta * dt**2)
-    a1 = gamma / (beta * dt)
-    a4 = (gamma / beta) - 1.0
+    # Initial state: u0=v0=0
+    a_rel[0] = p[0] - c * v[0] - k * u[0]
 
-    keff = k + a0 + a1 * c
-
-    for i in range(1, n):
-        p_eff = -acc[i] + a0 * u[i - 1] + c * (a1 * u[i - 1] + a4 * v[i - 1])
-        u[i] = p_eff / keff
-        v[i] = a1 * (u[i] - u[i - 1]) - a4 * v[i - 1]
+    m_eff = 1.0 + gamma * dt * c + beta * dt * dt * k
+    for i in range(n - 1):
+        u_pred = u[i] + dt * v[i] + (0.5 - beta) * dt * dt * a_rel[i]
+        v_pred = v[i] + (1.0 - gamma) * dt * a_rel[i]
+        a_next = (p[i + 1] - c * v_pred - k * u_pred) / m_eff
+        u[i + 1] = u_pred + beta * dt * dt * a_next
+        v[i + 1] = v_pred + gamma * dt * a_next
+        a_rel[i + 1] = a_next
 
     return u
 
@@ -42,7 +54,7 @@ def compute_spectra(
     periods: np.ndarray | None = None,
 ) -> Spectra:
     if periods is None:
-        periods = np.linspace(0.05, 4.0, 80)
+        periods = np.logspace(np.log10(0.05), np.log10(4.0), 80)
 
     psa = np.zeros_like(periods, dtype=np.float64)
     for idx, t in enumerate(periods):

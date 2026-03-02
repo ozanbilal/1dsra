@@ -27,7 +27,7 @@ analysis:
   dt: 0.005
   f_max: 25.0
   solver_backend: opensees
-  pm4_validation_profile: basic
+  pm4_validation_profile: strict_plus
   timeout_s: 120
   retries: 0
 motion:
@@ -42,3 +42,10 @@ output:
 opensees:
   executable: OpenSees
   extra_args: []
+  column_width_m: 1.0
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2500000.0
+  fluid_mass_density: 1.0
+  h_perm: 0.000008
+  v_perm: 0.00001
+  gravity_steps: 40

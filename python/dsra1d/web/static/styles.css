@@ -1,0 +1,314 @@
+:root {
+  --ink: #151515;
+  --paper: #f7f2e7;
+  --copper: #a45323;
+  --teal: #1f6863;
+  --stone: #2f3a42;
+  --card: rgba(255, 255, 255, 0.72);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 500px at 95% -25%, rgba(164, 83, 35, 0.25), transparent 60%),
+    radial-gradient(800px 480px at -10% -35%, rgba(31, 104, 99, 0.26), transparent 55%),
+    var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.shell {
+  width: min(1320px, 95vw);
+  margin: 1.5rem auto 2.5rem;
+}
+
+.hero {
+  border: 1px solid rgba(21, 21, 21, 0.15);
+  border-radius: 20px;
+  padding: 1rem 1.2rem 1.1rem;
+  background: var(--card);
+  box-shadow: 0 18px 40px rgba(47, 58, 66, 0.12);
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: "Abril Fatface", serif;
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: 0.4px;
+}
+
+.hero p {
+  margin: 0.45rem 0 0;
+  opacity: 0.82;
+  font-size: 0.95rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.panel {
+  border: 1px solid rgba(21, 21, 21, 0.16);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 0.9rem;
+  box-shadow: 0 12px 30px rgba(47, 58, 66, 0.08);
+}
+
+.panel h2 {
+  margin: 0 0 0.6rem;
+  font-family: "Abril Fatface", serif;
+  font-size: 1.3rem;
+  font-weight: 400;
+}
+
+.builder {
+  border: 1px solid rgba(47, 58, 66, 0.18);
+  border-radius: 12px;
+  padding: 0.6rem;
+  background: rgba(255, 255, 255, 0.72);
+  margin-bottom: 0.7rem;
+}
+
+.builder h3 {
+  margin: 0 0 0.5rem;
+  font-family: "Abril Fatface", serif;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.divider {
+  height: 1px;
+  border-top: 1px dashed rgba(47, 58, 66, 0.3);
+  margin: 0.8rem 0 0.7rem;
+}
+
+.field {
+  margin-bottom: 0.7rem;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 0.28rem;
+  font-size: 0.78rem;
+  opacity: 0.82;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(47, 58, 66, 0.25);
+  border-radius: 10px;
+  padding: 0.5rem 0.55rem;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.58rem 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.btn-main {
+  background: linear-gradient(135deg, var(--copper), #cd7b49);
+  color: #fff;
+}
+
+.btn-sub {
+  background: linear-gradient(135deg, var(--stone), #455461);
+  color: #fff;
+}
+
+.btn-min {
+  background: rgba(47, 58, 66, 0.12);
+  color: var(--stone);
+  text-decoration: none;
+  display: inline-block;
+  border-radius: 10px;
+  padding: 0.45rem 0.66rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 10px;
+}
+
+.run-card {
+  border: 1px solid rgba(47, 58, 66, 0.18);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: rgba(255, 255, 255, 0.78);
+  min-height: 118px;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.run-card:hover {
+  border-color: rgba(31, 104, 99, 0.45);
+  box-shadow: 0 8px 24px rgba(31, 104, 99, 0.12);
+}
+
+.run-card.active {
+  border-color: rgba(164, 83, 35, 0.7);
+  box-shadow: 0 10px 24px rgba(164, 83, 35, 0.18);
+}
+
+.run-id {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 0.68rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.42rem;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.chip-ok {
+  background: rgba(31, 104, 99, 0.16);
+  color: var(--teal);
+}
+
+.chip-bad {
+  background: rgba(170, 53, 45, 0.16);
+  color: #943631;
+}
+
+.muted {
+  opacity: 0.75;
+  font-size: 0.75rem;
+}
+
+.plot-wrap {
+  margin-top: 12px;
+  border: 1px solid rgba(47, 58, 66, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.7rem;
+}
+
+.plot-title {
+  margin: 0 0 0.35rem;
+  font-family: "Abril Fatface", serif;
+  font-size: 1.1rem;
+  font-weight: 400;
+}
+
+.detail-wrap {
+  margin-top: 12px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.metric-card {
+  border: 1px solid rgba(47, 58, 66, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.5rem 0.62rem;
+}
+
+.metric-label {
+  font-size: 0.67rem;
+  opacity: 0.74;
+}
+
+.metric-value {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 0.12rem;
+}
+
+.download-row {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.charts-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.chart-card {
+  border: 1px solid rgba(47, 58, 66, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.83);
+  padding: 0.55rem 0.62rem;
+}
+
+.chart-card h4 {
+  margin: 0;
+  font-family: "Abril Fatface", serif;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+
+.status.warn {
+  color: #874200;
+}
+
+.status.err {
+  color: #8f2b28;
+}
+
+svg {
+  width: 100%;
+  height: 260px;
+}
+
+.foot {
+  margin-top: 0.8rem;
+  font-size: 0.73rem;
+  opacity: 0.8;
+}
+
+@media (max-width: 990px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

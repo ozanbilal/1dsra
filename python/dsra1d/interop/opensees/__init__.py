@@ -11,6 +11,7 @@ from dsra1d.interop.opensees.runner import (
     probe_opensees_executable,
     resolve_opensees_executable,
     run_opensees,
+    validate_backend_probe_requirements,
 )
 from dsra1d.interop.opensees.tcl import (
     build_element_slices,
@@ -33,5 +34,6 @@ __all__ = [
     "render_tcl",
     "resolve_opensees_executable",
     "run_opensees",
+    "validate_backend_probe_requirements",
     "validate_tcl_script",
 ]

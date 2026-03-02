@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa: E402
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -12,16 +13,20 @@ import h5py
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+import yaml
 
 PYTHON_SRC_ROOT = Path(__file__).resolve().parents[2]
 if str(PYTHON_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC_ROOT))
 
 from dsra1d.benchmark import run_benchmark_suite
-from dsra1d.config import MaterialType, ProjectConfig, load_project_config
+from dsra1d.config import BoundaryCondition, MaterialType, ProjectConfig, load_project_config
+from dsra1d.config.io import write_config_template
 from dsra1d.interop.opensees import (
+    probe_opensees_executable,
     render_tcl,
     resolve_opensees_executable,
+    validate_backend_probe_requirements,
     validate_tcl_script,
 )
 from dsra1d.materials import (
@@ -32,8 +37,8 @@ from dsra1d.materials import (
 )
 from dsra1d.motion import load_motion, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
-from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
-from dsra1d.verify import verify_batch
+from dsra1d.post import compute_spectra, render_summary_markdown, summarize_campaign, write_report
+from dsra1d.verify import verify_batch, verify_run
 
 
 def _repo_root() -> Path:
@@ -84,6 +89,16 @@ def _inject_styles() -> None:
           color: var(--slate);
           font-size: 12px;
         }
+        .hero h4 {
+          margin: 0 0 8px 0;
+          font-size: 20px;
+        }
+        .hero p {
+          margin: 0 0 8px 0;
+          word-break: break-all;
+          font-size: 12px;
+          opacity: 0.85;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -114,10 +129,350 @@ def _find_run_dirs(output_root: Path) -> list[Path]:
     return runs
 
 
+def _status_chip(ok: bool, label_ok: str, label_bad: str) -> str:
+    color = "#2d6a6a" if ok else "#8b2d2d"
+    text = label_ok if ok else label_bad
+    return (
+        f"<span style='display:inline-block;padding:3px 10px;border-radius:999px;"
+        f"background:{color};color:#fff;font-size:11px;font-family:IBM Plex Mono, monospace;'>"
+        f"{text}</span>"
+    )
+
+
+def _render_quick_status(
+    *,
+    cfg_path: Path,
+    motion_path: Path,
+    out_dir: Path,
+) -> None:
+    cfg_ok = cfg_path.exists()
+    motion_ok = motion_path.exists()
+    out_ok = out_dir.exists() and out_dir.is_dir()
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            (
+                "<div class='hero'><h4>Config</h4>"
+                f"<p>{cfg_path}</p>{_status_chip(cfg_ok, 'Ready', 'Missing')}</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            (
+                "<div class='hero'><h4>Motion</h4>"
+                f"<p>{motion_path}</p>{_status_chip(motion_ok, 'Ready', 'Missing')}</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            (
+                "<div class='hero'><h4>Output</h4>"
+                f"<p>{out_dir}</p>{_status_chip(out_ok, 'Ready', 'Missing')}</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+
+_MATERIAL_PARAM_DEFAULTS: dict[str, dict[str, float]] = {
+    "pm4sand": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+    "pm4silt": {"Su": 35.0, "Su_Rat": 0.25, "G_o": 500.0, "h_po": 0.6},
+    "mkz": {
+        "gmax": 70000.0,
+        "gamma_ref": 0.0012,
+        "damping_min": 0.01,
+        "damping_max": 0.10,
+        "reload_factor": 2.0,
+    },
+    "gqh": {
+        "gmax": 110000.0,
+        "gamma_ref": 0.0010,
+        "a1": 1.0,
+        "a2": 0.45,
+        "m": 2.0,
+        "damping_min": 0.01,
+        "damping_max": 0.12,
+        "reload_factor": 1.6,
+    },
+    "elastic": {"nu": 0.30},
+}
+
+
+def _new_layer_template(index: int) -> dict[str, Any]:
+    return {
+        "name": f"Layer-{index}",
+        "thickness_m": 5.0,
+        "unit_weight_kN_m3": 18.0,
+        "vs_m_s": 180.0,
+        "material": "pm4sand",
+        "material_params": dict(_MATERIAL_PARAM_DEFAULTS["pm4sand"]),
+        "material_optional_args": [],
+    }
+
+
+def _load_editor_payload_from_path(cfg_path: Path) -> dict[str, Any]:
+    cfg = load_project_config(cfg_path)
+    payload = cfg.model_dump(mode="json", by_alias=True)
+    profile = payload.setdefault("profile", {})
+    layers = profile.setdefault("layers", [])
+    if not isinstance(layers, list):
+        profile["layers"] = []
+    return payload
+
+
+def _write_editor_payload(cfg_path: Path, payload: dict[str, Any]) -> ProjectConfig:
+    validated = ProjectConfig.model_validate(payload)
+    normalized = validated.model_dump(mode="json", by_alias=True)
+    suffix = cfg_path.suffix.lower()
+    if suffix in {".yaml", ".yml"}:
+        cfg_path.write_text(yaml.safe_dump(normalized, sort_keys=False), encoding="utf-8")
+    elif suffix == ".json":
+        cfg_path.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+    else:
+        raise ValueError("Config path must end with .yml/.yaml/.json")
+    return validated
+
+
+def _render_visual_config_editor(cfg_path: Path) -> None:
+    editor_payload_key = "cfg_editor_payload"
+    editor_source_key = "cfg_editor_source"
+    source_marker = str(cfg_path)
+    with st.expander("Visual Config Editor", expanded=False):
+        if st.button("Load Current Config", key="cfg_editor_load", use_container_width=True):
+            try:
+                st.session_state[editor_payload_key] = _load_editor_payload_from_path(cfg_path)
+                st.session_state[editor_source_key] = source_marker
+                st.success("Config loaded into visual editor.")
+            except Exception as exc:
+                st.error(str(exc))
+
+        if (
+            editor_payload_key not in st.session_state
+            or st.session_state.get(editor_source_key) != source_marker
+        ):
+            try:
+                st.session_state[editor_payload_key] = _load_editor_payload_from_path(cfg_path)
+                st.session_state[editor_source_key] = source_marker
+            except Exception as exc:
+                st.warning(f"Editor initialization failed: {exc}")
+                return
+
+        payload_raw = st.session_state.get(editor_payload_key)
+        if not isinstance(payload_raw, dict):
+            st.warning("Editor payload unavailable.")
+            return
+        payload = payload_raw
+
+        payload["project_name"] = st.text_input(
+            "Project Name",
+            str(payload.get("project_name", "1dsra-project")),
+            key="cfg_editor_project_name",
+        )
+
+        boundary_options = [bc.value for bc in BoundaryCondition]
+        boundary_current = str(payload.get("boundary_condition", boundary_options[0]))
+        if boundary_current not in boundary_options:
+            boundary_current = boundary_options[0]
+        payload["boundary_condition"] = st.selectbox(
+            "Boundary Condition",
+            options=boundary_options,
+            index=boundary_options.index(boundary_current),
+            key="cfg_editor_boundary_condition",
+        )
+
+        analysis = payload.setdefault("analysis", {})
+        motion = payload.setdefault("motion", {})
+        analysis_options = ["opensees", "mock", "linear", "eql", "nonlinear"]
+        backend_current = str(analysis.get("solver_backend", "opensees"))
+        if backend_current not in analysis_options:
+            backend_current = "opensees"
+        analysis["solver_backend"] = st.selectbox(
+            "Solver Backend",
+            options=analysis_options,
+            index=analysis_options.index(backend_current),
+            key="cfg_editor_solver_backend",
+        )
+        analysis["f_max"] = float(
+            st.number_input(
+                "f_max (Hz)",
+                min_value=1.0,
+                value=float(analysis.get("f_max", 25.0)),
+                step=1.0,
+                key="cfg_editor_fmax",
+            )
+        )
+        analysis["dt"] = float(
+            st.number_input(
+                "dt (s)",
+                min_value=1.0e-5,
+                value=float(analysis.get("dt", 0.002)),
+                step=0.0005,
+                format="%.6f",
+                key="cfg_editor_dt",
+            )
+        )
+        motion_units = ["m/s2", "g", "gal", "cm/s2"]
+        current_units = str(motion.get("units", "m/s2"))
+        if current_units not in motion_units:
+            current_units = "m/s2"
+        motion["units"] = st.selectbox(
+            "Motion Units",
+            options=motion_units,
+            index=motion_units.index(current_units),
+            key="cfg_editor_motion_units",
+        )
+
+        profile = payload.setdefault("profile", {})
+        layers_raw = profile.setdefault("layers", [])
+        if not isinstance(layers_raw, list):
+            layers_raw = []
+            profile["layers"] = layers_raw
+        layers: list[dict[str, Any]] = [layer for layer in layers_raw if isinstance(layer, dict)]
+        profile["layers"] = layers
+
+        st.markdown("#### Layers")
+        add_col, _ = st.columns([1, 4])
+        with add_col:
+            if st.button("Add Layer", key="cfg_editor_add_layer", use_container_width=True):
+                layers.append(_new_layer_template(len(layers) + 1))
+                st.rerun()
+
+        remove_idx: int | None = None
+        material_options = [m.value for m in MaterialType]
+        for idx, layer in enumerate(layers):
+            layer_name = str(layer.get("name", f"Layer-{idx + 1}"))
+            with st.expander(f"{idx + 1}. {layer_name}", expanded=False):
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    layer["name"] = st.text_input(
+                        "name",
+                        layer_name,
+                        key=f"cfg_editor_layer_{idx}_name",
+                    )
+                with c2:
+                    layer["thickness_m"] = float(
+                        st.number_input(
+                            "thickness_m",
+                            min_value=0.05,
+                            value=float(layer.get("thickness_m", 5.0)),
+                            step=0.1,
+                            key=f"cfg_editor_layer_{idx}_thickness",
+                        )
+                    )
+                with c3:
+                    layer["unit_weight_kN_m3"] = float(
+                        st.number_input(
+                            "unit_weight_kN_m3",
+                            min_value=5.0,
+                            value=float(layer.get("unit_weight_kN_m3", 18.0)),
+                            step=0.1,
+                            key=f"cfg_editor_layer_{idx}_gamma",
+                        )
+                    )
+                with c4:
+                    layer["vs_m_s"] = float(
+                        st.number_input(
+                            "vs_m_s",
+                            min_value=20.0,
+                            value=float(layer.get("vs_m_s", 180.0)),
+                            step=5.0,
+                            key=f"cfg_editor_layer_{idx}_vs",
+                        )
+                    )
+
+                material_current = str(layer.get("material", "pm4sand")).lower()
+                if material_current not in material_options:
+                    material_current = "pm4sand"
+                layer["material"] = st.selectbox(
+                    "material",
+                    options=material_options,
+                    index=material_options.index(material_current),
+                    key=f"cfg_editor_layer_{idx}_material",
+                )
+                material = str(layer["material"]).lower()
+                params_defaults = _MATERIAL_PARAM_DEFAULTS.get(
+                    material,
+                    _MATERIAL_PARAM_DEFAULTS["elastic"],
+                )
+                material_params_raw = layer.get("material_params")
+                if not isinstance(material_params_raw, dict):
+                    material_params_raw = {}
+                material_params = {
+                    key: float(material_params_raw.get(key, default))
+                    for key, default in params_defaults.items()
+                }
+                layer["material_params"] = material_params
+
+                for param_key, param_default in params_defaults.items():
+                    material_params[param_key] = float(
+                        st.number_input(
+                            f"{param_key}",
+                            value=float(material_params.get(param_key, param_default)),
+                            key=f"cfg_editor_layer_{idx}_param_{param_key}",
+                            format="%.6f",
+                        )
+                    )
+
+                optional_raw = layer.get("material_optional_args", [])
+                optional_vals = (
+                    [float(v) for v in optional_raw]
+                    if isinstance(optional_raw, list)
+                    else []
+                )
+                optional_text_default = ", ".join(f"{v:g}" for v in optional_vals)
+                optional_text = st.text_input(
+                    "material_optional_args (comma-separated)",
+                    optional_text_default,
+                    key=f"cfg_editor_layer_{idx}_optional",
+                )
+                parsed_optional: list[float] = []
+                parse_failed = False
+                for piece in [p.strip() for p in optional_text.split(",") if p.strip()]:
+                    try:
+                        parsed_optional.append(float(piece))
+                    except ValueError:
+                        parse_failed = True
+                        break
+                if parse_failed:
+                    st.warning("material_optional_args contains non-numeric value(s).")
+                else:
+                    layer["material_optional_args"] = parsed_optional
+
+                if st.button("Remove Layer", key=f"cfg_editor_layer_{idx}_remove"):
+                    remove_idx = idx
+
+        if remove_idx is not None:
+            layers.pop(remove_idx)
+            st.rerun()
+
+        save_col, validate_col = st.columns(2)
+        with validate_col:
+            if st.button("Validate Editor Payload", use_container_width=True):
+                try:
+                    ProjectConfig.model_validate(payload)
+                    st.success("Editor payload is valid.")
+                except Exception as exc:
+                    st.error(str(exc))
+        with save_col:
+            if st.button("Save Config File", type="primary", use_container_width=True):
+                try:
+                    validated = _write_editor_payload(cfg_path, payload)
+                    st.session_state[editor_payload_key] = validated.model_dump(
+                        mode="json",
+                        by_alias=True,
+                    )
+                    st.success(f"Config saved: {cfg_path}")
+                except Exception as exc:
+                    st.error(str(exc))
+
+
 def _run_benchmark_with_optional_override(
     suite: str,
     output_dir: Path,
     opensees_executable: str,
+    require_backend_version_regex: str,
+    require_backend_sha256: str,
 ) -> dict[str, Any]:
     env_key = "DSRA1D_OPENSEES_EXE_OVERRIDE"
     old_value = os.environ.get(env_key)
@@ -125,7 +480,12 @@ def _run_benchmark_with_optional_override(
         exe = opensees_executable.strip()
         if exe:
             os.environ[env_key] = exe
-        return run_benchmark_suite(suite=suite, output_dir=output_dir)
+        return run_benchmark_suite(
+            suite=suite,
+            output_dir=output_dir,
+            require_backend_version_regex=require_backend_version_regex.strip() or None,
+            require_backend_sha256=require_backend_sha256.strip().lower() or None,
+        )
     finally:
         if opensees_executable.strip():
             if old_value is None:
@@ -224,6 +584,8 @@ def _run_campaign_bundle(
     campaign_dir: Path,
     *,
     opensees_executable: str,
+    require_backend_version_regex: str,
+    require_backend_sha256: str,
     verify_require_runs: int,
     require_opensees: bool,
     min_execution_coverage: float,
@@ -233,12 +595,16 @@ def _run_campaign_bundle(
         suite=suite,
         output_dir=campaign_dir,
         opensees_executable=opensees_executable,
+        require_backend_version_regex=require_backend_version_regex,
+        require_backend_sha256=require_backend_sha256,
     )
     benchmark_report["policy"] = {
         "fail_on_skip": False,
         "require_runs": 0,
         "require_opensees": require_opensees,
         "min_execution_coverage": min_execution_coverage,
+        "require_backend_version_regex": require_backend_version_regex,
+        "require_backend_sha256": require_backend_sha256.strip().lower(),
     }
     backend_ready = bool(benchmark_report.get("backend_ready", True))
     skipped_backend_raw = benchmark_report.get("skipped_backend", 0)
@@ -313,11 +679,21 @@ def _make_acc_plot(time: np.ndarray, acc: np.ndarray) -> go.Figure:
 
 
 def _make_spectra_plot(periods: np.ndarray, psa: np.ndarray) -> go.Figure:
+    p = np.asarray(periods, dtype=np.float64)
+    s = np.asarray(psa, dtype=np.float64)
+    mask = np.isfinite(p) & np.isfinite(s) & (p > 0.0)
+    p = p[mask]
+    s = np.maximum(s[mask], 0.0)
+    if p.size > 1:
+        order = np.argsort(p)
+        p = p[order]
+        s = s[order]
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=periods,
-            y=psa,
+            x=p,
+            y=s,
             mode="lines",
             line={"width": 1.8, "color": "#2d6a6a"},
             name="PSA",
@@ -331,15 +707,29 @@ def _make_spectra_plot(periods: np.ndarray, psa: np.ndarray) -> go.Figure:
         height=340,
         margin={"l": 30, "r": 20, "t": 55, "b": 35},
     )
+    fig.update_xaxes(type="log")
+    if s.size > 0:
+        y_max = float(np.max(s))
+        fig.update_yaxes(range=[0.0, max(1.0e-4, y_max * 1.1)])
     return fig
 
 
 def _make_transfer_plot(freq_hz: np.ndarray, transfer_abs: np.ndarray) -> go.Figure:
+    f = np.asarray(freq_hz, dtype=np.float64)
+    h = np.asarray(transfer_abs, dtype=np.float64)
+    mask = np.isfinite(f) & np.isfinite(h) & (f > 0.0)
+    f = f[mask]
+    h = np.maximum(h[mask], 0.0)
+    if f.size > 1:
+        order = np.argsort(f)
+        f = f[order]
+        h = h[order]
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=freq_hz,
-            y=transfer_abs,
+            x=f,
+            y=h,
             mode="lines",
             line={"width": 1.8, "color": "#4b3f72"},
             name="|H(f)|",
@@ -353,7 +743,29 @@ def _make_transfer_plot(freq_hz: np.ndarray, transfer_abs: np.ndarray) -> go.Fig
         height=340,
         margin={"l": 30, "r": 20, "t": 55, "b": 35},
     )
-    fig.update_xaxes(range=[0.0, float(np.max(freq_hz)) if freq_hz.size > 0 else 1.0])
+    if f.size > 0:
+        f_max = float(np.max(f))
+        x_max = min(25.0, f_max)
+        fig.update_xaxes(range=[0.0, max(0.5, x_max)])
+        h_max = float(np.max(h))
+        fig.update_yaxes(range=[0.0, max(0.1, h_max * 1.1)])
+        h_mean = float(np.mean(h))
+        h_std = float(np.std(h))
+        if h_mean > 0.0 and (h_std / h_mean) < 0.02:
+            fig.add_annotation(
+                xref="paper",
+                yref="paper",
+                x=0.99,
+                y=0.98,
+                text="Near-flat |H(f)| (possible mock/scaled output)",
+                showarrow=False,
+                font={"size": 11, "color": "#7a5d00"},
+                bgcolor="rgba(255, 245, 205, 0.9)",
+                bordercolor="rgba(122, 93, 0, 0.35)",
+                borderwidth=1,
+            )
+    else:
+        fig.update_xaxes(range=[0.0, 1.0])
     return fig
 
 
@@ -567,17 +979,40 @@ def _render_run_outputs(run_dir: Path) -> None:
 
     with h5py.File(h5_path, "r") as h5:
         mesh_dz = np.array(h5["/mesh/dz"], dtype=np.float64) if "/mesh/dz" in h5 else np.array([])
+    run_meta_path = run_dir / "run_meta.json"
+    run_meta: dict[str, Any] = {}
+    if run_meta_path.exists():
+        try:
+            run_meta = json.loads(run_meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            run_meta = {}
 
     time = rs.time
     acc = rs.acc_surface
-    periods = rs.spectra_periods
-    psa = rs.spectra_psa
+    if time.size > 1:
+        dt_s = float(np.median(np.diff(time)))
+    else:
+        dt_s = 1.0
+    if np.isfinite(dt_s) and dt_s > 0.0 and acc.size > 1:
+        live_spectra = compute_spectra(
+            np.asarray(acc, dtype=np.float64),
+            dt=dt_s,
+            damping=0.05,
+        )
+        periods = live_spectra.periods
+        psa = live_spectra.psa
+    else:
+        periods = rs.spectra_periods
+        psa = rs.spectra_psa
     transfer_freq_hz = rs.transfer_freq_hz
     transfer_abs = rs.transfer_abs
     ru_time = rs.ru_time
     ru = rs.ru
     delta_u = rs.delta_u
     sigma_v_eff = rs.sigma_v_eff
+    solver_backend = str(run_meta.get("solver_backend", "unknown")).strip() or "unknown"
+    run_status = str(run_meta.get("status", "unknown")).strip() or "unknown"
+    run_message = str(run_meta.get("message", "")).strip()
 
     metrics = _load_metrics(sqlite_path)
     delta_u_max_default = float(np.max(delta_u)) if delta_u.size > 0 else float("nan")
@@ -600,6 +1035,18 @@ def _render_run_outputs(run_dir: Path) -> None:
         "sigma_v_eff_min",
         f"{metrics.get('sigma_v_eff_min', sigma_v_eff_min_default):.5f}",
     )
+    if run_status != "ok":
+        st.error(
+            f"Run status: {run_status} | backend: {solver_backend}. "
+            f"{run_message or 'Pipeline fallback may have produced proxy outputs.'}"
+        )
+    elif solver_backend == "mock":
+        st.warning(
+            "This run used the `mock` backend. PSA/transfer curves are proxy-level and "
+            "not physical OpenSees effective-stress results."
+        )
+    else:
+        st.caption(f"Backend: `{solver_backend}` | Status: `{run_status}`")
 
     pcol1, pcol2 = st.columns(2)
     with pcol1:
@@ -617,6 +1064,73 @@ def _render_run_outputs(run_dir: Path) -> None:
     with pcol4:
         st.plotly_chart(
             _make_effective_stress_plot(ru_time, delta_u, sigma_v_eff),
+            use_container_width=True,
+        )
+
+    st.markdown("#### Export")
+    surface_out_path = run_dir / "surface_acc.out"
+    surface_csv_lines = ["time_s,acc_m_s2,delta_t_s"]
+    if time.size == acc.size and time.size > 0:
+        for t, a in zip(time, acc, strict=False):
+            surface_csv_lines.append(f"{float(t):.8f},{float(a):.10e},{dt_s:.8e}")
+    else:
+        for idx, a in enumerate(acc):
+            surface_csv_lines.append(
+                f"{float(idx):.8f},{float(a):.10e},{dt_s:.8e}"
+            )
+    surface_csv = "\n".join(surface_csv_lines)
+
+    n_pwp = int(min(ru_time.size, ru.size))
+    pwp_csv_lines = ["time_s,ru,delta_u,sigma_v_eff,delta_t_s"]
+    if n_pwp > 0:
+        dt_ru = float(np.median(np.diff(ru_time))) if ru_time.size > 1 else dt_s
+        for i in range(n_pwp):
+            t = float(ru_time[i])
+            ru_i = float(ru[i]) if i < ru.size else float("nan")
+            du_i = float(delta_u[i]) if i < delta_u.size else float("nan")
+            sig_i = float(sigma_v_eff[i]) if i < sigma_v_eff.size else float("nan")
+            pwp_csv_lines.append(f"{t:.8f},{ru_i:.10e},{du_i:.10e},{sig_i:.10e},{dt_ru:.8e}")
+    pwp_csv = "\n".join(pwp_csv_lines)
+
+    ex1, ex2, ex3, ex4 = st.columns(4)
+    with ex1:
+        st.download_button(
+            "Download surface_acc.csv",
+            data=surface_csv,
+            file_name=f"{run_dir.name}_surface_acc.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with ex2:
+        if surface_out_path.exists():
+            st.download_button(
+                "Download surface_acc.out",
+                data=surface_out_path.read_bytes(),
+                file_name=f"{run_dir.name}_surface_acc.out",
+                mime="text/plain",
+                use_container_width=True,
+            )
+        else:
+            st.button(
+                "surface_acc.out missing",
+                disabled=True,
+                use_container_width=True,
+                key=f"{run_dir.name}_surface_out_missing",
+            )
+    with ex3:
+        st.download_button(
+            "Download results.h5",
+            data=h5_path.read_bytes(),
+            file_name=f"{run_dir.name}_results.h5",
+            mime="application/x-hdf5",
+            use_container_width=True,
+        )
+    with ex4:
+        st.download_button(
+            "Download pwp_effective.csv",
+            data=pwp_csv,
+            file_name=f"{run_dir.name}_pwp_effective.csv",
+            mime="text/csv",
             use_container_width=True,
         )
 
@@ -653,6 +1167,7 @@ def main() -> None:
           <p>Run effective-stress and MKZ/GQH prototyping workflows from one control panel.</p>
           <span class="chip">Validate</span>
           <span class="chip">Run</span>
+          <span class="chip">Quickstart</span>
           <span class="chip">Benchmark</span>
           <span class="chip">Report</span>
         </div>
@@ -663,6 +1178,10 @@ def main() -> None:
     st.sidebar.header("Run Control")
     if "cfg_path" not in st.session_state:
         st.session_state["cfg_path"] = str(default_cfg)
+    if "motion_path" not in st.session_state:
+        st.session_state["motion_path"] = str(default_motion)
+    if "out_dir" not in st.session_state:
+        st.session_state["out_dir"] = str(default_out)
     preset = st.sidebar.selectbox(
         "Config Preset",
         options=list(config_presets.keys()),
@@ -671,9 +1190,59 @@ def main() -> None:
     if st.sidebar.button("Apply Preset Config", use_container_width=True):
         st.session_state["cfg_path"] = str(config_presets[preset])
         st.rerun()
-    cfg_path = Path(st.sidebar.text_input("Config Path", key="cfg_path"))
-    motion_path = Path(st.sidebar.text_input("Motion Path", str(default_motion)))
-    out_dir = Path(st.sidebar.text_input("Output Directory", str(default_out)))
+    cfg_path = Path(
+        st.sidebar.text_input(
+            "Config Path",
+            key="cfg_path",
+            autocomplete="off",
+        )
+    )
+    motion_path = Path(
+        st.sidebar.text_input(
+            "Motion Path",
+            key="motion_path",
+            autocomplete="off",
+        )
+    )
+    out_dir = Path(
+        st.sidebar.text_input(
+            "Output Directory",
+            key="out_dir",
+            autocomplete="off",
+        )
+    )
+    template_map = {
+        "effective-stress": "effective-stress",
+        "effective-stress-strict-plus": "effective-stress-strict-plus",
+        "mkz-gqh-mock": "mkz-gqh-mock",
+        "mkz-gqh-eql": "mkz-gqh-eql",
+        "mkz-gqh-nonlinear": "mkz-gqh-nonlinear",
+    }
+    with st.sidebar.expander("Project Setup", expanded=False):
+        bootstrap_dir = Path(
+            st.text_input(
+                "Starter Folder",
+                str(out_dir / "starter"),
+                autocomplete="off",
+            )
+        )
+        if st.button("Create Starter Case", use_container_width=True):
+            try:
+                bootstrap_dir.mkdir(parents=True, exist_ok=True)
+                template_name = template_map[preset]
+                starter_cfg = write_config_template(
+                    bootstrap_dir / "config.yml",
+                    template=template_name,
+                )
+                starter_motion = bootstrap_dir / "motion.csv"
+                shutil.copy2(default_motion, starter_motion)
+                st.session_state["cfg_path"] = str(starter_cfg)
+                st.session_state["motion_path"] = str(starter_motion)
+                st.session_state["out_dir"] = str(bootstrap_dir / "runs")
+                st.success(f"Starter case ready: {bootstrap_dir}")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
     out_dir.mkdir(parents=True, exist_ok=True)
     run_dirs = _find_run_dirs(out_dir)
 
@@ -686,6 +1255,7 @@ def main() -> None:
     opensees_executable = st.sidebar.text_input(
         "OpenSees Executable (optional)",
         "",
+        autocomplete="off",
     )
     run_backend_mode = st.sidebar.selectbox(
         "Run Backend Mode",
@@ -695,6 +1265,17 @@ def main() -> None:
     run_opensees_executable = st.sidebar.text_input(
         "Run OpenSees Executable (optional)",
         "",
+        autocomplete="off",
+    )
+    require_backend_version_regex = st.sidebar.text_input(
+        "Backend Version Regex (optional)",
+        "",
+        autocomplete="off",
+    )
+    require_backend_sha256 = st.sidebar.text_input(
+        "Backend SHA256 (optional)",
+        "",
+        autocomplete="off",
     )
     require_opensees = st.sidebar.checkbox(
         "Require OpenSees (parity)",
@@ -714,10 +1295,44 @@ def main() -> None:
         st.sidebar.number_input(
             "Verify Require Runs",
             min_value=1,
-            value=3 if campaign_suite == "core-es" else 1,
+            value=(
+                6
+                if campaign_suite == "opensees-parity"
+                else (3 if campaign_suite == "core-es" else 1)
+            ),
             step=1,
         )
     )
+    with st.sidebar.expander("Backend Health", expanded=False):
+        probe_target = (
+            run_opensees_executable.strip()
+            or opensees_executable.strip()
+            or "OpenSees"
+        )
+        if st.button("Check OpenSees Backend", use_container_width=True):
+            probe = probe_opensees_executable(probe_target)
+            errors = validate_backend_probe_requirements(
+                probe,
+                require_version_regex=require_backend_version_regex.strip() or None,
+                require_binary_sha256=require_backend_sha256.strip().lower() or None,
+            )
+            if probe.available and not errors:
+                st.success("Backend check passed.")
+            else:
+                st.error("Backend check failed.")
+            st.code(
+                json.dumps(
+                    {
+                        "target": probe_target,
+                        "available": probe.available,
+                        "resolved": str(probe.resolved) if probe.resolved else "",
+                        "version": probe.version,
+                        "binary_sha256": probe.binary_sha256,
+                        "errors": errors,
+                    },
+                    indent=2,
+                )
+            )
     campaign_root = out_dir / "campaign" / campaign_suite
 
     run_dir_raw = st.session_state.get("run_dir")
@@ -742,7 +1357,10 @@ def main() -> None:
         run_dir = out_dir / selected_name
         st.session_state["run_dir"] = str(run_dir)
 
-    act1, act2, act3, act4, act5, act6 = st.columns(6)
+    _render_quick_status(cfg_path=cfg_path, motion_path=motion_path, out_dir=out_dir)
+    _render_visual_config_editor(cfg_path)
+
+    act1, act2, act3, act4, act5, act6, act7 = st.columns(7)
 
     if act1.button("Validate Config", use_container_width=True):
         try:
@@ -778,6 +1396,8 @@ def main() -> None:
                 suite=campaign_suite,
                 campaign_dir=campaign_root,
                 opensees_executable=opensees_executable,
+                require_backend_version_regex=require_backend_version_regex,
+                require_backend_sha256=require_backend_sha256,
                 verify_require_runs=verify_require_runs,
                 require_opensees=require_opensees,
                 min_execution_coverage=min_execution_coverage,
@@ -788,12 +1408,16 @@ def main() -> None:
                 st.markdown(render_summary_markdown(summary))
             benchmark_meta = summary.get("benchmark")
             if isinstance(benchmark_meta, dict):
-                m1, m2, m3 = st.columns(3)
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Backend Ready", str(benchmark_meta.get("backend_ready", "")))
                 m2.metric("Skipped Backend", int(benchmark_meta.get("skipped_backend", 0)))
                 m3.metric(
                     "Exec Coverage",
                     f"{float(benchmark_meta.get('execution_coverage', 0.0)):.3f}",
+                )
+                m4.metric(
+                    "Fingerprint OK",
+                    str(benchmark_meta.get("backend_fingerprint_ok", "")),
                 )
                 missing_cases = benchmark_meta.get("backend_missing_cases", [])
                 if isinstance(missing_cases, list) and missing_cases:
@@ -844,6 +1468,38 @@ def main() -> None:
             st.session_state["tcl_path"] = str(tcl_path)
             st.session_state["tcl_motion_path"] = str(motion_out)
             st.success(f"Tcl generated: {tcl_path}")
+        except Exception as exc:
+            st.error(str(exc))
+
+    if act7.button("Quickstart", use_container_width=True):
+        try:
+            cfg = load_project_config(cfg_path)
+            cfg, backend_note = _apply_runtime_backend(
+                cfg,
+                backend_mode=run_backend_mode,
+                opensees_executable=run_opensees_executable,
+            )
+            dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+            motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
+            result = run_analysis(cfg, motion, output_dir=out_dir)
+            st.session_state["run_dir"] = str(result.output_dir)
+            run_dir = result.output_dir
+            verify = verify_run(result.output_dir)
+            rs = load_result(result.output_dir)
+            written = write_report(rs, out_dir=result.output_dir, formats=["html"])
+            if result.status != "ok":
+                st.error(result.message)
+            else:
+                st.caption(f"Backend: {backend_note}")
+                st.success(f"Quickstart completed: {result.output_dir}")
+                st.info(
+                    " | ".join(
+                        [
+                            f"verify_ok={verify.ok}",
+                            f"report={', '.join(str(p.name) for p in written)}",
+                        ]
+                    )
+                )
         except Exception as exc:
             st.error(str(exc))
 

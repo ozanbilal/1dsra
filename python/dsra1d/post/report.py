@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
+from dsra1d.post.spectra import compute_spectra
 from dsra1d.store.result_store import ResultStore
 
 
@@ -31,8 +32,14 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    periods = result.spectra_periods
-    psa = result.spectra_psa
+    if result.time.size > 1 and result.acc_surface.size > 1:
+        dt_s = float(np.median(np.diff(result.time)))
+        live = compute_spectra(result.acc_surface, dt=dt_s, damping=0.05)
+        periods = live.periods
+        psa = live.psa
+    else:
+        periods = result.spectra_periods
+        psa = result.spectra_psa
     pga = _safe_max_abs(result.acc_surface)
     ru_max = _safe_max(result.ru)
     delta_u_max = _safe_max(result.delta_u)

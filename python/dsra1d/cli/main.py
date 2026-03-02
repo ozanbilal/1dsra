@@ -20,6 +20,7 @@ from dsra1d.interop.opensees import (
     probe_opensees_executable,
     render_tcl,
     resolve_opensees_executable,
+    validate_backend_probe_requirements,
     validate_tcl_script,
 )
 from dsra1d.motion import load_motion, preprocess_motion
@@ -223,13 +224,20 @@ def _run_benchmark_with_optional_override(
     suite: str,
     out: Path,
     opensees_executable: str | None,
+    require_backend_version_regex: str | None,
+    require_backend_sha256: str | None,
 ) -> dict[str, object]:
     env_key = "DSRA1D_OPENSEES_EXE_OVERRIDE"
     old_value = os.environ.get(env_key)
     try:
         if opensees_executable:
             os.environ[env_key] = opensees_executable
-        return run_benchmark_suite(suite=suite, output_dir=out)
+        return run_benchmark_suite(
+            suite=suite,
+            output_dir=out,
+            require_backend_version_regex=require_backend_version_regex,
+            require_backend_sha256=require_backend_sha256,
+        )
     finally:
         if opensees_executable:
             if old_value is None:
@@ -273,6 +281,8 @@ def _annotate_benchmark_policy(
     require_opensees: bool,
     min_execution_coverage: float,
     require_explicit_checks: bool,
+    require_backend_version_regex: str | None,
+    require_backend_sha256: str | None,
 ) -> None:
     report["policy"] = {
         "fail_on_skip": fail_on_skip,
@@ -280,6 +290,8 @@ def _annotate_benchmark_policy(
         "require_opensees": require_opensees,
         "min_execution_coverage": min_execution_coverage,
         "require_explicit_checks": require_explicit_checks,
+        "require_backend_version_regex": require_backend_version_regex or "",
+        "require_backend_sha256": (require_backend_sha256 or "").lower(),
     }
 
 
@@ -456,10 +468,28 @@ def init_config(
 def validate(
     config: Path = typer.Option(..., "--config"),
     check_backend: bool = typer.Option(False, "--check-backend"),
+    require_backend_version_regex: str | None = typer.Option(
+        None,
+        "--require-backend-version-regex",
+    ),
+    require_backend_sha256: str | None = typer.Option(
+        None,
+        "--require-backend-sha256",
+    ),
 ) -> None:
     cfg = load_project_config(config)
     cfg = _apply_opensees_env_override(cfg)
     if check_backend and cfg.analysis.solver_backend == "opensees":
+        effective_version_regex = (
+            require_backend_version_regex
+            if require_backend_version_regex is not None
+            else cfg.opensees.require_version_regex
+        )
+        effective_sha = (
+            require_backend_sha256
+            if require_backend_sha256 is not None
+            else cfg.opensees.require_binary_sha256
+        )
         probe = probe_opensees_executable(
             cfg.opensees.executable,
             extra_args=cfg.opensees.extra_args,
@@ -478,10 +508,21 @@ def validate(
             if probe.stderr.strip():
                 print(f"[red]Probe stderr:[/red] {probe.stderr.strip()}")
             raise typer.Exit(code=5)
+        requirement_errors = validate_backend_probe_requirements(
+            probe,
+            require_version_regex=effective_version_regex,
+            require_binary_sha256=effective_sha,
+        )
+        if requirement_errors:
+            print("[red]OpenSees backend requirement check failed:[/red]")
+            for err in requirement_errors:
+                print(f"- {err}")
+            raise typer.Exit(code=5)
         print(f"[green]OpenSees executable[/green]: {probe.resolved}")
         if cfg.opensees.extra_args:
             print(f"[cyan]OpenSees extra args[/cyan]: {cfg.opensees.extra_args}")
         print(f"[cyan]OpenSees version probe[/cyan]: {probe.version}")
+        print(f"[cyan]OpenSees binary sha256[/cyan]: {probe.binary_sha256}")
     print(f"[green]Valid config[/green]: {cfg.project_name}")
 
 
@@ -639,10 +680,24 @@ def benchmark(
     min_execution_coverage: float = typer.Option(0.0, "--min-execution-coverage"),
     require_explicit_checks: bool = typer.Option(False, "--require-explicit-checks"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
+    require_backend_version_regex: str | None = typer.Option(
+        None,
+        "--require-backend-version-regex",
+    ),
+    require_backend_sha256: str | None = typer.Option(
+        None,
+        "--require-backend-sha256",
+    ),
 ) -> None:
     if not (0.0 <= min_execution_coverage <= 1.0):
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
-    report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
+    report = _run_benchmark_with_optional_override(
+        suite,
+        out,
+        opensees_executable,
+        require_backend_version_regex,
+        require_backend_sha256,
+    )
     _annotate_benchmark_policy(
         report,
         fail_on_skip=fail_on_skip,
@@ -650,6 +705,8 @@ def benchmark(
         require_opensees=require_opensees,
         min_execution_coverage=min_execution_coverage,
         require_explicit_checks=require_explicit_checks,
+        require_backend_version_regex=require_backend_version_regex,
+        require_backend_sha256=require_backend_sha256,
     )
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -690,11 +747,25 @@ def campaign(
     tolerance: float = typer.Option(1.0e-8, "--tolerance"),
     require_checksums: bool = typer.Option(True, "--require-checksums/--allow-missing-checksums"),
     opensees_executable: str | None = typer.Option(None, "--opensees-executable"),
+    require_backend_version_regex: str | None = typer.Option(
+        None,
+        "--require-backend-version-regex",
+    ),
+    require_backend_sha256: str | None = typer.Option(
+        None,
+        "--require-backend-sha256",
+    ),
 ) -> None:
     if not (0.0 <= min_execution_coverage <= 1.0):
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
     out.mkdir(parents=True, exist_ok=True)
-    report = _run_benchmark_with_optional_override(suite, out, opensees_executable)
+    report = _run_benchmark_with_optional_override(
+        suite,
+        out,
+        opensees_executable,
+        require_backend_version_regex,
+        require_backend_sha256,
+    )
     _annotate_benchmark_policy(
         report,
         fail_on_skip=fail_on_skip,
@@ -702,6 +773,8 @@ def campaign(
         require_opensees=require_opensees,
         min_execution_coverage=min_execution_coverage,
         require_explicit_checks=require_explicit_checks,
+        require_backend_version_regex=require_backend_version_regex,
+        require_backend_sha256=require_backend_sha256,
     )
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -872,12 +945,30 @@ def dt_check(
     rs_base = load_result(res_base.output_dir)
     rs_half = load_result(res_half.output_dir)
 
-    if rs_base.spectra_psa.shape != rs_half.spectra_psa.shape:
+    if (
+        rs_base.spectra_psa.shape != rs_half.spectra_psa.shape
+        or rs_base.spectra_periods.shape != rs_half.spectra_periods.shape
+    ):
         print("[red]dt-check failed:[/red] spectra shape mismatch")
         raise typer.Exit(code=8)
+    if not np.allclose(
+        rs_base.spectra_periods,
+        rs_half.spectra_periods,
+        rtol=1.0e-10,
+        atol=1.0e-12,
+    ):
+        print("[red]dt-check failed:[/red] period grid mismatch")
+        raise typer.Exit(code=8)
 
-    denom = np.maximum(np.abs(rs_half.spectra_psa), 1.0e-10)
-    rel = np.abs(rs_base.spectra_psa - rs_half.spectra_psa) / denom
+    min_period = 10.0 * dt_base
+    mask = rs_base.spectra_periods >= min_period
+    if not np.any(mask):
+        mask = np.ones_like(rs_base.spectra_periods, dtype=bool)
+
+    base_sel = rs_base.spectra_psa[mask]
+    half_sel = rs_half.spectra_psa[mask]
+    denom = np.maximum(np.abs(half_sel), 1.0e-10)
+    rel = np.abs(base_sel - half_sel) / denom
     max_rel = float(np.max(rel))
     mean_rel = float(np.mean(rel))
 
@@ -886,6 +977,8 @@ def dt_check(
         "dt_half": cfg_half.analysis.dt,
         "max_relative_psa_diff": max_rel,
         "mean_relative_psa_diff": mean_rel,
+        "min_period_used_s": float(np.min(rs_base.spectra_periods[mask])),
+        "points_used": int(base_sel.size),
         "threshold": threshold,
         "base_status": res_base.status,
         "half_status": res_half.status,
@@ -982,6 +1075,37 @@ def ui(
         "--server.headless",
         str(headless).lower(),
     ]
+    raise typer.Exit(code=subprocess.call(cmd))
+
+
+@app.command("web")
+def web(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8010, "--port"),
+    reload: bool = typer.Option(False, "--reload"),
+) -> None:
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
+    except ImportError as exc:
+        print(
+            "[red]FastAPI/uvicorn is not installed.[/red] "
+            "Install with: [bold]pip install -e .[web][/bold]"
+        )
+        raise typer.Exit(code=4) from exc
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "dsra1d.web.app:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        cmd.append("--reload")
     raise typer.Exit(code=subprocess.call(cmd))
 
 

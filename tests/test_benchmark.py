@@ -51,13 +51,14 @@ def test_benchmark_core_es_passes(tmp_path: Path) -> None:
 def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
     report = run_benchmark_suite("opensees-parity", tmp_path)
     assert report["all_passed"] is True
-    assert int(report["skipped"]) >= 3
-    assert int(report["skipped_backend"]) >= 3
+    assert int(report["skipped"]) >= 6
+    assert int(report["skipped_backend"]) >= 6
     assert report["backend_ready"] is False
+    assert report["backend_fingerprint_ok"] is False
     assert int(report["ran"]) >= 0
     cases = report["cases"]
     assert isinstance(cases, list)
-    assert len(cases) >= 3
+    assert len(cases) >= 6
     assert any(isinstance(c, dict) and c.get("status") == "skipped" for c in cases)
     assert any(
         isinstance(c, dict) and c.get("skip_kind") == "missing_opensees"
@@ -65,11 +66,12 @@ def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
     )
     backend_missing = report["backend_missing_cases"]
     assert isinstance(backend_missing, list)
-    assert len(backend_missing) >= 3
+    assert len(backend_missing) >= 6
     backend_probe = report.get("backend_probe")
     assert isinstance(backend_probe, dict)
     assert "available" in backend_probe
     assert "version" in backend_probe
+    assert "binary_sha256" in backend_probe
 
 
 def test_benchmark_opensees_uses_executable_override_env(
@@ -99,6 +101,7 @@ def test_benchmark_opensees_parity_skips_on_probe_failure(
         resolved = Path("/usr/bin/opensees")
         version = "probe failed"
         command = ("/usr/bin/opensees", "-version")
+        binary_sha256 = "0" * 64
 
     monkeypatch.setattr(
         benchmark_mod,
@@ -113,11 +116,56 @@ def test_benchmark_opensees_parity_skips_on_probe_failure(
     report = benchmark_mod.run_benchmark_suite("opensees-parity", tmp_path)
     assert report["all_passed"] is True
     assert int(report["ran"]) == 0
-    assert int(report["skipped_backend"]) >= 3
+    assert int(report["skipped_backend"]) >= 6
     assert report["backend_ready"] is False
+    assert report["backend_fingerprint_ok"] is False
     cases = report["cases"]
     assert isinstance(cases, list)
     assert all(isinstance(c, dict) and c.get("skip_kind") == "probe_failed" for c in cases)
+
+
+def test_benchmark_opensees_parity_fingerprint_requirement_applied(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class _Probe:
+        available = True
+        resolved = Path("/usr/bin/opensees")
+        version = "OpenSees 3.7.0"
+        command = ("/usr/bin/opensees", "-version")
+        binary_sha256 = "a" * 64
+
+    monkeypatch.setattr(
+        benchmark_mod,
+        "probe_opensees_executable",
+        lambda *_args, **_kwargs: _Probe(),
+    )
+    monkeypatch.setattr(
+        benchmark_mod,
+        "resolve_opensees_executable",
+        lambda _exe: Path("/usr/bin/opensees"),
+    )
+    report = benchmark_mod.run_benchmark_suite(
+        "opensees-parity",
+        tmp_path,
+        require_backend_version_regex=r"OpenSees\\s+3\\.8",
+        require_backend_sha256="b" * 64,
+    )
+    assert report["all_passed"] is True
+    assert report["backend_ready"] is False
+    assert report["backend_fingerprint_ok"] is False
+    assert int(report["ran"]) == 0
+    cases = report["cases"]
+    assert isinstance(cases, list)
+    assert all(isinstance(c, dict) and c.get("skip_kind") == "probe_failed" for c in cases)
+    backend_probe = report.get("backend_probe")
+    assert isinstance(backend_probe, dict)
+    req = backend_probe.get("requirements")
+    assert isinstance(req, dict)
+    assert req.get("ok") is False
+    errors = req.get("errors")
+    assert isinstance(errors, list)
+    assert len(errors) >= 1
 
 
 def test_benchmark_core_hyst_passes(tmp_path: Path) -> None:

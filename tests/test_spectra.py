@@ -9,6 +9,25 @@ def test_compute_spectra_shape() -> None:
     assert spec.periods.size == 80
 
 
+def test_compute_spectra_zero_input_is_zero() -> None:
+    signal = np.zeros(1200, dtype=np.float64)
+    spec = compute_spectra(signal, dt=0.005, damping=0.05)
+    assert np.allclose(spec.psa, 0.0)
+
+
+def test_compute_spectra_harmonic_peak_near_input_period() -> None:
+    dt = 0.002
+    t = np.arange(0.0, 40.0, dt)
+    f_in = 2.0
+    signal = np.sin(2.0 * np.pi * f_in * t)
+    periods = np.linspace(0.2, 0.8, 121)
+    spec = compute_spectra(signal, dt=dt, damping=0.05, periods=periods)
+    idx_peak = int(np.argmax(spec.psa))
+    t_peak = float(spec.periods[idx_peak])
+    assert abs(t_peak - (1.0 / f_in)) < 0.08
+    assert float(spec.psa[idx_peak]) > 4.0
+
+
 def test_compute_transfer_function_shape_and_finite() -> None:
     dt = 0.01
     t = np.arange(0.0, 5.0, dt)

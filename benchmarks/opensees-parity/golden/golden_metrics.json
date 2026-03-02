@@ -1,18 +1,90 @@
 {
   "parity01": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
     },
     "deterministic": true,
     "dt_sensitivity": {
-      "threshold": 5.0
+      "threshold": 6.0
     }
   },
   "parity02": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -20,9 +92,183 @@
     }
   },
   "parity03": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
     "constraints": {
       "ru_min": 0.0,
-      "ru_max": 1.0
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 6.0
+    }
+  },
+  "parity04": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 6.0
+    }
+  },
+  "parity05": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
+    },
+    "deterministic": true,
+    "dt_sensitivity": {
+      "threshold": 6.0
+    }
+  },
+  "parity06": {
+    "checks": {
+      "pga": {
+        "expected": 0.0,
+        "abs_tol": 1000.0,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 2.0,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 0.0,
+        "abs_tol": 1000000.0,
+        "rel_tol": 0.0
+      }
+    },
+    "constraints": {
+      "ru_min": 0.0,
+      "ru_max": 1.0,
+      "delta_u_min": -1000000.0,
+      "sigma_v_eff_min": -1000000.0,
+      "pga_min": 0.0,
+      "pga_max": 1000.0
     },
     "deterministic": true,
     "dt_sensitivity": {

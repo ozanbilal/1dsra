@@ -1,0 +1,60 @@
+project_name: parity-opensees-04
+seed: 1004
+profile:
+  layers:
+    - name: SurfaceSilt
+      thickness_m: 4.0
+      unit_weight_kN_m3: 18.7
+      vs_m_s: 155.0
+      material: pm4silt
+      material_params:
+        Su: 30.0
+        Su_Rat: 0.20
+        G_o: 470.0
+        h_po: 0.55
+    - name: MidSand
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.9
+      vs_m_s: 210.0
+      material: pm4sand
+      material_params:
+        Dr: 0.38
+        G0: 560.0
+        hpo: 0.48
+    - name: BaseSilt
+      thickness_m: 10.0
+      unit_weight_kN_m3: 19.6
+      vs_m_s: 320.0
+      material: pm4silt
+      material_params:
+        Su: 55.0
+        Su_Rat: 0.28
+        G_o: 700.0
+        h_po: 0.72
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.004
+  f_max: 30.0
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+  timeout_s: 120
+  retries: 0
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: scale_by
+  scale_factor: 1.15
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []
+  column_width_m: 1.5
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 0.000009
+  v_perm: 0.000011
+  gravity_steps: 30

@@ -45,6 +45,7 @@ def _layer_map(
 def write_hdf5(
     path: Path,
     time: np.ndarray,
+    dt_s: float,
     acc_surface: np.ndarray,
     ru_time: np.ndarray,
     ru: np.ndarray,
@@ -63,6 +64,8 @@ def write_hdf5(
 ) -> Path:
     with h5py.File(path, "w") as h5:
         h5.create_dataset("/time", data=time)
+        meta = h5.create_group("/meta")
+        meta.create_dataset("delta_t_s", data=np.array([dt_s], dtype=np.float64))
         depth = np.array([0.0], dtype=np.float64)
         h5.create_dataset("/depth", data=depth)
 

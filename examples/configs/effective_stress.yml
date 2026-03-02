@@ -27,7 +27,7 @@ boundary_condition: elastic_halfspace
 analysis:
   dt: 0.005
   f_max: 25.0
-  solver_backend: mock
+  solver_backend: opensees
   pm4_validation_profile: basic
   timeout_s: 120
   retries: 1

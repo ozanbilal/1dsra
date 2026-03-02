@@ -11,7 +11,11 @@ import h5py
 import numpy as np
 
 from dsra1d.config import ProjectConfig, load_project_config
-from dsra1d.interop.opensees import probe_opensees_executable, resolve_opensees_executable
+from dsra1d.interop.opensees import (
+    probe_opensees_executable,
+    resolve_opensees_executable,
+    validate_backend_probe_requirements,
+)
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
@@ -65,9 +69,11 @@ def _load_case_outputs(hdf5_path: Path) -> dict[str, np.ndarray]:
     }
 
 
-def _load_psa(hdf5_path: Path) -> np.ndarray:
+def _load_spectra(hdf5_path: Path) -> tuple[np.ndarray, np.ndarray]:
     with h5py.File(hdf5_path, "r") as h5:
-        return np.array(h5["/spectra/psa"], dtype=np.float64)
+        periods = np.array(h5["/spectra/periods"], dtype=np.float64)
+        psa = np.array(h5["/spectra/psa"], dtype=np.float64)
+    return periods, psa
 
 
 def _result_signature(series: dict[str, np.ndarray]) -> str:
@@ -238,15 +244,15 @@ def _evaluate_dt_sensitivity(
     base_hdf5_path: Path,
     threshold: float,
 ) -> dict[str, float | bool | str]:
-    base_psa = _load_psa(base_hdf5_path)
+    base_periods, base_psa = _load_spectra(base_hdf5_path)
     cfg_half = cfg.model_copy(deep=True)
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     cfg_half.analysis.dt = dt / 2.0
 
     half_run, _ = _run_case(cfg_half, motion_path, output_dir)
-    half_psa = _load_psa(half_run.hdf5_path)
+    half_periods, half_psa = _load_spectra(half_run.hdf5_path)
 
-    if base_psa.shape != half_psa.shape:
+    if base_psa.shape != half_psa.shape or base_periods.shape != half_periods.shape:
         return {
             "enabled": True,
             "passed": False,
@@ -258,9 +264,30 @@ def _evaluate_dt_sensitivity(
             "half_dt": cfg_half.analysis.dt,
             "half_run_id": half_run.run_id,
         }
+    if not np.allclose(base_periods, half_periods, rtol=1.0e-10, atol=1.0e-12):
+        return {
+            "enabled": True,
+            "passed": False,
+            "reason": "period_grid_mismatch",
+            "threshold": threshold,
+            "max_relative_psa_diff": float("inf"),
+            "mean_relative_psa_diff": float("inf"),
+            "base_dt": dt,
+            "half_dt": cfg_half.analysis.dt,
+            "half_run_id": half_run.run_id,
+        }
 
-    denom = np.maximum(np.abs(half_psa), 1.0e-10)
-    rel = np.abs(base_psa - half_psa) / denom
+    # Exclude very short periods where the coarse step under-resolves the oscillator.
+    # Rule of thumb: at least ~10 points per cycle for meaningful dt-sensitivity checks.
+    min_period = 10.0 * dt
+    mask = base_periods >= min_period
+    if not np.any(mask):
+        mask = np.ones_like(base_periods, dtype=bool)
+
+    base_sel = base_psa[mask]
+    half_sel = half_psa[mask]
+    denom = np.maximum(np.abs(half_sel), 1.0e-10)
+    rel = np.abs(base_sel - half_sel) / denom
     max_rel = float(np.max(rel))
     mean_rel = float(np.mean(rel))
     passed = max_rel <= threshold
@@ -270,6 +297,8 @@ def _evaluate_dt_sensitivity(
         "threshold": threshold,
         "max_relative_psa_diff": max_rel,
         "mean_relative_psa_diff": mean_rel,
+        "min_period_used_s": float(np.min(base_periods[mask])),
+        "points_used": float(base_sel.size),
         "base_dt": dt,
         "half_dt": cfg_half.analysis.dt,
         "half_run_id": half_run.run_id,
@@ -279,6 +308,9 @@ def _evaluate_dt_sensitivity(
 def run_benchmark_suite(
     suite: str,
     output_dir: Path,
+    *,
+    require_backend_version_regex: str | None = None,
+    require_backend_sha256: str | None = None,
 ) -> dict[str, object]:
     if suite not in {"core-es", "core-hyst", "core-linear", "core-eql", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
@@ -297,6 +329,8 @@ def run_benchmark_suite(
         "cases": [],
         "all_passed": True,
     }
+    probe_requirements_ok = True
+    probe_requirement_errors: list[str] = []
     if suite == "opensees-parity":
         probe_exe = os.getenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "").strip()
         if not probe_exe:
@@ -305,6 +339,22 @@ def run_benchmark_suite(
             os.getenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", "")
         )
         probe = probe_opensees_executable(probe_exe, extra_args=probe_extra)
+        effective_version_regex = (
+            require_backend_version_regex.strip()
+            if isinstance(require_backend_version_regex, str)
+            else ""
+        )
+        effective_sha = (
+            require_backend_sha256.strip().lower()
+            if isinstance(require_backend_sha256, str)
+            else ""
+        )
+        probe_requirement_errors = validate_backend_probe_requirements(
+            probe,
+            require_version_regex=effective_version_regex or None,
+            require_binary_sha256=effective_sha or None,
+        )
+        probe_requirements_ok = len(probe_requirement_errors) == 0
         report["backend_probe"] = {
             "requested": probe_exe,
             "extra_args": probe_extra,
@@ -312,6 +362,13 @@ def run_benchmark_suite(
             "resolved": str(probe.resolved) if probe.resolved is not None else "",
             "version": probe.version,
             "command": probe.command,
+            "binary_sha256": probe.binary_sha256,
+            "requirements": {
+                "require_version_regex": effective_version_regex,
+                "require_binary_sha256": effective_sha,
+                "ok": probe_requirements_ok,
+                "errors": probe_requirement_errors,
+            },
         }
     skipped_count = 0
     skipped_backend_count = 0
@@ -329,6 +386,8 @@ def run_benchmark_suite(
             probe_resolved = bool(str(backend_probe.get("resolved", "")).strip())
             if not probe_available:
                 probe_failure_reason = str(backend_probe.get("version", "backend probe failed"))
+            elif not probe_requirements_ok:
+                probe_failure_reason = "; ".join(probe_requirement_errors)
 
     for case in cases:
         cfg = load_project_config(suite_dir / case["config"])
@@ -345,7 +404,7 @@ def run_benchmark_suite(
         if (
             suite == "opensees-parity"
             and cfg.analysis.solver_backend == "opensees"
-            and (not probe_available)
+            and ((not probe_available) or (not probe_requirements_ok))
             and probe_resolved
         ):
             report_case = {
@@ -510,7 +569,12 @@ def run_benchmark_suite(
     report["ran"] = ran_count
     report["total_cases"] = total_cases
     report["skipped_backend"] = skipped_backend_count
-    report["backend_ready"] = (skipped_backend_count == 0) and probe_available
+    report["backend_ready"] = (
+        (skipped_backend_count == 0)
+        and probe_available
+        and probe_requirements_ok
+    )
+    report["backend_fingerprint_ok"] = probe_requirements_ok
     report["execution_coverage"] = (
         float(ran_count) / float(total_cases)
         if total_cases > 0

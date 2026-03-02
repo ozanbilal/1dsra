@@ -1,11 +1,11 @@
 # 1DSRA Implementation Status
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 
 ## 1. Summary
 
 This file tracks implementation progress against the original v1.0 plan.
-Current state is: **core scaffold complete, effective-stress OpenSees adapter in advanced scaffold stage, production hardening still pending**.
+Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
 
 ## 2. Phase-by-Phase Status
 
@@ -86,6 +86,8 @@ Implemented:
 - SQLite output tables (runs, layers, motions, metrics, spectra, transfer_function, pwp_stats, mesh_slices, artifacts)
 - EQL output persistence (`/eql` group in HDF5; `eql_summary` + `eql_layers` tables in SQLite)
 - Transfer-function outputs now persisted (`/spectra/freq_hz`, `/spectra/transfer_abs`, SQLite `transfer_function`)
+- Time-step metadata is persisted (`run_meta.json: dt_s/delta_t_s`, HDF5 `/meta/delta_t_s`)
+- Run-level CSV artifacts are now written by pipeline (`surface_acc.csv`, `pwp_effective.csv` with `delta_t_s`)
 - SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
@@ -93,6 +95,7 @@ Implemented:
 - `verify` now checks successful OpenSees runs for command metadata + stdout/stderr artifact/log presence
 - `verify-batch` now emits machine-readable policy verdicts (`require_runs`, condition flags, `passed`) including path/directory guards
 - HTML/PDF report generation (includes effective-stress KPI summary and additional time-history plots)
+- Report/UI PSA path now recomputes spectra from run `surface_acc` + run `dt` instead of relying on stale stored arrays
 
 ### Phase 5 - Benchmark and Regression
 Status: **Completed (basic) / Partial (scientific depth)**
@@ -105,13 +108,18 @@ Implemented:
 - Added `core-eql` benchmark suite for native equivalent-linear backend coverage (3-case matrix)
 - `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
+- OpenSees parity suite expanded to 6-case matrix (`parity01`..`parity06`) with explicit-check golden envelopes
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
+- Backend fingerprint policy options (`--require-backend-version-regex`, `--require-backend-sha256`) for `validate`, `benchmark`, and `campaign`
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
 - Manual parity workflow now also accepts executable extra-args override (`opensees_extra_args`)
+- Manual parity workflow now supports backend fingerprint requirements and defaults to 6-run parity target
 - CI now includes optional OpenSees parity gate job when `DSRA1D_CI_OPENSEES_EXE` is configured
+- CI now includes dedicated-runner parity gate (`self-hosted, linux, x64, opensees`) with explicit-check and 6-run requirements
 - CI includes optional OpenSeesPy parity gate (`DSRA1D_CI_OPENSEESPY=1`)
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
 - Parity suite now distinguishes missing executable vs failed backend probe (`missing_opensees` / `probe_failed`)
+- Parity reports now persist backend fingerprint diagnostics (`binary_sha256`, requirements verdict/errors)
 - Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
 - Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
 - Golden envelope locking command (`lock-golden`) to generate explicit check matrices from benchmark reports
@@ -141,6 +149,7 @@ Missing:
 - Release process execution policy (tagging rules/checklist) still needs final sign-off
 - Artifact publishing policy finalization (GitHub release workflow + release tag/version + changelog guards are now added)
 - Organization-level sign-off for release gates (CI/release now enforce `core-es` + `core-hyst` + `core-linear` + `core-eql` campaign gates)
+- Dedicated OpenSees parity release gate runner provisioning (`self-hosted, linux, x64, opensees`) and secret/variable bootstrap
 - User manual completeness and migration notes
 
 ## 3. What Is Working Today
@@ -179,6 +188,10 @@ Missing:
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
+- FastAPI + React migration starter is now available (`1dsra web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
+- FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
+- Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
+- Web UI now includes Model Builder (template list + file target) to generate config files directly from UI and run without manual YAML creation
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
 - MKZ/GQH helper module now includes `generate_masing_loop` for calibration-oriented loop generation
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
@@ -195,6 +208,7 @@ Missing:
 ## 4. What Is Not Yet Production-Ready
 
 - No confirmed OpenSees binary execution in this environment (binary not present at runtime checks)
+- Dedicated runner parity gate configured in CI/release workflows; runner availability and secret/var provisioning remain environment-dependent
 - No full scientific validation campaign for PM4 calibration fidelity
 - No formal acceptance thresholds for all engineering KPIs across scenario matrix
 - Native solver path (`core/` C++ runtime) is scaffold-only
@@ -215,6 +229,14 @@ Priority 3:
 
 Priority 4:
 - Start native solver roadmap (linear/EQL first), while preserving OpenSees interop mode.
+
+## 5A. Immediate Critical Path (Next Phase Execution Order)
+
+1. **Real OpenSees parity closure:** Run full `opensees-parity` (6/6 executed, no skip) on dedicated runner and lock final explicit envelopes.
+2. **Scientific envelope hardening:** Expand `SCIENTIFIC_CONFIDENCE_MATRIX.md` with published/reference-mapped tolerances per scenario class.
+3. **PM4 calibration templates:** Publish and freeze calibration-ready PM4Sand/PM4Silt template set with documented parameter defaults/ranges.
+4. **UI production transition:** Continue React/FastAPI path (keep Streamlit as engineering panel), and complete artifact + diagnostics UX parity.
+5. **Release gate finalization:** Enforce parity policy in release path as non-bypassable and finalize release checklist/sign-off flow.
 
 ## 6. Quick Milestone Estimate From Current State
 
@@ -255,10 +277,15 @@ Status legend:
 | GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
 | Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
 | Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
-| Real-binary OpenSees integration validation | Partial | Optional integration harness + optional CI parity gates (external executable and OpenSeesPy shim mode) | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
+| Real-binary OpenSees integration validation | Partial | Optional integration harness + dedicated CI/release parity gates with backend fingerprint policy hooks | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
 | Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |
 | Release hardening and governance | Partial | Release/tag/changelog guards added | Finalize org sign-off, manuals, and artifact policy |
 | Native effective-stress solver beyond OpenSees interop | Out-of-v1 | Explicitly deferred | Start after linear/EQL native milestones |
 
 Tracking rule for continuation:
 - When a `Partial`/`Pending` item advances, update both this matrix and the corresponding phase section above in the same commit.
+
+## 8. Scientific Confidence Matrix
+
+- Single source of truth: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
+- Update rule: when benchmark tolerances/reference-basis change, update confidence matrix in the same commit.

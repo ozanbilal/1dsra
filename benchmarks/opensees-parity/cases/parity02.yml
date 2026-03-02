@@ -11,19 +11,31 @@ profile:
         Dr: 0.40
         G0: 580.0
         hpo: 0.50
-    - name: ElasticBase
-      thickness_m: 10.0
-      unit_weight_kN_m3: 20.0
-      vs_m_s: 360.0
-      material: elastic
+    - name: MidSilt
+      thickness_m: 7.0
+      unit_weight_kN_m3: 19.1
+      vs_m_s: 240.0
+      material: pm4silt
       material_params:
-        nu: 0.30
-boundary_condition: rigid
+        Su: 40.0
+        Su_Rat: 0.22
+        G_o: 540.0
+        h_po: 0.57
+    - name: DenseSand
+      thickness_m: 8.0
+      unit_weight_kN_m3: 19.8
+      vs_m_s: 360.0
+      material: pm4sand
+      material_params:
+        Dr: 0.62
+        G0: 760.0
+        hpo: 0.70
+boundary_condition: elastic_halfspace
 analysis:
   dt: 0.004
   f_max: 30.0
   solver_backend: opensees
-  pm4_validation_profile: strict
+  pm4_validation_profile: strict_plus
   timeout_s: 120
   retries: 0
 motion:
@@ -38,3 +50,10 @@ output:
 opensees:
   executable: OpenSees
   extra_args: []
+  column_width_m: 1.2
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 0.00002
+  v_perm: 0.00001
+  gravity_steps: 35

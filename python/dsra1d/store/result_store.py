@@ -12,6 +12,7 @@ class ResultStore:
     run_id: str
     hdf5_path: Path
     sqlite_path: Path
+    dt_s: float
     time: np.ndarray
     acc_surface: np.ndarray
     spectra_periods: np.ndarray
@@ -39,6 +40,11 @@ def load_result(output_dir: str | Path) -> ResultStore:
     sqlite_path = root / "results.sqlite"
 
     with h5py.File(hdf5_path, "r") as h5:
+        dt_meta_arr = (
+            np.array(h5["/meta/delta_t_s"], dtype=np.float64)
+            if "/meta/delta_t_s" in h5
+            else np.array([], dtype=np.float64)
+        )
         time = np.array(h5["/time"], dtype=np.float64) if "/time" in h5 else np.array([])
         acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
         periods = np.array(h5["/spectra/periods"], dtype=np.float64)
@@ -127,6 +133,15 @@ def load_result(output_dir: str | Path) -> ResultStore:
             dt = float(ru_time[1] - ru_time[0])
         time = np.arange(acc.size, dtype=np.float64) * dt
 
+    if dt_meta_arr.size > 0 and np.isfinite(dt_meta_arr.reshape(-1)[0]):
+        dt_s = float(dt_meta_arr.reshape(-1)[0])
+    elif time.size > 1:
+        dt_s = float(np.median(np.diff(time)))
+    elif ru_time.size > 1:
+        dt_s = float(np.median(np.diff(ru_time)))
+    else:
+        dt_s = 1.0
+
     sigma_v_ref = (
         float(sigma_v_ref_arr.reshape(-1)[0])
         if sigma_v_ref_arr.size > 0
@@ -147,6 +162,7 @@ def load_result(output_dir: str | Path) -> ResultStore:
         run_id=root.name,
         hdf5_path=hdf5_path,
         sqlite_path=sqlite_path,
+        dt_s=dt_s,
         time=time,
         acc_surface=acc,
         spectra_periods=periods,

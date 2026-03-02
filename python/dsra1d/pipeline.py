@@ -12,6 +12,7 @@ from dsra1d.config import MaterialType, ProjectConfig, load_project_config
 from dsra1d.interop.opensees import (
     OpenSeesExecutionError,
     build_layer_slices,
+    probe_opensees_executable,
     read_pwp_raw,
     read_ru,
     read_surface_acc_with_time,
@@ -198,6 +199,41 @@ def _reference_sigma_v(config: ProjectConfig) -> float:
     return max(avg_gamma * total_depth * 0.5, 1.0e-3)
 
 
+def _estimate_dt_from_axis(axis: np.ndarray, fallback: float) -> float:
+    if axis.size > 1:
+        dt = float(np.median(np.diff(axis)))
+        if np.isfinite(dt) and dt > 0.0:
+            return dt
+    return float(fallback)
+
+
+def _write_surface_csv(path: Path, time: np.ndarray, acc: np.ndarray, dt_s: float) -> None:
+    n = int(min(time.size, acc.size))
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write("time_s,acc_m_s2,delta_t_s\n")
+        for i in range(n):
+            f.write(f"{float(time[i]):.8f},{float(acc[i]):.10e},{float(dt_s):.8e}\n")
+
+
+def _write_pwp_effective_csv(
+    path: Path,
+    ru_time: np.ndarray,
+    ru: np.ndarray,
+    delta_u: np.ndarray,
+    sigma_v_eff: np.ndarray,
+    dt_s: float,
+) -> None:
+    n = int(min(ru_time.size, ru.size))
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write("time_s,ru,delta_u,sigma_v_eff,delta_t_s\n")
+        for i in range(n):
+            du = float(delta_u[i]) if i < delta_u.size else float("nan")
+            sve = float(sigma_v_eff[i]) if i < sigma_v_eff.size else float("nan")
+            f.write(
+                f"{float(ru_time[i]):.8f},{float(ru[i]):.10e},{du:.10e},{sve:.10e},{float(dt_s):.8e}\n"
+            )
+
+
 def run_analysis(
     config: ProjectConfig,
     motion: Motion,
@@ -229,9 +265,25 @@ def run_analysis(
     opensees_command: list[str] = []
     opensees_stdout_log: Path | None = None
     opensees_stderr_log: Path | None = None
+    opensees_probe: dict[str, object] | None = None
     eql_summary: dict[str, object] | None = None
 
     if config.analysis.solver_backend == "opensees":
+        probe = probe_opensees_executable(
+            config.opensees.executable,
+            extra_args=config.opensees.extra_args,
+        )
+        opensees_probe = {
+            "available": probe.available,
+            "resolved": str(probe.resolved) if probe.resolved is not None else "",
+            "version": probe.version,
+            "command": probe.command,
+            "binary_sha256": probe.binary_sha256,
+        }
+        probe_path = run_dir / "opensees_backend_probe.json"
+        probe_path.write_text(json.dumps(opensees_probe, indent=2), encoding="utf-8")
+        artifacts.append(("opensees_backend_probe", str(probe_path)))
+
         attempt = 0
         while True:
             attempt += 1
@@ -313,13 +365,26 @@ def run_analysis(
         delta_u = np.asarray(ru * sigma_v_ref, dtype=np.float64)
     sigma_v_eff = np.asarray(sigma_v_ref - delta_u, dtype=np.float64)
 
-    spectra = compute_spectra(acc_surface, dt=processed.dt, damping=0.05)
+    dt_series = _estimate_dt_from_axis(surface_t, fallback=processed.dt)
+    spectra = compute_spectra(acc_surface, dt=dt_series, damping=0.05)
     transfer_freq_hz, transfer_abs = compute_transfer_function(
         processed.acc,
         acc_surface,
-        processed.dt,
+        dt_series,
     )
     time = surface_t
+
+    surface_csv = run_dir / "surface_acc.csv"
+    _write_surface_csv(surface_csv, time=time, acc=acc_surface, dt_s=dt_series)
+    pwp_effective_csv = run_dir / "pwp_effective.csv"
+    _write_pwp_effective_csv(
+        pwp_effective_csv,
+        ru_time=ru_t,
+        ru=ru,
+        delta_u=delta_u,
+        sigma_v_eff=sigma_v_eff,
+        dt_s=dt_series,
+    )
 
     surface_out = run_dir / "surface_acc.out"
     pwp_out = run_dir / "pwp_ru.out"
@@ -327,8 +392,12 @@ def run_analysis(
     artifacts.append(("results_sqlite", str(run_dir / "results.sqlite")))
     if surface_out.exists():
         artifacts.append(("surface_acc", str(surface_out)))
+    if surface_csv.exists():
+        artifacts.append(("surface_acc_csv", str(surface_csv)))
     if pwp_out.exists():
         artifacts.append(("pwp_ru", str(pwp_out)))
+    if pwp_effective_csv.exists():
+        artifacts.append(("pwp_effective_csv", str(pwp_effective_csv)))
     pwp_raw_out = run_dir / "pwp_raw.out"
     if pwp_raw_out.exists():
         artifacts.append(("pwp_raw", str(pwp_raw_out)))
@@ -342,17 +411,18 @@ def run_analysis(
 
     if config.output.write_hdf5:
         write_hdf5(
-            h5_path,
-            time,
-            acc_surface,
-            ru_t,
-            ru,
-            delta_u,
-            sigma_v_ref,
-            sigma_v_eff,
-            spectra,
-            transfer_freq_hz,
-            transfer_abs,
+            path=h5_path,
+            time=time,
+            dt_s=dt_series,
+            acc_surface=acc_surface,
+            ru_time=ru_t,
+            ru=ru,
+            delta_u=delta_u,
+            sigma_v_ref=sigma_v_ref,
+            sigma_v_eff=sigma_v_eff,
+            spectra=spectra,
+            transfer_freq_hz=transfer_freq_hz,
+            transfer_abs=transfer_abs,
             mesh_layer_idx=np.array([s.index for s in slices], dtype=np.int64),
             mesh_z_top=np.array([s.z_top_m for s in slices], dtype=np.float64),
             mesh_z_bot=np.array([s.z_bot_m for s in slices], dtype=np.float64),
@@ -371,7 +441,7 @@ def run_analysis(
             config,
             status=status,
             message=message,
-            dt=processed.dt,
+            dt=dt_series,
             acc_surface=acc_surface,
             spectra_data=spectra,
             transfer_freq_hz=transfer_freq_hz,
@@ -397,6 +467,8 @@ def run_analysis(
         "run_id": run_id,
         "timestamp_utc": datetime.now(UTC).isoformat(),
         "solver_backend": config.analysis.solver_backend,
+        "dt_s": float(dt_series),
+        "delta_t_s": float(dt_series),
         "status": status,
         "message": message,
         "opensees_command": opensees_command,
@@ -405,6 +477,8 @@ def run_analysis(
         "model_tcl": str(tcl_path),
         "checksums": checksum_map,
     }
+    if opensees_probe is not None:
+        run_meta["opensees_backend_probe"] = opensees_probe
     if eql_summary is not None:
         run_meta["eql"] = {
             "iterations": _as_int(eql_summary.get("iterations", 0)),

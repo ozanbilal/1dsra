@@ -14,6 +14,21 @@
       "name": "parity03",
       "config": "cases/parity03.yml",
       "motion": "cases/parity03_motion.csv"
+    },
+    {
+      "name": "parity04",
+      "config": "cases/parity04.yml",
+      "motion": "cases/parity04_motion.csv"
+    },
+    {
+      "name": "parity05",
+      "config": "cases/parity05.yml",
+      "motion": "cases/parity05_motion.csv"
+    },
+    {
+      "name": "parity06",
+      "config": "cases/parity06.yml",
+      "motion": "cases/parity06_motion.csv"
     }
   ]
 }

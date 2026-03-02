@@ -10,6 +10,7 @@ from dsra1d.pipeline import load_result, run_analysis, run_batch
 
 def test_run_analysis_mock(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "mock"
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
 
@@ -78,6 +79,7 @@ def test_run_analysis_opensees_missing_executable_fallback(tmp_path: Path) -> No
 
 def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "mock"
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
 
@@ -109,6 +111,7 @@ def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:
 
 def test_run_batch_deduplicates_identical_motions(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "mock"
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     motion1 = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
     motion2 = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)

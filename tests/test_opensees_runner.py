@@ -2,8 +2,10 @@ import sys
 from pathlib import Path
 
 from dsra1d.interop.opensees.runner import (
+    OpenSeesProbeResult,
     probe_opensees_executable,
     resolve_opensees_executable,
+    validate_backend_probe_requirements,
 )
 
 
@@ -25,6 +27,7 @@ def test_probe_opensees_executable_missing() -> None:
     assert probe.available is False
     assert probe.resolved is None
     assert probe.version == "unknown"
+    assert probe.binary_sha256 == ""
 
 
 def test_probe_opensees_executable_with_python_binary() -> None:
@@ -52,3 +55,40 @@ def test_probe_opensees_executable_with_extra_args(tmp_path: Path) -> None:
     assert probe.available is True
     assert probe.command[-2] == str(shim)
     assert probe.command[-1] == "-version"
+    assert len(probe.binary_sha256) == 64
+
+
+def test_validate_backend_probe_requirements_ok() -> None:
+    probe = OpenSeesProbeResult(
+        available=True,
+        resolved=Path(sys.executable),
+        version="OpenSees 3.7.0",
+        stdout="",
+        stderr="",
+        command=[sys.executable, "-version"],
+        binary_sha256="a" * 64,
+    )
+    errors = validate_backend_probe_requirements(
+        probe,
+        require_version_regex=r"OpenSees\s+3\.7",
+        require_binary_sha256="a" * 64,
+    )
+    assert errors == []
+
+
+def test_validate_backend_probe_requirements_failures() -> None:
+    probe = OpenSeesProbeResult(
+        available=True,
+        resolved=Path(sys.executable),
+        version="OpenSees 3.6.0",
+        stdout="",
+        stderr="",
+        command=[sys.executable, "-version"],
+        binary_sha256="a" * 64,
+    )
+    errors = validate_backend_probe_requirements(
+        probe,
+        require_version_regex=r"OpenSees\s+3\.7",
+        require_binary_sha256="b" * 64,
+    )
+    assert len(errors) == 2

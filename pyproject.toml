@@ -36,6 +36,11 @@ ui = [
   "plotly>=6.0",
   "pandas>=2.2"
 ]
+web = [
+  "fastapi>=0.116",
+  "uvicorn[standard]>=0.35",
+  "httpx>=0.28"
+]
 
 [project.scripts]
 1dsra = "dsra1d.cli.main:app"
@@ -45,6 +50,9 @@ package-dir = {"" = "python"}
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.setuptools.package-data]
+"dsra1d.web" = ["static/*"]
 
 [tool.ruff]
 line-length = 100
@@ -64,7 +72,22 @@ mypy_path = ["python"]
 disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
-module = ["h5py", "h5py.*", "scipy", "scipy.*", "streamlit", "plotly", "plotly.*", "yaml"]
+module = [
+  "h5py",
+  "h5py.*",
+  "scipy",
+  "scipy.*",
+  "streamlit",
+  "plotly",
+  "plotly.*",
+  "yaml",
+  "fastapi",
+  "fastapi.*",
+  "uvicorn",
+  "uvicorn.*",
+  "starlette",
+  "starlette.*"
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

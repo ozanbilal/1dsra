@@ -169,6 +169,10 @@ def summarize_campaign(
         denom = benchmark_total_cases if benchmark_total_cases > 0 else 1
         benchmark_execution_coverage = benchmark_ran / denom
     backend_missing_cases = _as_str_list(benchmark_report.get("backend_missing_cases"))
+    backend_fingerprint_ok = _as_bool(
+        benchmark_report.get("backend_fingerprint_ok"),
+        default=True,
+    )
     benchmark_policy_raw = _as_dict(benchmark_report.get("policy"))
     fail_on_skip = _as_bool(benchmark_policy_raw.get("fail_on_skip"), default=False)
     require_runs = _as_int(benchmark_policy_raw.get("require_runs", 0))
@@ -186,6 +190,7 @@ def summarize_campaign(
         "require_runs_ok": benchmark_ran >= require_runs,
         "require_opensees_ok": (not require_opensees) or benchmark_backend_ready,
         "min_execution_coverage_ok": benchmark_execution_coverage >= min_execution_coverage,
+        "backend_fingerprint_ok": backend_fingerprint_ok,
     }
     benchmark_policy_passed = all(benchmark_conditions.values())
 
@@ -201,6 +206,7 @@ def summarize_campaign(
             "backend_ready": benchmark_backend_ready,
             "execution_coverage": float(benchmark_execution_coverage),
             "backend_missing_cases": backend_missing_cases,
+            "backend_fingerprint_ok": backend_fingerprint_ok,
             "classification_counts": dict(benchmark_classes),
             "failed_or_nonpass_cases": failed_cases,
         },
@@ -210,6 +216,12 @@ def summarize_campaign(
                 "require_runs": require_runs,
                 "require_opensees": require_opensees,
                 "min_execution_coverage": min_execution_coverage,
+                "require_backend_version_regex": str(
+                    benchmark_policy_raw.get("require_backend_version_regex", "")
+                ),
+                "require_backend_sha256": str(
+                    benchmark_policy_raw.get("require_backend_sha256", "")
+                ),
                 "conditions": benchmark_conditions,
                 "passed": benchmark_policy_passed,
             }
@@ -266,6 +278,7 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
         f"skipped={benchmark.get('skipped')} "
         f"skipped_backend={benchmark.get('skipped_backend')} "
         f"backend_ready={benchmark.get('backend_ready')} "
+        f"backend_fingerprint_ok={benchmark.get('backend_fingerprint_ok')} "
         f"execution_coverage={benchmark.get('execution_coverage')}"
     )
     backend_missing_cases = _as_str_list(benchmark.get("backend_missing_cases"))
@@ -288,7 +301,10 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
             f"fail_on_skip={benchmark_policy.get('fail_on_skip')} "
             f"require_runs={benchmark_policy.get('require_runs')} "
             f"require_opensees={benchmark_policy.get('require_opensees')} "
-            f"min_execution_coverage={benchmark_policy.get('min_execution_coverage')}"
+            f"min_execution_coverage={benchmark_policy.get('min_execution_coverage')} "
+            "require_backend_version_regex="
+            f"{benchmark_policy.get('require_backend_version_regex')} "
+            f"require_backend_sha256={benchmark_policy.get('require_backend_sha256')}"
         )
 
     verify_batch = _as_dict(summary.get("verify_batch"))

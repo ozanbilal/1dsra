@@ -1,0 +1,49 @@
+project_name: parity-opensees-05
+seed: 1005
+profile:
+  layers:
+    - name: LooseSand
+      thickness_m: 7.0
+      unit_weight_kN_m3: 18.3
+      vs_m_s: 160.0
+      material: pm4sand
+      material_params:
+        Dr: 0.35
+        G0: 540.0
+        hpo: 0.46
+    - name: DenseSand
+      thickness_m: 9.0
+      unit_weight_kN_m3: 19.9
+      vs_m_s: 340.0
+      material: pm4sand
+      material_params:
+        Dr: 0.68
+        G0: 840.0
+        hpo: 0.77
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.005
+  f_max: 25.0
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+  timeout_s: 120
+  retries: 0
+motion:
+  units: g
+  baseline: detrend_linear
+  scale_mode: scale_to_pga
+  target_pga: 0.25
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []
+  column_width_m: 1.0
+  thickness_m: 1.2
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 0.00002
+  v_perm: 0.000012
+  gravity_steps: 30

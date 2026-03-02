@@ -1,7 +1,7 @@
 # 1DSRA
 
 1DSRA is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
-Version 1.0 focuses on effective-stress workflows, reproducible I/O, and benchmark-ready automation.
+Current package version is `0.1.0`; the v1.0 roadmap focuses on effective-stress workflows, reproducible I/O, and benchmark-ready automation.
 
 ## Highlights
 - JSON/YAML schema-validated project configs
@@ -33,6 +33,7 @@ pip install -e .[dev]
 1dsra quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
 1dsra validate --config examples/configs/effective_stress.yml
 1dsra validate --config examples/configs/effective_stress.yml --check-backend
+1dsra validate --config examples/configs/effective_stress.yml --check-backend --require-backend-version-regex "OpenSees"
 1dsra render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
 1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
 1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
@@ -49,15 +50,15 @@ pip install -e .[dev]
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
 1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3
+1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --require-explicit-checks
 1dsra verify --in out/run001/run-xxxxxxxxxxxx
 1dsra verify-batch --in out/run001 --require-runs 1
 1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 3 --verify-require-runs 3
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 3 --verify-require-runs 3 --opensees-executable "C:/path/to/OpenSees.exe"
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 3 --verify-require-runs 3
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
+1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
 1dsra lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min --rel-tol 0.05
 1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
@@ -74,12 +75,33 @@ UI sidebar includes config presets (`effective-stress`, `effective-stress-strict
 UI run panel includes backend mode selection (`config/auto/opensees/mock/linear/eql/nonlinear`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 UI includes MKZ/GQH curve inspector plots (`G/Gmax` and damping proxy vs strain) for quick parameter sanity checks.
+UI export panel includes `surface_acc.csv` and `pwp_effective.csv`, both with `delta_t_s`.
+
+## Web API + React Dashboard (Migration Starter)
+```bash
+pip install -e .[web]
+1dsra web --host 127.0.0.1 --port 8010
+```
+Open `http://127.0.0.1:8010`.
+This stack is designed as the long-term path for production UI; current Streamlit remains available for rapid engineering workflows.
+Web/React run charts recompute PSA from `surface_acc` and run `dt` to avoid stale spectra visuals after reruns.
+Web sidebar includes a Model Builder panel that generates template-based config files and auto-fills `Config Path` for direct runs.
+
+Included API endpoints:
+- `GET /api/health`
+- `GET /api/runs?output_root=<path>`
+- `GET /api/runs/{run_id}/signals?output_root=<path>`
+- `GET /api/runs/{run_id}/surface-acc.csv?output_root=<path>`
+- `GET /api/runs/{run_id}/pwp-effective.csv?output_root=<path>`
+- `POST /api/run` (run analysis from config + motion paths)
 
 ## OpenSees Integration
 Set the OpenSees executable in config:
 ```yaml
 opensees:
   executable: OpenSees
+  require_version_regex: null
+  require_binary_sha256: null
 ```
 You can also use an absolute path for deterministic environments.
 u-p assembly constants are configurable per project via:
@@ -130,7 +152,10 @@ Each run writes structured metadata/artifacts:
 - `run_meta.json` with backend, status, command metadata
 - `opensees_stdout.log` / `opensees_stderr.log` (if available)
 - SQLite `artifacts` table entries for generated files
+- `surface_acc.csv` with `time_s,acc_m_s2,delta_t_s`
+- `pwp_effective.csv` with `time_s,ru,delta_u,sigma_v_eff,delta_t_s`
 - Effective-stress outputs in HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
+- Time-step metadata in HDF5 `/meta/delta_t_s`
 - Spectral outputs in HDF5 `/spectra`: `periods`, `psa`, `freq_hz`, `transfer_abs` (`|H(f)|`)
 - EQL runs persist convergence outputs in HDF5 `/eql` and SQLite (`eql_summary`, `eql_layers`)
 
@@ -146,12 +171,14 @@ Apache-2.0
 
 ## Tracking
 - Implementation status: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
+- Scientific confidence matrix: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - CI/release workflows enforce `core-es`, `core-hyst`, `core-linear`, and `core-eql` campaign gates (`benchmark + verify + summary`)
 - CI/release campaign gates enforce full execution coverage (`--min-execution-coverage 1.0`)
-- Version bump helper: `python scripts/release_bump.py --version 1.0.0`
-- Release tag guard: `python scripts/check_release_tag.py --tag v1.0.0`
-- Changelog guard: `python scripts/check_changelog.py --tag v1.0.0`
+- Release workflow includes mandatory dedicated OpenSees parity gate (`self-hosted, linux, x64, opensees`) before package publish.
+- Version bump helper: `python scripts/release_bump.py --version 0.1.0`
+- Release tag guard: `python scripts/check_release_tag.py --tag v0.1.0`
+- Changelog guard: `python scripts/check_changelog.py --tag v0.1.0`
 
 ## Optional Real OpenSees Integration Test
 By default, test suite runs fully in mock mode. To run the real binary integration test:
@@ -169,6 +196,9 @@ You can also override executable extra args (JSON list or shell string):
 - `DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE='["scripts/opensees_pyshim.py"]'`
 You can also pass override directly via CLI:
 - `--opensees-executable /path/to/OpenSees`
+You can enforce backend fingerprint requirements from CLI:
+- `--require-backend-version-regex "<regex>"`
+- `--require-backend-sha256 "<hex>"`
 Use benchmark strict policy flags to enforce non-skipped runs in CI:
 - `--fail-on-skip`
 - `--require-runs <N>`
@@ -195,6 +225,8 @@ Parity benchmark JSON also includes `backend_probe`:
 - `resolved`
 - `available`
 - `version`
+- `binary_sha256`
+- `requirements` (`ok`, `errors`, requested regex/sha)
 When backend probe fails (resolved executable exists but probe is not runnable),
 parity cases are marked with `skip_kind=probe_failed`; `--require-opensees` will fail.
 Campaign summary JSON also includes policy evaluation blocks:
@@ -204,7 +236,7 @@ Campaign summary JSON also includes policy evaluation blocks:
 
 A dedicated manual parity workflow is included:
 - `.github/workflows/opensees-parity.yml`
-  - default strict target: `require_runs=3`
+  - default strict target: `require_runs=6`
   - default coverage target: `min_execution_coverage=1.0`
   - writes `campaign_summary.json` + `campaign_summary.md` and appends markdown to GitHub job summary
 

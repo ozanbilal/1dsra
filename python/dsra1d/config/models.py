@@ -197,6 +197,8 @@ class SoilProfile(BaseModel):
 class OpenseesConfig(BaseModel):
     executable: str = "OpenSees"
     extra_args: list[str] = Field(default_factory=list)
+    require_version_regex: str | None = None
+    require_binary_sha256: str | None = None
     column_width_m: PositiveFloat = 1.0
     thickness_m: PositiveFloat = 1.0
     fluid_bulk_modulus: PositiveFloat = 2.2e6
@@ -204,6 +206,19 @@ class OpenseesConfig(BaseModel):
     h_perm: PositiveFloat = 1.0e-5
     v_perm: PositiveFloat = 1.0e-5
     gravity_steps: int = Field(default=20, ge=1)
+
+    @model_validator(mode="after")
+    def validate_fingerprint_requirements(self) -> OpenseesConfig:
+        required_sha = (self.require_binary_sha256 or "").strip()
+        if required_sha:
+            if len(required_sha) != 64:
+                raise ValueError("opensees.require_binary_sha256 must be 64 hex chars.")
+            if any(ch not in "0123456789abcdefABCDEF" for ch in required_sha):
+                raise ValueError("opensees.require_binary_sha256 must be hex encoded.")
+            self.require_binary_sha256 = required_sha.lower()
+        regex = (self.require_version_regex or "").strip()
+        self.require_version_regex = regex or None
+        return self
 
 
 class ProjectConfig(BaseModel):

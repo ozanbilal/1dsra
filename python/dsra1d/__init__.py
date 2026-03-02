@@ -1,5 +1,6 @@
 """1DSRA SDK package."""
 
+from dsra1d.interop.opensees import OpenSeesProbeResult, probe_opensees_executable
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post.spectra import Spectra, compute_spectra
 from dsra1d.types import BatchResult, Motion, RunResult
@@ -11,12 +12,14 @@ __all__ = [
     "BatchResult",
     "BatchVerificationReport",
     "Motion",
+    "OpenSeesProbeResult",
     "RunResult",
     "Spectra",
     "VerificationReport",
     "__version__",
     "compute_spectra",
     "load_result",
+    "probe_opensees_executable",
     "run_analysis",
     "run_batch",
     "verify_batch",

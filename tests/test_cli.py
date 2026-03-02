@@ -89,6 +89,8 @@ def test_cli_dt_check(tmp_path: Path) -> None:
             str(tmp_path / "dt_check"),
             "--threshold",
             "5.0",
+            "--backend",
+            "auto",
         ],
     )
     assert result.exit_code == 0
@@ -158,6 +160,7 @@ opensees:
         available = True
         resolved = Path("C:/OpenSees/OpenSees.exe")
         version = "OpenSees 3.x"
+        binary_sha256 = "a" * 64
 
     monkeypatch.setattr(
         cli_main,
@@ -337,8 +340,16 @@ def test_cli_benchmark_require_explicit_checks_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fake_run_suite(*, suite: str, output_dir: Path):
+    def fake_run_suite(
+        *,
+        suite: str,
+        output_dir: Path,
+        require_backend_version_regex: str | None = None,
+        require_backend_sha256: str | None = None,
+    ):
         _ = suite
+        _ = require_backend_version_regex
+        _ = require_backend_sha256
         output_dir.mkdir(parents=True, exist_ok=True)
         return {
             "suite": "opensees-parity",
@@ -373,6 +384,61 @@ def test_cli_benchmark_require_explicit_checks_fails(
         ],
     )
     assert result.exit_code == 12
+
+
+def test_cli_validate_check_backend_fingerprint_requirement_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = tmp_path / "opensees_probe_req.yml"
+    cfg.write_text(
+        """
+project_name: probe-opensees-req
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: pm4sand
+      material_params:
+        Dr: 0.45
+        G0: 600.0
+        hpo: 0.53
+analysis:
+  solver_backend: opensees
+opensees:
+  executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class _Probe:
+        available = True
+        resolved = Path("C:/OpenSees/OpenSees.exe")
+        version = "OpenSees 3.7.0"
+        binary_sha256 = "a" * 64
+        command = ()
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(
+        cli_main,
+        "probe_opensees_executable",
+        lambda *args, **kwargs: _Probe(),
+    )
+    result = runner.invoke(
+        app,
+        [
+            "validate",
+            "--config",
+            str(cfg),
+            "--check-backend",
+            "--require-backend-version-regex",
+            r"OpenSees\s+3\.8",
+        ],
+    )
+    assert result.exit_code == 5
 
 
 def test_cli_lock_golden_writes_expected_schema(tmp_path: Path) -> None:
@@ -444,6 +510,8 @@ def test_cli_verify_passes_for_run(tmp_path: Path) -> None:
             str(motion),
             "--out",
             str(tmp_path / "out"),
+            "--backend",
+            "auto",
         ],
     )
     assert run_result.exit_code == 0
@@ -720,6 +788,8 @@ def test_cli_verify_batch_passes(tmp_path: Path) -> None:
             str(motion),
             "--out",
             str(tmp_path / "out"),
+            "--backend",
+            "auto",
         ],
     )
     assert run_result.exit_code == 0

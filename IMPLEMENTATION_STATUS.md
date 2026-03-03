@@ -199,6 +199,8 @@ Missing:
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)
 - React wizard now includes step-level readiness indicators (`ready`/`issue` badges), inline step issue list, and gated `Generate Config` / `Run Now` actions based on required inputs
+- React Motion step now supports direct file uploads (CSV and AT2) without manual filesystem path entry
+- Results panel now supports multi-run overlay comparison (surface acceleration, PSA, transfer `|H(f)|`)
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
 - React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
 - Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors

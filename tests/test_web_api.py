@@ -269,6 +269,58 @@ def test_web_motion_import_peer_at2_endpoint(tmp_path) -> None:
     assert Path(payload["converted_csv_path"]).exists()
 
 
+def test_web_motion_upload_csv_endpoint(tmp_path) -> None:
+    import base64
+
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    encoded = base64.b64encode(b"0.0,0.1\n0.01,-0.2\n").decode("ascii")
+    resp = client.post(
+        "/api/motion/upload/csv",
+        json={
+            "file_name": "uploaded_motion.csv",
+            "content_base64": encoded,
+            "output_dir": str(tmp_path),
+            "output_name": "uploaded_case",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["nbytes"] > 0
+    assert Path(payload["uploaded_path"]).exists()
+
+
+def test_web_motion_upload_peer_at2_endpoint(tmp_path) -> None:
+    import base64
+
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    encoded = base64.b64encode(
+        b"AT2 EXAMPLE\nNPTS= 5, DT=0.01 SEC\n0.01 0.02 -0.03 0.00 0.01\n"
+    ).decode("ascii")
+    resp = client.post(
+        "/api/motion/upload/peer-at2",
+        json={
+            "file_name": "uploaded_motion.at2",
+            "content_base64": encoded,
+            "units_hint": "g",
+            "output_dir": str(tmp_path),
+            "output_name": "uploaded_at2",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["npts"] == 5
+    assert payload["dt_s"] == pytest.approx(0.01)
+    assert Path(payload["converted_csv_path"]).exists()
+
+
 def test_web_motion_process_endpoint(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

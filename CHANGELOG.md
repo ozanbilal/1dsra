@@ -62,6 +62,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - step-level readiness badges and inline issue reporting
   - `Generate Config` and `Run Now` buttons now enforce required step validity before execution
   - template selector now shows short preset descriptions in Analysis step
+- Web motion upload flow:
+  - new API endpoints: `POST /api/motion/upload/csv`, `POST /api/motion/upload/peer-at2`
+  - browser-side file upload now fills wizard motion path directly (no manual file path typing)
+- Results multi-motion compare:
+  - run selector with up to 6 overlays
+  - overlay charts for surface acceleration, PSA (5%), and transfer `|H(f)|`
 - Pipeline artifact enrichment:
   - deterministic `config_snapshot.json` written per run
   - `run_meta.json` now includes `config_snapshot`

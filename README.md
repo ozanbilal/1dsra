@@ -118,6 +118,7 @@ Run flow (no manual YAML editing required):
 
 ### Motion Tools (Wave-1)
 - Motion import: CSV + PEER AT2
+- Motion upload (no local path typing): upload CSV or AT2 directly from browser, then auto-bind to wizard motion path
 - Baseline modes: `none`, `remove_mean`, `detrend_linear`, `deepsoil_bap_like`
 - Scaling modes: `none`, `scale_by`, `scale_to_pga`
 - Optional `dt override` in wizard for one-column motions
@@ -125,6 +126,10 @@ Run flow (no manual YAML editing required):
 - Imported/processed motions are tracked in SI (`m/s2`) in wizard state to prevent double unit conversion
 - Motion preview plots: processed acceleration, PSA, FAS ratio
 - Motion outputs: processed CSV + metrics JSON
+
+### Results Compare
+- Results panel includes `Multi-Motion Compare` selector (up to 6 runs overlay).
+- Overlay charts: surface acceleration, PSA (5%), and transfer `|H(f)|`.
 
 Included API endpoints:
 - `GET /api/health`
@@ -137,6 +142,8 @@ Included API endpoints:
 - `GET /api/wizard/schema`
 - `POST /api/config/from-wizard`
 - `POST /api/motion/import/peer-at2`
+- `POST /api/motion/upload/csv`
+- `POST /api/motion/upload/peer-at2`
 - `POST /api/motion/process`
 - `POST /api/run` (run analysis from config + motion paths)
 

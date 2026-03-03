@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 from pathlib import Path
@@ -181,6 +182,29 @@ class MotionImportResponse(BaseModel):
     status: str
 
 
+class MotionUploadResponse(BaseModel):
+    uploaded_path: str
+    file_name: str
+    nbytes: int
+    status: str
+
+
+class MotionUploadCsvRequest(BaseModel):
+    file_name: str
+    content_base64: str
+    output_dir: str = ""
+    output_name: str = ""
+
+
+class MotionUploadPeerAT2Request(BaseModel):
+    file_name: str
+    content_base64: str
+    units_hint: str = "g"
+    dt_override: float | None = Field(default=None, gt=0.0)
+    output_dir: str = ""
+    output_name: str = ""
+
+
 class MotionProcessRequest(BaseModel):
     motion_path: str
     units_hint: str = "m/s2"
@@ -251,6 +275,22 @@ def _default_config_root() -> Path:
 
 def _safe_real_path(path: str | Path) -> Path:
     return Path(path).expanduser().resolve()
+
+
+def _safe_motion_output_dir(raw: str) -> Path:
+    if raw.strip():
+        out = _safe_real_path(raw)
+    else:
+        out = _repo_root() / "out" / "ui" / "motions"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _safe_upload_stem(raw: str, fallback: str) -> str:
+    name = (raw or "").strip()
+    base = Path(name).stem if name else Path(fallback).stem
+    base = base.strip() or "uploaded_motion"
+    return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in base)
 
 
 def _collect_runs(output_root: Path) -> list[Path]:
@@ -1151,11 +1191,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/motion/import/peer-at2", response_model=MotionImportResponse)
     def motion_import_peer_at2(payload: MotionImportRequest) -> MotionImportResponse:
-        output_dir = (
-            _safe_real_path(payload.output_dir)
-            if payload.output_dir.strip()
-            else (_repo_root() / "out" / "ui" / "motions")
-        )
+        output_dir = _safe_motion_output_dir(payload.output_dir)
         output_name = payload.output_name.strip() or None
         result = import_peer_at2_to_csv(
             payload.path,
@@ -1163,6 +1199,54 @@ def create_app() -> FastAPI:
             units_hint=payload.units_hint,
             dt_override=payload.dt_override,
             output_name=output_name,
+        )
+        return MotionImportResponse(
+            converted_csv_path=str(result.csv_path),
+            npts=result.npts,
+            dt_s=result.dt_s,
+            pga_si=result.pga_si,
+            status="ok",
+        )
+
+    @app.post("/api/motion/upload/csv", response_model=MotionUploadResponse)
+    def motion_upload_csv(payload: MotionUploadCsvRequest) -> MotionUploadResponse:
+        source_name = payload.file_name or "uploaded_motion.csv"
+        stem = _safe_upload_stem(payload.output_name, source_name)
+        out_dir = _safe_motion_output_dir(payload.output_dir)
+        out_path = out_dir / f"{stem}.csv"
+        try:
+            data = base64.b64decode(payload.content_base64, validate=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid base64 payload.") from exc
+        if not data:
+            raise HTTPException(status_code=400, detail="Uploaded CSV file is empty.")
+        out_path.write_bytes(data)
+        return MotionUploadResponse(
+            uploaded_path=str(out_path),
+            file_name=Path(source_name).name,
+            nbytes=len(data),
+            status="ok",
+        )
+
+    @app.post("/api/motion/upload/peer-at2", response_model=MotionImportResponse)
+    def motion_upload_peer_at2(payload: MotionUploadPeerAT2Request) -> MotionImportResponse:
+        source_name = payload.file_name or "uploaded_motion.at2"
+        stem = _safe_upload_stem(payload.output_name, source_name)
+        out_dir = _safe_motion_output_dir(payload.output_dir)
+        at2_path = out_dir / f"{stem}.at2"
+        try:
+            data = base64.b64decode(payload.content_base64, validate=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid base64 payload.") from exc
+        if not data:
+            raise HTTPException(status_code=400, detail="Uploaded AT2 file is empty.")
+        at2_path.write_bytes(data)
+        result = import_peer_at2_to_csv(
+            at2_path,
+            output_dir=out_dir,
+            units_hint=payload.units_hint,
+            dt_override=payload.dt_override,
+            output_name=f"{stem}_from_upload",
         )
         return MotionImportResponse(
             converted_csv_path=str(result.csv_path),
@@ -1205,12 +1289,7 @@ def create_app() -> FastAPI:
         acc_proc = np.asarray(processed.acc, dtype=np.float64)
         t_proc = np.arange(acc_proc.size, dtype=np.float64) * float(processed.dt)
 
-        out_root = (
-            _safe_real_path(payload.output_dir)
-            if payload.output_dir.strip()
-            else (_repo_root() / "out" / "ui" / "motions")
-        )
-        out_root.mkdir(parents=True, exist_ok=True)
+        out_root = _safe_motion_output_dir(payload.output_dir)
         stem = payload.output_name.strip() or f"{Path(payload.motion_path).stem}_processed"
         csv_path = out_root / f"{stem}.csv"
         np.savetxt(

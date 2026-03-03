@@ -243,6 +243,21 @@ async function requestJSON(url, options = undefined) {
   return resp.json();
 }
 
+function bytesToBase64(bytes) {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
+async function fileToBase64(file) {
+  const buffer = await file.arrayBuffer();
+  return bytesToBase64(new Uint8Array(buffer));
+}
+
 function linePoints(xs, ys) {
   if (!Array.isArray(xs) || !Array.isArray(ys)) return "";
   const n = Math.min(xs.length, ys.length);
@@ -293,6 +308,117 @@ function ChartCard({ title, subtitle, x, y, color = "var(--copper)" }) {
   `;
 }
 
+const OVERLAY_COLORS = [
+  "var(--copper)",
+  "var(--teal)",
+  "var(--indigo)",
+  "#7d4a22",
+  "#2b5e80",
+  "#5a8456",
+  "#7a3f7f",
+  "#607084",
+];
+
+function pickOverlayColor(index) {
+  return OVERLAY_COLORS[index % OVERLAY_COLORS.length];
+}
+
+function MultiSeriesChartCard({ title, subtitle, series }) {
+  const normalized = Array.isArray(series)
+    ? series.filter(
+        (s) =>
+          s &&
+          Array.isArray(s.x) &&
+          Array.isArray(s.y) &&
+          Math.min(s.x.length, s.y.length) >= 2
+      )
+    : [];
+  const geometry = useMemo(() => {
+    if (normalized.length === 0) return null;
+    const width = 1000;
+    const height = 280;
+    const pad = 24;
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    normalized.forEach((s) => {
+      const n = Math.min(s.x.length, s.y.length);
+      for (let i = 0; i < n; i += 1) {
+        const xv = Number(s.x[i]);
+        const yv = Number(s.y[i]);
+        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
+        if (xv < xMin) xMin = xv;
+        if (xv > xMax) xMax = xv;
+        if (yv < yMin) yMin = yv;
+        if (yv > yMax) yMax = yv;
+      }
+    });
+    if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      return null;
+    }
+    if (Math.abs(xMax - xMin) < 1e-12) xMax = xMin + 1.0;
+    if (Math.abs(yMax - yMin) < 1e-12) yMax = yMin + 1.0;
+    const paths = normalized.map((s, idx) => {
+      const n = Math.min(s.x.length, s.y.length);
+      const pts = [];
+      for (let i = 0; i < n; i += 1) {
+        const xv = Number(s.x[i]);
+        const yv = Number(s.y[i]);
+        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
+        const px = pad + ((xv - xMin) / (xMax - xMin)) * (width - 2 * pad);
+        const py = height - pad - ((yv - yMin) / (yMax - yMin)) * (height - 2 * pad);
+        pts.push(`${px.toFixed(2)},${py.toFixed(2)}`);
+      }
+      return {
+        key: s.key || `series-${idx}`,
+        name: s.name || `Series ${idx + 1}`,
+        color: s.color || pickOverlayColor(idx),
+        points: pts.join(" "),
+      };
+    });
+    return { paths };
+  }, [normalized]);
+
+  return html`
+    <section className="chart-card">
+      <div className="chart-head">
+        <h4>${title}</h4>
+        ${subtitle ? html`<span className="muted">${subtitle}</span>` : null}
+      </div>
+      ${geometry
+        ? html`
+            <svg viewBox="0 0 1000 280" role="img" aria-label=${title}>
+              ${geometry.paths.map(
+                (line) => html`
+                  <polyline
+                    key=${line.key}
+                    fill="none"
+                    stroke=${line.color}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points=${line.points}
+                  ></polyline>
+                `
+              )}
+            </svg>
+            <div className="legend-row">
+              ${geometry.paths.map(
+                (line) => html`
+                  <span key=${`${line.key}-legend`} className="legend-item">
+                    <span className="legend-swatch" style=${{ background: line.color }}></span>
+                    ${line.name}
+                  </span>
+                `
+              )}
+            </div>
+          `
+        : html`<div className="muted">No data</div>`}
+    </section>
+  `;
+}
+
 function metricFromSignal(signal, key, reducer = "max_abs") {
   if (!signal || !Array.isArray(signal[key]) || signal[key].length === 0) return null;
   const arr = signal[key];
@@ -324,12 +450,17 @@ function App() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState("");
   const [activeResultTab, setActiveResultTab] = useState("Time Histories");
   const [runsPanelOpen, setRunsPanelOpen] = useState(false);
+  const [compareRunIds, setCompareRunIds] = useState([]);
+  const [compareSignals, setCompareSignals] = useState({});
+  const [compareLoading, setCompareLoading] = useState(false);
 
   const [at2Path, setAt2Path] = useState("");
   const [motionPreview, setMotionPreview] = useState(null);
   const [processedMotionPath, setProcessedMotionPath] = useState("");
   const [processedMetricsPath, setProcessedMetricsPath] = useState("");
   const layerImportRef = useRef(null);
+  const motionCsvUploadRef = useRef(null);
+  const motionAt2UploadRef = useRef(null);
   const [profileEditorMode, setProfileEditorMode] = useState("table");
   const [profilePresetKey, setProfilePresetKey] = useState("five-main-layers");
   const [configTemplateKey, setConfigTemplateKey] = useState("effective-stress");
@@ -839,6 +970,71 @@ function App() {
     }
   }
 
+  async function onUploadMotionCsvFile(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    try {
+      setStatusKind("info");
+      setStatus(`Uploading CSV: ${file.name}`);
+      const payload = await requestJSON("/api/motion/upload/csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_name: file.name,
+          content_base64: await fileToBase64(file),
+          output_dir: wizard?.control_step?.output_dir || "out/ui/motions",
+          output_name: file.name,
+        }),
+      });
+      updateWizard("motion_step", {
+        motion_path: payload.uploaded_path,
+      });
+      setStatusKind("ok");
+      setStatus(`CSV uploaded: ${payload.uploaded_path}`);
+    } catch (err) {
+      setStatusKind("err");
+      setStatus(`CSV upload failed: ${String(err)}`);
+    } finally {
+      if (event?.target) event.target.value = "";
+    }
+  }
+
+  async function onUploadAT2File(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    try {
+      setStatusKind("info");
+      setStatus(`Uploading and converting AT2: ${file.name}`);
+      const payload = await requestJSON("/api/motion/upload/peer-at2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_name: file.name,
+          content_base64: await fileToBase64(file),
+          units_hint: motionStep.units || "g",
+          output_dir: wizard?.control_step?.output_dir || "out/ui/motions",
+          output_name: file.name,
+          dt_override:
+            motionStep.dt_override && Number(motionStep.dt_override) > 0
+              ? Number(motionStep.dt_override)
+              : null,
+        }),
+      });
+      updateWizard("motion_step", {
+        motion_path: payload.converted_csv_path,
+        units: "m/s2",
+        dt_override: payload.dt_s,
+      });
+      setStatusKind("ok");
+      setStatus(`AT2 uploaded + converted: ${payload.converted_csv_path} (dt=${Number(payload.dt_s).toFixed(6)} s)`);
+    } catch (err) {
+      setStatusKind("err");
+      setStatus(`AT2 upload failed: ${String(err)}`);
+    } finally {
+      if (event?.target) event.target.value = "";
+    }
+  }
+
   async function processMotion() {
     const step = wizard?.motion_step;
     const control = wizard?.control_step || {};
@@ -885,6 +1081,57 @@ function App() {
     }
   }
 
+  function toggleCompareRun(runId) {
+    setCompareRunIds((prev) => {
+      if (prev.includes(runId)) {
+        return prev.filter((id) => id !== runId);
+      }
+      const next = [...prev, runId];
+      return next.slice(-6);
+    });
+  }
+
+  async function loadCompareSignals() {
+    if (compareRunIds.length === 0) {
+      setStatusKind("warn");
+      setStatus("Select at least one run for comparison.");
+      return;
+    }
+    setCompareLoading(true);
+    setStatusKind("info");
+    setStatus(`Loading compare signals for ${compareRunIds.length} run(s)...`);
+    try {
+      const entries = await Promise.all(
+        compareRunIds.map(async (runId) => {
+          const signals = await requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${runQuery}`);
+          const runMeta = runs.find((r) => r.run_id === runId);
+          return [
+            runId,
+            {
+              ...signals,
+              run_id: runId,
+              label: runMeta?.motion_name || runMeta?.project_name || runId,
+            },
+          ];
+        })
+      );
+      setCompareSignals(Object.fromEntries(entries));
+      setStatusKind("ok");
+      setStatus(`Compare signals loaded for ${compareRunIds.length} run(s).`);
+    } catch (err) {
+      setStatusKind("err");
+      setStatus(`Compare load failed: ${String(err)}`);
+    } finally {
+      setCompareLoading(false);
+    }
+  }
+
+  function clearCompareSignals() {
+    setCompareSignals({});
+    setStatusKind("ok");
+    setStatus("Compare overlays cleared.");
+  }
+
   function applyWizardTemplate() {
     const templateDefaults = schema?.template_defaults || {};
     const selected = templateDefaults[configTemplateKey];
@@ -927,6 +1174,21 @@ function App() {
   useEffect(() => {
     loadRunDetail(selectedRunId).catch(() => {});
   }, [selectedRunId, outputRoot]);
+
+  useEffect(() => {
+    setCompareRunIds((prev) => {
+      const validPrev = prev.filter((id) => runs.some((run) => run.run_id === id));
+      if (validPrev.length > 0) return validPrev;
+      if (selectedRunId && runs.some((run) => run.run_id === selectedRunId)) {
+        return [selectedRunId];
+      }
+      return [];
+    });
+  }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    setCompareSignals({});
+  }, [outputRoot]);
 
   const selectedRun = useMemo(
     () => runs.find((r) => r.run_id === selectedRunId) || null,
@@ -991,6 +1253,35 @@ function App() {
       meta: withQuery(`/api/runs/${id}/download/run_meta.json`),
     };
   }, [selectedRunId, runQuery]);
+
+  const compareSeries = useMemo(() => {
+    const loaded = compareRunIds
+      .map((id, idx) => {
+        const sig = compareSignals[id];
+        if (!sig) return null;
+        const label = `${id} | ${mini(sig.label || id)}`;
+        return {
+          key: id,
+          label,
+          color: pickOverlayColor(idx),
+          timeX: sig.time_s || [],
+          timeY: sig.surface_acc_m_s2 || [],
+          psaX: sig.period_s || [],
+          psaY: sig.psa_m_s2 || [],
+          tfX: sig.freq_hz || [],
+          tfY: sig.transfer_abs || [],
+          pga: metricFromSignal(sig, "surface_acc_m_s2", "max_abs"),
+        };
+      })
+      .filter(Boolean);
+    return {
+      count: loaded.length,
+      time: loaded.map((s) => ({ key: `${s.key}-time`, name: s.label, color: s.color, x: s.timeX, y: s.timeY })),
+      psa: loaded.map((s) => ({ key: `${s.key}-psa`, name: s.label, color: s.color, x: s.psaX, y: s.psaY })),
+      transfer: loaded.map((s) => ({ key: `${s.key}-tf`, name: s.label, color: s.color, x: s.tfX, y: s.tfY })),
+      metrics: loaded.map((s) => ({ runId: s.key, label: s.label, pga: s.pga })),
+    };
+  }, [compareRunIds, compareSignals]);
 
   const enums = schema?.enum_options || {};
   const configTemplates = Array.isArray(schema?.config_templates)
@@ -1506,6 +1797,38 @@ function App() {
           ${activeStepIdx === 2 &&
           html`
             <div className="step-body">
+              <input
+                ref=${motionCsvUploadRef}
+                type="file"
+                accept=".csv,text/csv,.txt,text/plain"
+                className="hidden-input"
+                onChange=${onUploadMotionCsvFile}
+              />
+              <input
+                ref=${motionAt2UploadRef}
+                type="file"
+                accept=".at2,.accmt,.txt,text/plain"
+                className="hidden-input"
+                onChange=${onUploadAT2File}
+              />
+              <div className="row">
+                <button
+                  className="btn-min"
+                  onClick=${() => {
+                    if (motionCsvUploadRef.current) motionCsvUploadRef.current.click();
+                  }}
+                >
+                  Upload CSV
+                </button>
+                <button
+                  className="btn-min"
+                  onClick=${() => {
+                    if (motionAt2UploadRef.current) motionAt2UploadRef.current.click();
+                  }}
+                >
+                  Upload AT2
+                </button>
+              </div>
               <div className="field">
                 <label>Motion Path (CSV)</label>
                 <input
@@ -1961,6 +2284,78 @@ function App() {
                   </button>
                 `
               )}
+            </div>
+
+            <div className="compare-box">
+              <div className="row between">
+                <strong>Multi-Motion Compare</strong>
+                <div className="row">
+                  <button
+                    className="btn-min"
+                    onClick=${loadCompareSignals}
+                    disabled=${compareLoading || compareRunIds.length === 0}
+                  >
+                    ${compareLoading ? "Loading..." : "Load Compare"}
+                  </button>
+                  <button
+                    className="btn-min"
+                    onClick=${clearCompareSignals}
+                    disabled=${Object.keys(compareSignals || {}).length === 0}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="compare-selector-grid">
+                ${runs.slice(0, 20).map(
+                  (run) => html`
+                    <label className="compare-pick">
+                      <input
+                        type="checkbox"
+                        checked=${compareRunIds.includes(run.run_id)}
+                        onChange=${() => toggleCompareRun(run.run_id)}
+                      />
+                      <span>${run.run_id}</span>
+                      <small>${mini(run.motion_name || run.input_motion || "")}</small>
+                    </label>
+                  `
+                )}
+              </div>
+              <div className="muted">
+                Selected: ${compareRunIds.length} run(s) (max 6). Load Compare to overlay charts.
+              </div>
+
+              ${compareSeries.count > 0
+                ? html`
+                    <div className="metric-grid">
+                      ${compareSeries.metrics.map(
+                        (row) => html`
+                          <div className="metric-card" key=${`cmp-${row.runId}`}>
+                            <span>${row.label}</span>
+                            <b>PGA: ${fmt(row.pga, 4)}</b>
+                          </div>
+                        `
+                      )}
+                    </div>
+                    <div className="charts-grid">
+                      <${MultiSeriesChartCard}
+                        title="Compare Surface Acceleration"
+                        subtitle="Overlay by selected runs"
+                        series=${compareSeries.time}
+                      />
+                      <${MultiSeriesChartCard}
+                        title="Compare PSA (5%)"
+                        subtitle="Overlay by selected runs"
+                        series=${compareSeries.psa}
+                      />
+                      <${MultiSeriesChartCard}
+                        title="Compare Transfer |H(f)|"
+                        subtitle="Overlay by selected runs"
+                        series=${compareSeries.transfer}
+                      />
+                    </div>
+                  `
+                : null}
             </div>
 
             ${!selectedRunId

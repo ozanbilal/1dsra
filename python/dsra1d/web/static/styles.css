@@ -471,6 +471,35 @@ button:hover {
   color: var(--warn);
 }
 
+.backend-probe-box {
+  margin-top: 0.35rem;
+  border: 1px solid rgba(45, 57, 68, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.45rem 0.52rem;
+}
+
+.probe-chip {
+  display: inline-flex;
+  margin-top: 0.3rem;
+  margin-bottom: 0.2rem;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 57, 68, 0.22);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.probe-chip.ok {
+  color: var(--teal);
+  background: rgba(15, 110, 106, 0.14);
+}
+
+.probe-chip.bad {
+  color: var(--err);
+  background: rgba(140, 36, 31, 0.14);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.52;

@@ -27,7 +27,7 @@ from dsra1d.config.models import (
     ProjectConfig,
     ScaleMode,
 )
-from dsra1d.interop.opensees import resolve_opensees_executable
+from dsra1d.interop.opensees import probe_opensees_executable, resolve_opensees_executable
 from dsra1d.materials import (
     bounded_damping_from_reduction,
     generate_masing_loop,
@@ -237,6 +237,15 @@ class ResultSummaryResponse(BaseModel):
     output_layers: list[str]
     artifacts: list[dict[str, str]]
     solver_notes: str
+
+
+class BackendProbeResponse(BaseModel):
+    requested: str
+    resolved: str | None = None
+    available: bool
+    version: str = ""
+    error: str = ""
+    binary_sha256: str | None = None
 
 
 class HysteresisLayerResponse(BaseModel):
@@ -1133,6 +1142,18 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/backend/opensees/probe", response_model=BackendProbeResponse)
+    def backend_probe_opensees(executable: str = Query(default="OpenSees")) -> BackendProbeResponse:
+        probe = probe_opensees_executable(executable)
+        return BackendProbeResponse(
+            requested=executable,
+            resolved=str(probe.resolved) if probe.resolved is not None else None,
+            available=bool(probe.available),
+            version=str(probe.version or ""),
+            error=str(probe.stderr or ""),
+            binary_sha256=probe.binary_sha256 or None,
+        )
 
     @app.get("/api/config/templates")
     def list_config_templates() -> dict[str, list[str]]:

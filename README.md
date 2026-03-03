@@ -130,9 +130,11 @@ Run flow (no manual YAML editing required):
 ### Results Compare
 - Results panel includes `Multi-Motion Compare` selector (up to 6 runs overlay).
 - Overlay charts: surface acceleration, PSA (5%), and transfer `|H(f)|`.
+- Reference-based diagnostics: PSA ratio to reference, transfer `Δ`, surface-acc `Δ`, and per-run `ΔPGA` / PGA ratio.
 
 Included API endpoints:
 - `GET /api/health`
+- `GET /api/backend/opensees/probe?executable=<path-or-name>`
 - `GET /api/runs?output_root=<path>`
 - `GET /api/runs/tree?output_root=<path>`
 - `GET /api/runs/{run_id}/signals?output_root=<path>`

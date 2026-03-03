@@ -222,6 +222,47 @@ function buildWizardValidation(wizard) {
   };
 }
 
+function alignedRatioSeries(xRef, yRef, xTar, yTar) {
+  const n = Math.min(
+    Array.isArray(xRef) ? xRef.length : 0,
+    Array.isArray(yRef) ? yRef.length : 0,
+    Array.isArray(xTar) ? xTar.length : 0,
+    Array.isArray(yTar) ? yTar.length : 0
+  );
+  const x = [];
+  const y = [];
+  for (let i = 0; i < n; i += 1) {
+    const xv = Number(xTar[i]);
+    const a = Number(yTar[i]);
+    const b = Number(yRef[i]);
+    if (!Number.isFinite(xv) || !Number.isFinite(a) || !Number.isFinite(b)) continue;
+    if (Math.abs(b) < 1e-12) continue;
+    x.push(xv);
+    y.push(a / b);
+  }
+  return { x, y };
+}
+
+function alignedDeltaSeries(xRef, yRef, xTar, yTar) {
+  const n = Math.min(
+    Array.isArray(xRef) ? xRef.length : 0,
+    Array.isArray(yRef) ? yRef.length : 0,
+    Array.isArray(xTar) ? xTar.length : 0,
+    Array.isArray(yTar) ? yTar.length : 0
+  );
+  const x = [];
+  const y = [];
+  for (let i = 0; i < n; i += 1) {
+    const xv = Number(xTar[i]);
+    const a = Number(yTar[i]);
+    const b = Number(yRef[i]);
+    if (!Number.isFinite(xv) || !Number.isFinite(a) || !Number.isFinite(b)) continue;
+    x.push(xv);
+    y.push(a - b);
+  }
+  return { x, y };
+}
+
 function fmt(value, digits = 4) {
   if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
   return Number(value).toFixed(digits);
@@ -450,7 +491,10 @@ function App() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState("");
   const [activeResultTab, setActiveResultTab] = useState("Time Histories");
   const [runsPanelOpen, setRunsPanelOpen] = useState(false);
+  const [backendProbe, setBackendProbe] = useState(null);
+  const [backendProbeLoading, setBackendProbeLoading] = useState(false);
   const [compareRunIds, setCompareRunIds] = useState([]);
+  const [compareReferenceId, setCompareReferenceId] = useState("");
   const [compareSignals, setCompareSignals] = useState({});
   const [compareLoading, setCompareLoading] = useState(false);
 
@@ -838,6 +882,29 @@ function App() {
     }
   }
 
+  async function refreshBackendProbe(executableOverride = null) {
+    const executable =
+      executableOverride ||
+      wizard?.control_step?.opensees_executable ||
+      "OpenSees";
+    setBackendProbeLoading(true);
+    try {
+      const payload = await requestJSON(
+        `/api/backend/opensees/probe?executable=${encodeURIComponent(executable)}`
+      );
+      setBackendProbe(payload);
+    } catch (err) {
+      setBackendProbe({
+        requested: executable,
+        available: false,
+        version: "",
+        error: String(err),
+      });
+    } finally {
+      setBackendProbeLoading(false);
+    }
+  }
+
   async function loadRuns() {
     try {
       const payload = await requestJSON(`/api/runs${runQuery}`);
@@ -1167,6 +1234,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!wizard) return;
+    refreshBackendProbe(wizard?.control_step?.opensees_executable || "OpenSees").catch(() => {});
+  }, [wizard?.control_step?.opensees_executable]);
+
+  useEffect(() => {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
   }, [outputRoot]);
@@ -1189,6 +1261,15 @@ function App() {
   useEffect(() => {
     setCompareSignals({});
   }, [outputRoot]);
+
+  useEffect(() => {
+    if (!compareRunIds.length) {
+      setCompareReferenceId("");
+      return;
+    }
+    if (compareReferenceId && compareRunIds.includes(compareReferenceId)) return;
+    setCompareReferenceId(compareRunIds[0]);
+  }, [compareRunIds, compareReferenceId]);
 
   const selectedRun = useMemo(
     () => runs.find((r) => r.run_id === selectedRunId) || null,
@@ -1283,6 +1364,99 @@ function App() {
     };
   }, [compareRunIds, compareSignals]);
 
+  const compareReferenceDerived = useMemo(() => {
+    if (!compareReferenceId) {
+      return {
+        referenceId: "",
+        ratioPsa: [],
+        deltaTransfer: [],
+        deltaTime: [],
+        metrics: [],
+      };
+    }
+    const ref = compareSignals[compareReferenceId];
+    if (!ref) {
+      return {
+        referenceId: "",
+        ratioPsa: [],
+        deltaTransfer: [],
+        deltaTime: [],
+        metrics: [],
+      };
+    }
+    const refPga = metricFromSignal(ref, "surface_acc_m_s2", "max_abs");
+    const ratioPsa = [];
+    const deltaTransfer = [];
+    const deltaTime = [];
+    const metrics = [];
+    compareRunIds.forEach((runId, idx) => {
+      if (runId === compareReferenceId) return;
+      const sig = compareSignals[runId];
+      if (!sig) return;
+      const label = `${runId} | ${mini(sig.label || runId)}`;
+      const color = pickOverlayColor(idx);
+      const psaRatio = alignedRatioSeries(
+        ref.period_s || [],
+        ref.psa_m_s2 || [],
+        sig.period_s || [],
+        sig.psa_m_s2 || []
+      );
+      const tfDelta = alignedDeltaSeries(
+        ref.freq_hz || [],
+        ref.transfer_abs || [],
+        sig.freq_hz || [],
+        sig.transfer_abs || []
+      );
+      const timeDelta = alignedDeltaSeries(
+        ref.time_s || [],
+        ref.surface_acc_m_s2 || [],
+        sig.time_s || [],
+        sig.surface_acc_m_s2 || []
+      );
+      ratioPsa.push({
+        key: `${runId}-ratio-psa`,
+        name: label,
+        color,
+        x: psaRatio.x,
+        y: psaRatio.y,
+      });
+      deltaTransfer.push({
+        key: `${runId}-delta-tf`,
+        name: label,
+        color,
+        x: tfDelta.x,
+        y: tfDelta.y,
+      });
+      deltaTime.push({
+        key: `${runId}-delta-time`,
+        name: label,
+        color,
+        x: timeDelta.x,
+        y: timeDelta.y,
+      });
+      const pga = metricFromSignal(sig, "surface_acc_m_s2", "max_abs");
+      const deltaPga = Number.isFinite(pga) && Number.isFinite(refPga) ? pga - refPga : null;
+      const ratioPga =
+        Number.isFinite(pga) && Number.isFinite(refPga) && Math.abs(refPga) > 1e-12
+          ? pga / refPga
+          : null;
+      metrics.push({
+        runId,
+        label,
+        pga,
+        deltaPga,
+        ratioPga,
+      });
+    });
+    return {
+      referenceId: compareReferenceId,
+      ratioPsa,
+      deltaTransfer,
+      deltaTime,
+      metrics,
+    };
+  }, [compareReferenceId, compareRunIds, compareSignals]);
+
   const enums = schema?.enum_options || {};
   const configTemplates = Array.isArray(schema?.config_templates)
     ? schema.config_templates
@@ -1299,7 +1473,17 @@ function App() {
     wizardValidation.analysis_step.valid &&
     wizardValidation.profile_step.valid &&
     wizardValidation.control_step.valid;
-  const canRunNow = canGenerateConfig && wizardValidation.motion_step.valid && hasText(generatedConfigPath);
+  const isOpenSeesMode = (analysisStep?.solver_backend || "config") === "opensees";
+  const backendBlockingIssue =
+    isOpenSeesMode && backendProbe && backendProbe.available === false
+      ? `OpenSees executable not available (${backendProbe.requested || "OpenSees"}). Use backend=auto/mock or set valid executable path.`
+      : "";
+  const runBlockingIssues = [];
+  if (!canGenerateConfig) runBlockingIssues.push("Fix wizard validation issues first.");
+  if (!wizardValidation.motion_step.valid) runBlockingIssues.push("Motion step is incomplete.");
+  if (!hasText(generatedConfigPath)) runBlockingIssues.push("Generate Config must be completed.");
+  if (backendBlockingIssue) runBlockingIssues.push(backendBlockingIssue);
+  const canRunNow = runBlockingIssues.length === 0;
   const configTemplateDescription =
     TEMPLATE_DESCRIPTIONS[configTemplateKey] ||
     "Template description is not available for this preset.";
@@ -1426,6 +1610,37 @@ function App() {
                     (v) => html`<option value=${v}>${v}</option>`
                   )}
                 </select>
+              </div>
+              <div className="backend-probe-box">
+                <div className="row between">
+                  <strong>Backend Readiness</strong>
+                  <button
+                    className="btn-min"
+                    onClick=${() => refreshBackendProbe().catch(() => {})}
+                    disabled=${backendProbeLoading}
+                  >
+                    ${backendProbeLoading ? "Checking..." : "Check"}
+                  </button>
+                </div>
+                <div className="muted">
+                  Solver backend: ${analysisStep.solver_backend || "config"}<br />
+                  OpenSees exe: ${controlStep.opensees_executable || "OpenSees"}
+                </div>
+                ${backendProbe
+                  ? html`
+                      <div className=${`probe-chip ${backendProbe.available ? "ok" : "bad"}`}>
+                        ${backendProbe.available ? "OpenSees available" : "OpenSees not available"}
+                      </div>
+                      <div className="muted">
+                        ${backendProbe.resolved ? `Resolved: ${backendProbe.resolved}` : ""}
+                        ${backendProbe.version ? html`<br />Version: ${backendProbe.version}` : null}
+                        ${backendProbe.error ? html`<br />Error: ${backendProbe.error}` : null}
+                      </div>
+                    `
+                  : html`<div className="muted">No backend probe yet.</div>`}
+                ${backendBlockingIssue
+                  ? html`<div className="warn-box"><strong>Run Blocker:</strong> ${backendBlockingIssue}</div>`
+                  : null}
               </div>
             </div>
           `}
@@ -2052,6 +2267,15 @@ function App() {
                     updateWizard("control_step", { opensees_executable: e.target.value })}
                 />
               </div>
+              ${backendProbe
+                ? html`
+                    <div className=${`probe-chip ${backendProbe.available ? "ok" : "bad"}`}>
+                      ${backendProbe.available
+                        ? `OpenSees ok: ${backendProbe.requested}`
+                        : `OpenSees missing: ${backendProbe.requested}`}
+                    </div>
+                  `
+                : null}
               <div className="field">
                 <label>Output Dir</label>
                 <input
@@ -2120,7 +2344,7 @@ function App() {
                   disabled=${!canRunNow}
                   title=${canRunNow
                     ? "Run analysis with generated config and motion"
-                    : "Require valid wizard + generated config + motion path"}
+                    : runBlockingIssues.join(" | ")}
                 >
                   Run Now
                 </button>
@@ -2132,6 +2356,13 @@ function App() {
             ? html`
                 <div className="warn-box">
                   <strong>Step Issues:</strong> ${activeStepIssues.join(" | ")}
+                </div>
+              `
+            : null}
+          ${activeStepIdx === 4 && runBlockingIssues.length
+            ? html`
+                <div className="warn-box">
+                  <strong>Run Blockers:</strong> ${runBlockingIssues.join(" | ")}
                 </div>
               `
             : null}
@@ -2324,6 +2555,19 @@ function App() {
               <div className="muted">
                 Selected: ${compareRunIds.length} run(s) (max 6). Load Compare to overlay charts.
               </div>
+              ${compareRunIds.length > 0
+                ? html`
+                    <div className="field">
+                      <label>Reference Run (for ratio/Δ)</label>
+                      <select
+                        value=${compareReferenceId || ""}
+                        onInput=${(e) => setCompareReferenceId(e.target.value)}
+                      >
+                        ${compareRunIds.map((id) => html`<option value=${id}>${id}</option>`)}
+                      </select>
+                    </div>
+                  `
+                : null}
 
               ${compareSeries.count > 0
                 ? html`
@@ -2353,7 +2597,43 @@ function App() {
                         subtitle="Overlay by selected runs"
                         series=${compareSeries.transfer}
                       />
+                      <${MultiSeriesChartCard}
+                        title="PSA Ratio to Reference"
+                        subtitle=${compareReferenceDerived.referenceId
+                          ? `ref=${compareReferenceDerived.referenceId}`
+                          : "select a reference run"}
+                        series=${compareReferenceDerived.ratioPsa}
+                      />
+                      <${MultiSeriesChartCard}
+                        title="Transfer Δ to Reference"
+                        subtitle=${compareReferenceDerived.referenceId
+                          ? `ref=${compareReferenceDerived.referenceId}`
+                          : "select a reference run"}
+                        series=${compareReferenceDerived.deltaTransfer}
+                      />
+                      <${MultiSeriesChartCard}
+                        title="Surface Acc Δ to Reference"
+                        subtitle=${compareReferenceDerived.referenceId
+                          ? `ref=${compareReferenceDerived.referenceId}`
+                          : "select a reference run"}
+                        series=${compareReferenceDerived.deltaTime}
+                      />
                     </div>
+                    ${compareReferenceDerived.metrics.length > 0
+                      ? html`
+                          <div className="metric-grid">
+                            ${compareReferenceDerived.metrics.map(
+                              (row) => html`
+                                <div className="metric-card" key=${`cmp-delta-${row.runId}`}>
+                                  <span>${row.label}</span>
+                                  <b>ΔPGA: ${fmt(row.deltaPga, 4)}</b><br />
+                                  <b>PGA Ratio: ${fmt(row.ratioPga, 4)}</b>
+                                </div>
+                              `
+                            )}
+                          </div>
+                        `
+                      : null}
                   `
                 : null}
             </div>

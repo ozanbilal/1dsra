@@ -68,6 +68,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Results multi-motion compare:
   - run selector with up to 6 overlays
   - overlay charts for surface acceleration, PSA (5%), and transfer `|H(f)|`
+  - reference-based diagnostics added (`PSA ratio`, transfer/surface `Δ`, `ΔPGA` and PGA ratio metrics)
+- Run diagnostics:
+  - new backend readiness endpoint `GET /api/backend/opensees/probe`
+  - wizard now surfaces OpenSees availability and explicit run blockers when backend is set to `opensees`
 - Pipeline artifact enrichment:
   - deterministic `config_snapshot.json` written per run
   - `run_meta.json` now includes `config_snapshot`

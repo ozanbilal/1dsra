@@ -19,6 +19,19 @@ def test_web_health_endpoint() -> None:
     assert payload.get("status") == "ok"
 
 
+def test_web_backend_probe_endpoint() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.get("/api/backend/opensees/probe", params={"executable": "OpenSees"})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["requested"] == "OpenSees"
+    assert "available" in payload
+    assert "version" in payload
+
+
 def test_web_runs_endpoint_returns_list() -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

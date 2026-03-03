@@ -92,6 +92,44 @@ def test_cli_init_effective_stress_strict_plus_template(tmp_path: Path) -> None:
     assert "boundary_condition: elastic_halfspace" in content
 
 
+def test_cli_init_pm4sand_calibration_template(tmp_path: Path) -> None:
+    out = tmp_path / "pm4sand_calibration.yml"
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--template",
+            "pm4sand-calibration",
+            "--out",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "project_name: pm4sand-calibration-template" in content
+    assert "material: pm4sand" in content
+    assert "pm4_validation_profile: strict_plus" in content
+
+
+def test_cli_init_pm4silt_calibration_template(tmp_path: Path) -> None:
+    out = tmp_path / "pm4silt_calibration.yml"
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--template",
+            "pm4silt-calibration",
+            "--out",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "project_name: pm4silt-calibration-template" in content
+    assert "material: pm4silt" in content
+    assert "pm4_validation_profile: strict_plus" in content
+
+
 def test_cli_init_invalid_template_fails(tmp_path: Path) -> None:
     out = tmp_path / "bad.yml"
     result = runner.invoke(app, ["init", "--template", "does-not-exist", "--out", str(out)])

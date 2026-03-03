@@ -12,7 +12,12 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from dsra1d.config import load_project_config, write_config_template
+from dsra1d.config import (
+    available_config_templates,
+    get_config_template_payload,
+    load_project_config,
+    write_config_template,
+)
 from dsra1d.config.models import (
     BaselineMode,
     BoundaryCondition,
@@ -74,6 +79,8 @@ class ConfigTemplateRequest(BaseModel):
     template: Literal[
         "effective-stress",
         "effective-stress-strict-plus",
+        "pm4sand-calibration",
+        "pm4silt-calibration",
         "mkz-gqh-mock",
         "mkz-gqh-eql",
         "mkz-gqh-nonlinear",
@@ -675,7 +682,201 @@ def _build_hysteresis_response(
     )
 
 
+def _as_positive_float_or_none(value: object) -> float | None:
+    if not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    if not np.isfinite(v) or v <= 0.0:
+        return None
+    return v
+
+
+def _as_non_negative_float(value: object, fallback: float) -> float:
+    if not isinstance(value, (int, float)):
+        return fallback
+    v = float(value)
+    if not np.isfinite(v) or v < 0.0:
+        return fallback
+    return v
+
+
+def _as_int(value: object, fallback: int, *, minimum: int = 0) -> int:
+    if not isinstance(value, (int, float)):
+        return fallback
+    v = round(float(value))
+    return max(v, minimum)
+
+
+def _numeric_dict(raw: object) -> dict[str, float]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        if not isinstance(value, (int, float)):
+            continue
+        v = float(value)
+        if np.isfinite(v):
+            out[key] = v
+    return out
+
+
+def _numeric_list(raw: object) -> list[float]:
+    if not isinstance(raw, list):
+        return []
+    out: list[float] = []
+    for value in raw:
+        if not isinstance(value, (int, float)):
+            continue
+        v = float(value)
+        if np.isfinite(v):
+            out.append(v)
+    return out
+
+
+def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[str, object]:
+    valid_boundary = {e.value for e in BoundaryCondition}
+    valid_material = {e.value for e in MaterialType}
+    valid_baseline = {e.value for e in BaselineMode}
+    valid_scale_mode = {e.value for e in ScaleMode}
+
+    analysis = payload.get("analysis")
+    analysis_dict = analysis if isinstance(analysis, dict) else {}
+    profile = payload.get("profile")
+    profile_dict = profile if isinstance(profile, dict) else {}
+    motion = payload.get("motion")
+    motion_dict = motion if isinstance(motion, dict) else {}
+    output = payload.get("output")
+    output_dict = output if isinstance(output, dict) else {}
+    opensees = payload.get("opensees")
+    opensees_dict = opensees if isinstance(opensees, dict) else {}
+
+    layers_raw = profile_dict.get("layers")
+    layers_in = layers_raw if isinstance(layers_raw, list) else []
+    layers_out: list[dict[str, object]] = []
+    for idx, item in enumerate(layers_in):
+        if not isinstance(item, dict):
+            continue
+        material_raw = str(item.get("material", "pm4sand")).strip().lower()
+        material = material_raw if material_raw in valid_material else "pm4sand"
+        layers_out.append(
+            {
+                "name": str(item.get("name", f"Layer-{idx + 1}")),
+                "thickness_m": _as_non_negative_float(item.get("thickness_m"), 1.0),
+                "unit_weight_kN_m3": _as_non_negative_float(
+                    item.get("unit_weight_kN_m3"), 18.0
+                ),
+                "vs_m_s": _as_non_negative_float(item.get("vs_m_s"), 150.0),
+                "material": material,
+                "material_params": _numeric_dict(item.get("material_params")),
+                "material_optional_args": _numeric_list(
+                    item.get("material_optional_args")
+                ),
+            }
+        )
+    if not layers_out:
+        layers_out = [
+            {
+                "name": "Layer-1",
+                "thickness_m": 5.0,
+                "unit_weight_kN_m3": 18.0,
+                "vs_m_s": 180.0,
+                "material": "pm4sand",
+                "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                "material_optional_args": [],
+            }
+        ]
+
+    boundary_raw = str(
+        payload.get(
+            "boundary_condition",
+            BoundaryCondition.ELASTIC_HALFSPACE.value,
+        )
+    )
+    boundary = (
+        boundary_raw
+        if boundary_raw in valid_boundary
+        else BoundaryCondition.ELASTIC_HALFSPACE.value
+    )
+
+    baseline_raw = str(motion_dict.get("baseline", BaselineMode.REMOVE_MEAN.value))
+    baseline = (
+        baseline_raw if baseline_raw in valid_baseline else BaselineMode.REMOVE_MEAN.value
+    )
+
+    scale_mode_raw = str(motion_dict.get("scale_mode", ScaleMode.NONE.value))
+    scale_mode = (
+        scale_mode_raw if scale_mode_raw in valid_scale_mode else ScaleMode.NONE.value
+    )
+
+    pm4_profile_raw = str(analysis_dict.get("pm4_validation_profile", "basic"))
+    pm4_profile = (
+        pm4_profile_raw if pm4_profile_raw in {"basic", "strict", "strict_plus"} else "basic"
+    )
+
+    backend_raw = str(analysis_dict.get("solver_backend", "opensees"))
+    if backend_raw not in {"config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"}:
+        backend_raw = "opensees"
+
+    wizard_payload = {
+        "analysis_step": {
+            "project_name": str(payload.get("project_name", "wizard-project")),
+            "boundary_condition": boundary,
+            "solver_backend": backend_raw,
+            "pm4_validation_profile": pm4_profile,
+        },
+        "profile_step": {"layers": layers_out},
+        "motion_step": {
+            "units": str(motion_dict.get("units", "m/s2")),
+            "dt_override": _as_positive_float_or_none(motion_dict.get("dt_override")),
+            "baseline": baseline,
+            "scale_mode": scale_mode,
+            "scale_factor": _as_positive_float_or_none(motion_dict.get("scale_factor")),
+            "target_pga": _as_positive_float_or_none(motion_dict.get("target_pga")),
+            "motion_path": "",
+        },
+        "damping_step": {
+            "mode": "frequency_independent",
+            "update_matrix": False,
+            "mode_1": None,
+            "mode_2": None,
+        },
+        "control_step": {
+            "dt": _as_positive_float_or_none(analysis_dict.get("dt")),
+            "f_max": _as_non_negative_float(analysis_dict.get("f_max"), 25.0),
+            "timeout_s": _as_int(analysis_dict.get("timeout_s"), 180, minimum=1),
+            "retries": _as_int(analysis_dict.get("retries"), 1, minimum=0),
+            "write_hdf5": bool(output_dict.get("write_hdf5", True)),
+            "write_sqlite": bool(output_dict.get("write_sqlite", True)),
+            "parquet_export": bool(output_dict.get("parquet_export", False)),
+            "opensees_executable": str(opensees_dict.get("executable", "OpenSees")),
+            "output_dir": "out/web",
+            "config_output_dir": "",
+            "config_file_name": "",
+        },
+    }
+    model = WizardConfigRequest.model_validate(wizard_payload)
+    return cast(dict[str, object], model.model_dump(mode="json", by_alias=True))
+
+
 def _build_wizard_schema() -> dict[str, object]:
+    template_names = list(available_config_templates())
+    template_defaults: dict[str, dict[str, object]] = {}
+    for name in template_names:
+        payload = get_config_template_payload(name)
+        template_defaults[name] = _wizard_defaults_from_project_payload(payload)
+    default_template = (
+        "effective-stress"
+        if "effective-stress" in template_defaults
+        else (template_names[0] if template_names else "")
+    )
+    default_wizard = template_defaults.get(default_template)
+    if default_wizard is None:
+        default_wizard = _wizard_defaults_from_project_payload(
+            get_config_template_payload("effective-stress")
+        )
+
     return {
         "steps": [
             {"id": "analysis_step", "title": "Analysis Type"},
@@ -716,25 +917,10 @@ def _build_wizard_schema() -> dict[str, object]:
                 "config_file_name",
             ],
         },
-        "defaults": {
-            "analysis_step": WizardAnalysisStep().model_dump(mode="json"),
-            "profile_step": {
-                "layers": [
-                    {
-                        "name": "Layer-1",
-                        "thickness_m": 5.0,
-                        "unit_weight_kN_m3": 18.0,
-                        "vs_m_s": 180.0,
-                        "material": "pm4sand",
-                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
-                        "material_optional_args": [],
-                    }
-                ]
-            },
-            "motion_step": WizardMotionStep().model_dump(mode="json"),
-            "damping_step": WizardDampingStep().model_dump(mode="json"),
-            "control_step": WizardControlStep().model_dump(mode="json"),
-        },
+        "defaults": default_wizard,
+        "default_template": default_template,
+        "config_templates": template_names,
+        "template_defaults": template_defaults,
         "enum_options": {
             "boundary_condition": [e.value for e in BoundaryCondition],
             "solver_backend": ["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"],
@@ -910,15 +1096,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config/templates")
     def list_config_templates() -> dict[str, list[str]]:
-        return {
-            "templates": [
-                "effective-stress",
-                "effective-stress-strict-plus",
-                "mkz-gqh-mock",
-                "mkz-gqh-eql",
-                "mkz-gqh-nonlinear",
-            ]
-        }
+        return {"templates": list(available_config_templates())}
 
     @app.post("/api/config/template", response_model=ConfigTemplateResponse)
     def create_config_template(payload: ConfigTemplateRequest) -> ConfigTemplateResponse:

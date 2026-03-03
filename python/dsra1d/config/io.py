@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +159,169 @@ def _effective_stress_strict_plus_template() -> dict[str, Any]:
     }
 
 
+def _pm4sand_calibration_template() -> dict[str, Any]:
+    return {
+        "project_name": "pm4sand-calibration-template",
+        "seed": 42,
+        "profile": {
+            "layers": [
+                {
+                    "name": "Sand-Top",
+                    "thickness_m": 4.0,
+                    "unit_weight_kN_m3": 18.2,
+                    "vs_m_s": 170.0,
+                    "material": "pm4sand",
+                    "material_params": {
+                        "Dr": 0.38,
+                        "G0": 580.0,
+                        "hpo": 0.50,
+                    },
+                    "material_optional_args": [],
+                },
+                {
+                    "name": "Sand-Mid",
+                    "thickness_m": 8.0,
+                    "unit_weight_kN_m3": 18.8,
+                    "vs_m_s": 240.0,
+                    "material": "pm4sand",
+                    "material_params": {
+                        "Dr": 0.52,
+                        "G0": 640.0,
+                        "hpo": 0.56,
+                    },
+                    "material_optional_args": [],
+                },
+                {
+                    "name": "Sand-Base",
+                    "thickness_m": 10.0,
+                    "unit_weight_kN_m3": 19.4,
+                    "vs_m_s": 340.0,
+                    "material": "pm4sand",
+                    "material_params": {
+                        "Dr": 0.65,
+                        "G0": 730.0,
+                        "hpo": 0.62,
+                    },
+                    "material_optional_args": [],
+                },
+            ]
+        },
+        "boundary_condition": "elastic_halfspace",
+        "analysis": {
+            "dt": 0.002,
+            "f_max": 30.0,
+            "solver_backend": "opensees",
+            "pm4_validation_profile": "strict_plus",
+            "timeout_s": 240,
+            "retries": 1,
+        },
+        "motion": {
+            "units": "m/s2",
+            "baseline": "remove_mean",
+            "scale_mode": "none",
+        },
+        "output": {
+            "write_hdf5": True,
+            "write_sqlite": True,
+            "parquet_export": False,
+        },
+        "opensees": {
+            "executable": "OpenSees",
+            "extra_args": [],
+            "column_width_m": 1.0,
+            "thickness_m": 1.0,
+            "fluid_bulk_modulus": 2.2e6,
+            "fluid_mass_density": 1.0,
+            "h_perm": 1.0e-5,
+            "v_perm": 1.0e-5,
+            "gravity_steps": 20,
+        },
+    }
+
+
+def _pm4silt_calibration_template() -> dict[str, Any]:
+    return {
+        "project_name": "pm4silt-calibration-template",
+        "seed": 42,
+        "profile": {
+            "layers": [
+                {
+                    "name": "Silt-Top",
+                    "thickness_m": 5.0,
+                    "unit_weight_kN_m3": 18.0,
+                    "vs_m_s": 140.0,
+                    "material": "pm4silt",
+                    "material_params": {
+                        "Su": 28.0,
+                        "Su_Rat": 0.22,
+                        "G_o": 460.0,
+                        "h_po": 0.54,
+                    },
+                    "material_optional_args": [],
+                },
+                {
+                    "name": "Silt-Mid",
+                    "thickness_m": 9.0,
+                    "unit_weight_kN_m3": 18.6,
+                    "vs_m_s": 210.0,
+                    "material": "pm4silt",
+                    "material_params": {
+                        "Su": 40.0,
+                        "Su_Rat": 0.27,
+                        "G_o": 540.0,
+                        "h_po": 0.63,
+                    },
+                    "material_optional_args": [],
+                },
+                {
+                    "name": "Silt-Base",
+                    "thickness_m": 8.0,
+                    "unit_weight_kN_m3": 19.2,
+                    "vs_m_s": 300.0,
+                    "material": "pm4silt",
+                    "material_params": {
+                        "Su": 55.0,
+                        "Su_Rat": 0.31,
+                        "G_o": 610.0,
+                        "h_po": 0.70,
+                    },
+                    "material_optional_args": [],
+                },
+            ]
+        },
+        "boundary_condition": "elastic_halfspace",
+        "analysis": {
+            "dt": 0.002,
+            "f_max": 30.0,
+            "solver_backend": "opensees",
+            "pm4_validation_profile": "strict_plus",
+            "timeout_s": 240,
+            "retries": 1,
+        },
+        "motion": {
+            "units": "m/s2",
+            "baseline": "remove_mean",
+            "scale_mode": "none",
+        },
+        "output": {
+            "write_hdf5": True,
+            "write_sqlite": True,
+            "parquet_export": False,
+        },
+        "opensees": {
+            "executable": "OpenSees",
+            "extra_args": [],
+            "column_width_m": 1.0,
+            "thickness_m": 1.0,
+            "fluid_bulk_modulus": 2.2e6,
+            "fluid_mass_density": 1.0,
+            "h_perm": 1.0e-5,
+            "v_perm": 1.0e-5,
+            "gravity_steps": 20,
+        },
+    }
+
+
 def _mkz_gqh_mock_template() -> dict[str, Any]:
     return {
         "project_name": "mkz-gqh-mock-template",
@@ -247,21 +412,36 @@ def _mkz_gqh_nonlinear_template() -> dict[str, Any]:
     return template
 
 
+def _template_factories() -> dict[str, Callable[[], dict[str, Any]]]:
+    return {
+        "effective-stress": _effective_stress_template,
+        "effective-stress-strict-plus": _effective_stress_strict_plus_template,
+        "pm4sand-calibration": _pm4sand_calibration_template,
+        "pm4silt-calibration": _pm4silt_calibration_template,
+        "mkz-gqh-mock": _mkz_gqh_mock_template,
+        "mkz-gqh-eql": _mkz_gqh_eql_template,
+        "mkz-gqh-nonlinear": _mkz_gqh_nonlinear_template,
+    }
+
+
+def available_config_templates() -> tuple[str, ...]:
+    return tuple(_template_factories().keys())
+
+
+def get_config_template_payload(template: str = "effective-stress") -> dict[str, Any]:
+    factories = _template_factories()
+    if template not in factories:
+        valid = ", ".join(sorted(factories))
+        raise ValueError(f"Unknown template '{template}'. Valid templates: {valid}")
+    content = factories[template]()
+    return copy.deepcopy(content)
+
+
 def write_config_template(
     path: str | Path,
     template: str = "effective-stress",
 ) -> Path:
-    templates: dict[str, dict[str, Any]] = {
-        "effective-stress": _effective_stress_template(),
-        "effective-stress-strict-plus": _effective_stress_strict_plus_template(),
-        "mkz-gqh-mock": _mkz_gqh_mock_template(),
-        "mkz-gqh-eql": _mkz_gqh_eql_template(),
-        "mkz-gqh-nonlinear": _mkz_gqh_nonlinear_template(),
-    }
-    if template not in templates:
-        valid = ", ".join(sorted(templates))
-        raise ValueError(f"Unknown template '{template}'. Valid templates: {valid}")
-    content = templates[template]
+    content = get_config_template_payload(template)
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)

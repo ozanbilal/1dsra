@@ -1,4 +1,9 @@
-from dsra1d.config.io import load_project_config, write_config_template
+from dsra1d.config.io import (
+    available_config_templates,
+    get_config_template_payload,
+    load_project_config,
+    write_config_template,
+)
 from dsra1d.config.models import (
     AnalysisControl,
     BaselineMode,
@@ -23,6 +28,8 @@ __all__ = [
     "ProjectConfig",
     "ScaleMode",
     "SoilProfile",
+    "available_config_templates",
+    "get_config_template_payload",
     "load_project_config",
     "write_config_template",
 ]

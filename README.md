@@ -27,6 +27,8 @@ pip install -e .[dev]
 
 StrataWave init --template effective-stress --out examples/configs/effective_stress.yml
 StrataWave init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
+StrataWave init --template pm4sand-calibration --out examples/configs/pm4sand_calibration.yml
+StrataWave init --template pm4silt-calibration --out examples/configs/pm4silt_calibration.yml
 StrataWave init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
 StrataWave init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
 StrataWave init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
@@ -94,6 +96,8 @@ DEEPSOIL-style 5-step wizard is available:
 - `Input Motion`
 - `Damping`
 - `Analysis Control`
+- `Analysis Type` step includes `Wizard Template` loader (`effective-stress`, `effective-stress-strict-plus`, `pm4sand-calibration`, `pm4silt-calibration`, `mkz-gqh-*`) to bootstrap model state without YAML.
+- Wizard tabs show step readiness badges and inline issues; `Generate Config`/`Run Now` are gated until required fields are valid.
 
 `Soil Profile` step now supports DEEPSOIL-style bulk editing:
 - `Table` mode for fast multi-layer entry and model-aware parameter editing (`pm4sand`, `pm4silt`, `mkz`, `gqh`, `elastic`)

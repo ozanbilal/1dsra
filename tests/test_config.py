@@ -1,7 +1,11 @@
 from pathlib import Path
 
 import pytest
-from dsra1d.config import load_project_config
+from dsra1d.config import (
+    available_config_templates,
+    get_config_template_payload,
+    load_project_config,
+)
 
 
 def test_load_config_ok() -> None:
@@ -15,6 +19,36 @@ def test_load_strict_plus_example_config_ok() -> None:
     cfg = load_project_config(Path("examples/configs/effective_stress_strict_plus.yml"))
     assert cfg.project_name == "sample-effective-stress-strict-plus"
     assert cfg.analysis.pm4_validation_profile == "strict_plus"
+
+
+def test_load_pm4sand_calibration_config_ok() -> None:
+    cfg = load_project_config(Path("examples/configs/pm4sand_calibration.yml"))
+    assert cfg.project_name == "pm4sand-calibration-template"
+    assert all(layer.material == "pm4sand" for layer in cfg.profile.layers)
+
+
+def test_load_pm4silt_calibration_config_ok() -> None:
+    cfg = load_project_config(Path("examples/configs/pm4silt_calibration.yml"))
+    assert cfg.project_name == "pm4silt-calibration-template"
+    assert all(layer.material == "pm4silt" for layer in cfg.profile.layers)
+
+
+def test_available_config_templates_contains_pm4_calibration() -> None:
+    names = available_config_templates()
+    assert "effective-stress" in names
+    assert "pm4sand-calibration" in names
+    assert "pm4silt-calibration" in names
+    assert "mkz-gqh-nonlinear" in names
+
+
+def test_get_config_template_payload_returns_profile_layers() -> None:
+    payload = get_config_template_payload("pm4sand-calibration")
+    assert payload["project_name"] == "pm4sand-calibration-template"
+    profile = payload.get("profile", {})
+    assert isinstance(profile, dict)
+    layers = profile.get("layers", [])
+    assert isinstance(layers, list)
+    assert len(layers) >= 2
 
 
 def test_invalid_extension() -> None:

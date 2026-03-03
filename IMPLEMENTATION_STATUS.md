@@ -68,6 +68,9 @@ Implemented:
 - PM4Sand/PM4Silt command blocks in generated TCL
 - Layer-level material parameter plumbing via `material_params`
 - Layer-level PM4 positional tail arguments via `material_optional_args` for calibration runs
+- Calibration-ready starter templates for PM4 tuning workflows:
+  - `pm4sand-calibration`
+  - `pm4silt-calibration`
 - Example config includes PM4 placeholder calibration parameters
 - Effective-stress normalization outputs in result stores:
   - HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
@@ -158,7 +161,7 @@ Missing:
 
 - CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `lock-golden`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
-- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
+- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `pm4sand-calibration`, `pm4silt-calibration`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql|nonlinear`
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
@@ -194,6 +197,8 @@ Missing:
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
+- Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)
+- React wizard now includes step-level readiness indicators (`ready`/`issue` badges), inline step issue list, and gated `Generate Config` / `Run Now` actions based on required inputs
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
 - React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
 - Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors

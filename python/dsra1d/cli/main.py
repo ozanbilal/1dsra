@@ -590,6 +590,8 @@ def quickstart(
     template_to_config = {
         "effective-stress": "effective_stress.yml",
         "effective-stress-strict-plus": "effective_stress_strict_plus.yml",
+        "pm4sand-calibration": "pm4sand_calibration.yml",
+        "pm4silt-calibration": "pm4silt_calibration.yml",
         "mkz-gqh-mock": "mkz_gqh_mock.yml",
         "mkz-gqh-eql": "mkz_gqh_eql.yml",
         "mkz-gqh-nonlinear": "mkz_gqh_nonlinear.yml",

@@ -54,6 +54,8 @@ def test_web_list_config_templates_endpoint() -> None:
     payload = resp.json()
     assert "templates" in payload
     assert "effective-stress" in payload["templates"]
+    assert "pm4sand-calibration" in payload["templates"]
+    assert "pm4silt-calibration" in payload["templates"]
 
 
 def test_web_create_config_template_endpoint(tmp_path) -> None:
@@ -174,8 +176,13 @@ def test_web_wizard_schema_endpoint() -> None:
     payload = resp.json()
     assert "steps" in payload
     assert "defaults" in payload
+    assert "config_templates" in payload
+    assert "template_defaults" in payload
     assert payload["steps"][0]["id"] == "analysis_step"
     assert "deepsoil_bap_like" in payload["enum_options"]["baseline"]
+    assert "pm4sand-calibration" in payload["config_templates"]
+    assert "pm4silt-calibration" in payload["config_templates"]
+    assert "pm4sand-calibration" in payload["template_defaults"]
 
 
 def test_web_config_from_wizard_endpoint(tmp_path) -> None:

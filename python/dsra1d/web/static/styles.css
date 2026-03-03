@@ -32,7 +32,7 @@ body {
 }
 
 .shell {
-  width: min(1920px, 98vw);
+  width: min(2360px, 99vw);
   margin: 0.75rem auto 1.25rem;
 }
 
@@ -62,9 +62,13 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(470px, 34%) minmax(0, 1fr);
+  grid-template-columns: minmax(620px, 43%) minmax(0, 1fr);
   gap: 12px;
   margin-top: 12px;
+}
+
+.layout.layout-workspace-open {
+  grid-template-columns: minmax(620px, 43%) minmax(0, 1fr);
 }
 
 .panel {
@@ -226,14 +230,46 @@ button:hover {
 }
 
 .tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(45, 57, 68, 0.11);
   color: var(--stone);
   font-size: 0.72rem;
 }
 
+.tab-btn.step-valid {
+  border: 1px solid rgba(15, 110, 106, 0.26);
+}
+
+.tab-btn.step-invalid {
+  border: 1px solid rgba(140, 36, 31, 0.28);
+}
+
 .tab-btn.active {
   background: linear-gradient(135deg, var(--teal), #2f8c86);
   color: #fff;
+}
+
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  min-height: 16px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border: 1px solid rgba(45, 57, 68, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.step-badge.ok {
+  color: var(--teal);
+}
+
+.step-badge.bad {
+  color: var(--err);
 }
 
 .results-tab-row .tab-btn {
@@ -286,6 +322,12 @@ button:hover {
   padding: 0.48rem;
 }
 
+.auto-profile-box .row.between {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  row-gap: 4px;
+}
+
 .field-inline {
   margin-bottom: 0.42rem;
 }
@@ -323,7 +365,7 @@ button:hover {
 .layer-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1080px;
+  min-width: 1260px;
 }
 
 .layer-table th,
@@ -413,9 +455,27 @@ button:hover {
   padding: 0.5rem;
 }
 
+.hint-box {
+  margin-top: 0.2rem;
+  margin-bottom: 0.55rem;
+  border: 1px solid rgba(45, 57, 68, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.48rem 0.52rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .warn-box {
   margin-top: 0.42rem;
   color: var(--warn);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+  filter: none;
 }
 
 pre {

@@ -50,6 +50,18 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - starter profile builders (`5-Layer Starter`, preset loader)
   - Auto Profile Creator in UI (`f_max`, points-per-wavelength, min slice thickness, max sublayers)
   - Runs panel accordion toggle (right-top triangle collapse/expand) to free workspace while editing layers
+- PM4 calibration-ready template set added:
+  - `pm4sand-calibration`
+  - `pm4silt-calibration`
+  - wired in CLI `init`/`quickstart` and web template endpoints
+- React Wizard template bootstrap:
+  - `Analysis Type` now includes one-click template apply
+  - backend `wizard/schema` now returns `config_templates` and `template_defaults`
+  - PM4 calibration and MKZ/GQH templates can populate full wizard state without manual YAML
+- React Wizard flow hardening:
+  - step-level readiness badges and inline issue reporting
+  - `Generate Config` and `Run Now` buttons now enforce required step validity before execution
+  - template selector now shows short preset descriptions in Analysis step
 - Pipeline artifact enrichment:
   - deterministic `config_snapshot.json` written per run
   - `run_meta.json` now includes `config_snapshot`

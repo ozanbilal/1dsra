@@ -1,0 +1,60 @@
+project_name: pm4sand-calibration-template
+seed: 42
+profile:
+  layers:
+  - name: Sand-Top
+    thickness_m: 4.0
+    unit_weight_kN_m3: 18.2
+    vs_m_s: 170.0
+    material: pm4sand
+    material_params:
+      Dr: 0.38
+      G0: 580.0
+      hpo: 0.5
+    material_optional_args: []
+  - name: Sand-Mid
+    thickness_m: 8.0
+    unit_weight_kN_m3: 18.8
+    vs_m_s: 240.0
+    material: pm4sand
+    material_params:
+      Dr: 0.52
+      G0: 640.0
+      hpo: 0.56
+    material_optional_args: []
+  - name: Sand-Base
+    thickness_m: 10.0
+    unit_weight_kN_m3: 19.4
+    vs_m_s: 340.0
+    material: pm4sand
+    material_params:
+      Dr: 0.65
+      G0: 730.0
+      hpo: 0.62
+    material_optional_args: []
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.002
+  f_max: 30.0
+  solver_backend: opensees
+  pm4_validation_profile: strict_plus
+  timeout_s: 240
+  retries: 1
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []
+  column_width_m: 1.0
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 1.0e-05
+  v_perm: 1.0e-05
+  gravity_steps: 20

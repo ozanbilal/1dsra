@@ -38,6 +38,23 @@ const PROFILE_PRESETS = {
   ],
 };
 
+const TEMPLATE_DESCRIPTIONS = {
+  "effective-stress":
+    "General effective-stress starter with mixed PM4Sand/PM4Silt layers and elastic half-space boundary.",
+  "effective-stress-strict-plus":
+    "Effective-stress starter with strict_plus PM4 validation and conservative default u-p setup.",
+  "pm4sand-calibration":
+    "Calibration-oriented PM4Sand stack for layer-by-layer Dr/G0/hpo tuning workflows.",
+  "pm4silt-calibration":
+    "Calibration-oriented PM4Silt stack for Su/Su_Rat/G_o/h_po sensitivity studies.",
+  "mkz-gqh-mock":
+    "Native MKZ/GQH mock baseline for constitutive curve setup without OpenSees dependency.",
+  "mkz-gqh-eql":
+    "Native equivalent-linear (EQL) MKZ/GQH template for strain-compatible iteration runs.",
+  "mkz-gqh-nonlinear":
+    "Native nonlinear time-domain MKZ/GQH template with stateful hysteretic branch updates.",
+};
+
 const MATERIAL_PARAM_PRESETS = {
   pm4sand: { Dr: 0.45, G0: 600.0, hpo: 0.53 },
   pm4silt: { Su: 35.0, Su_Rat: 0.25, G_o: 500.0, h_po: 0.6 },
@@ -119,6 +136,90 @@ function parseCsvLine(line) {
 function toNum(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function hasText(value) {
+  return String(value || "").trim().length > 0;
+}
+
+function isPositive(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+function buildWizardValidation(wizard) {
+  const analysis = wizard?.analysis_step || {};
+  const profile = wizard?.profile_step || {};
+  const motion = wizard?.motion_step || {};
+  const damping = wizard?.damping_step || {};
+  const control = wizard?.control_step || {};
+  const layers = Array.isArray(profile.layers) ? profile.layers : [];
+  const issues = {
+    analysis_step: [],
+    profile_step: [],
+    motion_step: [],
+    damping_step: [],
+    control_step: [],
+  };
+
+  if (!hasText(analysis.project_name)) {
+    issues.analysis_step.push("Project Name is required.");
+  }
+  if (!hasText(analysis.boundary_condition)) {
+    issues.analysis_step.push("Boundary Condition is required.");
+  }
+  if (!hasText(analysis.solver_backend)) {
+    issues.analysis_step.push("Solver Backend is required.");
+  }
+
+  if (layers.length === 0) {
+    issues.profile_step.push("At least one layer is required.");
+  }
+  layers.forEach((layer, idx) => {
+    const label = layer?.name || `Layer-${idx + 1}`;
+    if (!isPositive(layer?.thickness_m)) {
+      issues.profile_step.push(`${label}: thickness must be > 0.`);
+    }
+    if (!isPositive(layer?.unit_weight_kN_m3)) {
+      issues.profile_step.push(`${label}: unit weight must be > 0.`);
+    }
+    if (!isPositive(layer?.vs_m_s)) {
+      issues.profile_step.push(`${label}: Vs must be > 0.`);
+    }
+  });
+
+  if (!hasText(motion.motion_path)) {
+    issues.motion_step.push("Motion Path is required to run analysis.");
+  }
+  if (!hasText(motion.units)) {
+    issues.motion_step.push("Motion units are required.");
+  }
+
+  if (!hasText(damping.mode)) {
+    issues.damping_step.push("Damping mode is required.");
+  }
+
+  if (!isPositive(control.f_max)) {
+    issues.control_step.push("f_max must be > 0.");
+  }
+  if (control.dt !== null && control.dt !== undefined && !isPositive(control.dt)) {
+    issues.control_step.push("dt must be > 0 when specified.");
+  }
+  if (!hasText(control.output_dir)) {
+    issues.control_step.push("Output Dir is required.");
+  }
+
+  return {
+    analysis_step: { valid: issues.analysis_step.length === 0, issues: issues.analysis_step },
+    profile_step: { valid: issues.profile_step.length === 0, issues: issues.profile_step },
+    motion_step: { valid: issues.motion_step.length === 0, issues: issues.motion_step },
+    damping_step: { valid: issues.damping_step.length === 0, issues: issues.damping_step },
+    control_step: { valid: issues.control_step.length === 0, issues: issues.control_step },
+  };
 }
 
 function fmt(value, digits = 4) {
@@ -231,6 +332,7 @@ function App() {
   const layerImportRef = useRef(null);
   const [profileEditorMode, setProfileEditorMode] = useState("table");
   const [profilePresetKey, setProfilePresetKey] = useState("five-main-layers");
+  const [configTemplateKey, setConfigTemplateKey] = useState("effective-stress");
   const [autoProfile, setAutoProfile] = useState({
     useControlFmax: true,
     fMax: 25,
@@ -591,6 +693,12 @@ function App() {
       const payload = await requestJSON("/api/wizard/schema");
       setSchema(payload);
       setWizard(payload.defaults);
+      const defaultTemplate =
+        payload.default_template ||
+        (Array.isArray(payload.config_templates) && payload.config_templates.length
+          ? payload.config_templates[0]
+          : "effective-stress");
+      setConfigTemplateKey(defaultTemplate);
       setStatusKind("ok");
       setStatus("Wizard schema loaded.");
     } catch (err) {
@@ -777,6 +885,34 @@ function App() {
     }
   }
 
+  function applyWizardTemplate() {
+    const templateDefaults = schema?.template_defaults || {};
+    const selected = templateDefaults[configTemplateKey];
+    if (!selected) {
+      setStatusKind("warn");
+      setStatus(`Template not found in wizard schema: ${configTemplateKey}`);
+      return;
+    }
+    const currentMotionPath = wizard?.motion_step?.motion_path || "";
+    const currentDtOverride =
+      wizard?.motion_step?.dt_override !== undefined ? wizard.motion_step.dt_override : null;
+    const next = cloneJson(selected);
+    if (currentMotionPath) {
+      next.motion_step = next.motion_step || {};
+      next.motion_step.motion_path = currentMotionPath;
+    }
+    if (currentDtOverride !== null && currentDtOverride !== undefined) {
+      next.motion_step = next.motion_step || {};
+      next.motion_step.dt_override = currentDtOverride;
+    }
+    setWizard(next);
+    setGeneratedConfigPath("");
+    setGeneratedConfigYaml("");
+    setConfigWarnings([]);
+    setStatusKind("ok");
+    setStatus(`Wizard template applied: ${configTemplateKey}`);
+  }
+
   useEffect(() => {
     loadWizardSchema().catch(() => {});
     loadRuns().catch(() => {});
@@ -857,11 +993,26 @@ function App() {
   }, [selectedRunId, runQuery]);
 
   const enums = schema?.enum_options || {};
+  const configTemplates = Array.isArray(schema?.config_templates)
+    ? schema.config_templates
+    : ["effective-stress"];
   const layers = wizard?.profile_step?.layers || [];
   const motionStep = wizard?.motion_step || {};
   const dampingStep = wizard?.damping_step || {};
   const controlStep = wizard?.control_step || {};
   const analysisStep = wizard?.analysis_step || {};
+  const wizardValidation = useMemo(() => buildWizardValidation(wizard), [wizard]);
+  const activeStepId = WIZARD_STEPS[activeStepIdx]?.id || "analysis_step";
+  const activeStepIssues = wizardValidation?.[activeStepId]?.issues || [];
+  const canGenerateConfig =
+    wizardValidation.analysis_step.valid &&
+    wizardValidation.profile_step.valid &&
+    wizardValidation.control_step.valid;
+  const canRunNow = canGenerateConfig && wizardValidation.motion_step.valid && hasText(generatedConfigPath);
+  const configTemplateDescription =
+    TEMPLATE_DESCRIPTIONS[configTemplateKey] ||
+    "Template description is not available for this preset.";
+
   const autoProfilePreview = useMemo(() => {
     const controlFmax = Math.max(Number(controlStep?.f_max || 25), 0.1);
     const cfg = {
@@ -902,20 +1053,49 @@ function App() {
           <h2>Wizard</h2>
           <div className="tab-row">
             ${WIZARD_STEPS.map(
-              (step, idx) => html`
+              (step, idx) => {
+                const stepState = wizardValidation?.[step.id] || { valid: true, issues: [] };
+                const badge = stepState.valid ? "✓" : "!";
+                return html`
                 <button
-                  className=${`tab-btn ${idx === activeStepIdx ? "active" : ""}`}
+                  className=${`tab-btn ${idx === activeStepIdx ? "active" : ""} ${
+                    stepState.valid ? "step-valid" : "step-invalid"
+                  }`}
                   onClick=${() => setActiveStepIdx(idx)}
+                  title=${stepState.valid
+                    ? `${step.title}: ready`
+                    : `${step.title}: ${stepState.issues.length} issue(s)`}
                 >
                   ${step.title}
+                  <span className=${`step-badge ${stepState.valid ? "ok" : "bad"}`}>${badge}</span>
                 </button>
-              `
+              `;
+              }
             )}
           </div>
 
           ${activeStepIdx === 0 &&
           html`
             <div className="step-body">
+              <div className="row">
+                <div className="field">
+                  <label>Wizard Template</label>
+                  <select
+                    value=${configTemplateKey}
+                    onInput=${(e) => setConfigTemplateKey(e.target.value)}
+                  >
+                    ${configTemplates.map((v) => html`<option value=${v}>${v}</option>`)}
+                  </select>
+                </div>
+                <div className="field align-end">
+                  <button className="btn-min" onClick=${applyWizardTemplate}>Apply Template</button>
+                </div>
+              </div>
+              <div className="hint-box">
+                <strong>${configTemplateKey}</strong><br />
+                ${configTemplateDescription}
+              </div>
+
               <div className="field">
                 <label>Project Name</label>
                 <input
@@ -1601,11 +1781,37 @@ function App() {
               </div>
 
               <div className="row">
-                <button className="btn-main" onClick=${generateConfig}>Generate Config</button>
-                <button className="btn-sub" onClick=${runNow}>Run Now</button>
+                <button
+                  className="btn-main"
+                  onClick=${generateConfig}
+                  disabled=${!canGenerateConfig}
+                  title=${canGenerateConfig
+                    ? "Generate config from wizard values"
+                    : "Fix wizard issues in Analysis/Profile/Control steps first"}
+                >
+                  Generate Config
+                </button>
+                <button
+                  className="btn-sub"
+                  onClick=${runNow}
+                  disabled=${!canRunNow}
+                  title=${canRunNow
+                    ? "Run analysis with generated config and motion"
+                    : "Require valid wizard + generated config + motion path"}
+                >
+                  Run Now
+                </button>
               </div>
             </div>
           `}
+
+          ${activeStepIssues.length
+            ? html`
+                <div className="warn-box">
+                  <strong>Step Issues:</strong> ${activeStepIssues.join(" | ")}
+                </div>
+              `
+            : null}
 
           ${generatedConfigPath
             ? html`

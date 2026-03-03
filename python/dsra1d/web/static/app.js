@@ -278,8 +278,23 @@ function mini(text) {
 async function requestJSON(url, options = undefined) {
   const resp = await fetch(url, options);
   if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${errText}`);
+    let detail = "";
+    const contentType = resp.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      try {
+        const body = await resp.json();
+        if (body && typeof body.detail === "string" && body.detail.trim()) {
+          detail = body.detail;
+        } else {
+          detail = JSON.stringify(body);
+        }
+      } catch {
+        detail = await resp.text();
+      }
+    } else {
+      detail = await resp.text();
+    }
+    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
   }
   return resp.json();
 }

@@ -390,6 +390,47 @@ def test_web_motion_process_uses_fallback_dt_for_single_column(tmp_path) -> None
     assert len(payload["spectra_preview"]["period_s"]) > 0
 
 
+def test_web_run_endpoint_success_with_relative_paths(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    out_root = tmp_path / "run_out"
+    resp = client.post(
+        "/api/run",
+        json={
+            "config_path": "examples/configs/effective_stress.yml",
+            "motion_path": "examples/motions/sample_motion.csv",
+            "output_root": str(out_root),
+            "backend": "mock",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["backend"] == "mock"
+    assert payload["status"] == "ok"
+    assert (out_root / payload["run_id"]).exists()
+
+
+def test_web_run_endpoint_missing_motion_returns_400(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/run",
+        json={
+            "config_path": "examples/configs/effective_stress.yml",
+            "motion_path": "examples/motions/not_found_motion.csv",
+            "output_root": str(tmp_path / "run_out"),
+            "backend": "mock",
+        },
+    )
+    assert resp.status_code == 400
+    detail = resp.json().get("detail", "")
+    assert "Motion file not found" in detail
+
+
 def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

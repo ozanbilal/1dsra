@@ -302,6 +302,32 @@ def _safe_upload_stem(raw: str, fallback: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in base)
 
 
+def _resolve_input_path(path_value: str, *, label: str) -> Path:
+    text = path_value.strip()
+    if not text:
+        raise ValueError(f"{label} path is empty.")
+    raw = Path(text).expanduser()
+    candidates: list[Path]
+    if raw.is_absolute():
+        candidates = [raw]
+    else:
+        candidates = [Path.cwd() / raw, _repo_root() / raw]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    raise FileNotFoundError(f"{label} not found: {path_value}")
+
+
+def _resolve_output_root(raw: str) -> Path:
+    text = raw.strip()
+    if not text:
+        return _default_output_root()
+    out = Path(text).expanduser()
+    if out.is_absolute():
+        return out.resolve()
+    return (_repo_root() / out).resolve()
+
+
 def _collect_runs(output_root: Path) -> list[Path]:
     if not output_root.exists() or not output_root.is_dir():
         return []
@@ -1212,22 +1238,26 @@ def create_app() -> FastAPI:
 
     @app.post("/api/motion/import/peer-at2", response_model=MotionImportResponse)
     def motion_import_peer_at2(payload: MotionImportRequest) -> MotionImportResponse:
-        output_dir = _safe_motion_output_dir(payload.output_dir)
-        output_name = payload.output_name.strip() or None
-        result = import_peer_at2_to_csv(
-            payload.path,
-            output_dir=output_dir,
-            units_hint=payload.units_hint,
-            dt_override=payload.dt_override,
-            output_name=output_name,
-        )
-        return MotionImportResponse(
-            converted_csv_path=str(result.csv_path),
-            npts=result.npts,
-            dt_s=result.dt_s,
-            pga_si=result.pga_si,
-            status="ok",
-        )
+        try:
+            source_path = _resolve_input_path(payload.path, label="AT2 motion file")
+            output_dir = _safe_motion_output_dir(payload.output_dir)
+            output_name = payload.output_name.strip() or None
+            result = import_peer_at2_to_csv(
+                source_path,
+                output_dir=output_dir,
+                units_hint=payload.units_hint,
+                dt_override=payload.dt_override,
+                output_name=output_name,
+            )
+            return MotionImportResponse(
+                converted_csv_path=str(result.csv_path),
+                npts=result.npts,
+                dt_s=result.dt_s,
+                pga_si=result.pga_si,
+                status="ok",
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/motion/upload/csv", response_model=MotionUploadResponse)
     def motion_upload_csv(payload: MotionUploadCsvRequest) -> MotionUploadResponse:
@@ -1279,108 +1309,116 @@ def create_app() -> FastAPI:
 
     @app.post("/api/motion/process", response_model=MotionProcessResponse)
     def motion_process(payload: MotionProcessRequest) -> MotionProcessResponse:
-        fallback_dt = (
-            float(payload.fallback_dt)
-            if payload.fallback_dt is not None
-            else 1.0 / (20.0 * 25.0)
-        )
-        t_raw, acc_raw = load_motion_series(
-            payload.motion_path,
-            dt_override=payload.dt_override,
-            fallback_dt=fallback_dt,
-        )
-        dt_s = _estimate_dt(np.asarray(t_raw, dtype=np.float64))
-        factor = accel_factor_to_si(payload.units_hint)
-        acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
+        try:
+            motion_path = _resolve_input_path(payload.motion_path, label="Motion file")
+            fallback_dt = (
+                float(payload.fallback_dt)
+                if payload.fallback_dt is not None
+                else 1.0 / (20.0 * 25.0)
+            )
+            t_raw, acc_raw = load_motion_series(
+                motion_path,
+                dt_override=payload.dt_override,
+                fallback_dt=fallback_dt,
+            )
+            dt_s = _estimate_dt(np.asarray(t_raw, dtype=np.float64))
+            factor = accel_factor_to_si(payload.units_hint)
+            acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
 
-        cfg = MotionConfig(
-            units=payload.units_hint,
-            baseline=payload.baseline_mode,
-            scale_mode=payload.scale_mode,
-            scale_factor=payload.scale_factor,
-            target_pga=payload.target_pga,
-        )
-        mot = Motion(
-            dt=float(dt_s),
-            acc=acc_si,
-            unit="m/s2",
-            source=Path(payload.motion_path),
-        )
-        processed = preprocess_motion(mot, cfg)
-        acc_proc = np.asarray(processed.acc, dtype=np.float64)
-        t_proc = np.arange(acc_proc.size, dtype=np.float64) * float(processed.dt)
+            cfg = MotionConfig(
+                units=payload.units_hint,
+                baseline=payload.baseline_mode,
+                scale_mode=payload.scale_mode,
+                scale_factor=payload.scale_factor,
+                target_pga=payload.target_pga,
+            )
+            mot = Motion(
+                dt=float(dt_s),
+                acc=acc_si,
+                unit="m/s2",
+                source=motion_path,
+            )
+            processed = preprocess_motion(mot, cfg)
+            acc_proc = np.asarray(processed.acc, dtype=np.float64)
+            t_proc = np.arange(acc_proc.size, dtype=np.float64) * float(processed.dt)
 
-        out_root = _safe_motion_output_dir(payload.output_dir)
-        stem = payload.output_name.strip() or f"{Path(payload.motion_path).stem}_processed"
-        csv_path = out_root / f"{stem}.csv"
-        np.savetxt(
-            csv_path,
-            np.column_stack([t_proc, acc_proc]),
-            delimiter=",",
-            header="time_s,acc_m_s2",
-            comments="",
-        )
+            out_root = _safe_motion_output_dir(payload.output_dir)
+            stem = payload.output_name.strip() or f"{motion_path.stem}_processed"
+            csv_path = out_root / f"{stem}.csv"
+            np.savetxt(
+                csv_path,
+                np.column_stack([t_proc, acc_proc]),
+                delimiter=",",
+                header="time_s,acc_m_s2",
+                comments="",
+            )
 
-        vel = np.cumsum(acc_proc, dtype=np.float64) * float(processed.dt)
-        disp = np.cumsum(vel, dtype=np.float64) * float(processed.dt)
-        arias = (
-            np.cumsum(acc_proc**2, dtype=np.float64)
-            * float(processed.dt)
-            * np.pi
-            / (2.0 * 9.80665)
-        )
-        spectra = compute_spectra(acc_proc, dt=float(processed.dt), damping=0.05)
-        freq_hz, fas_ratio = compute_transfer_function(acc_si, acc_proc, dt=float(processed.dt))
-        n = int(acc_proc.size)
-        fft_raw = np.abs(np.fft.rfft(acc_si[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
-        fft_proc = np.abs(np.fft.rfft(acc_proc[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
-        freq_fft = (
-            np.fft.rfftfreq(n, d=float(processed.dt))
-            if n > 1
-            else np.array([0.0], dtype=np.float64)
-        )
+            vel = np.cumsum(acc_proc, dtype=np.float64) * float(processed.dt)
+            disp = np.cumsum(vel, dtype=np.float64) * float(processed.dt)
+            arias = (
+                np.cumsum(acc_proc**2, dtype=np.float64)
+                * float(processed.dt)
+                * np.pi
+                / (2.0 * 9.80665)
+            )
+            spectra = compute_spectra(acc_proc, dt=float(processed.dt), damping=0.05)
+            freq_hz, fas_ratio = compute_transfer_function(acc_si, acc_proc, dt=float(processed.dt))
+            n = int(acc_proc.size)
+            fft_raw = (
+                np.abs(np.fft.rfft(acc_si[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
+            )
+            fft_proc = (
+                np.abs(np.fft.rfft(acc_proc[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
+            )
+            freq_fft = (
+                np.fft.rfftfreq(n, d=float(processed.dt))
+                if n > 1
+                else np.array([0.0], dtype=np.float64)
+            )
 
-        metrics = {
-            "pga": float(np.max(np.abs(acc_proc))) if acc_proc.size > 0 else 0.0,
-            "arias": float(arias[-1]) if arias.size > 0 else 0.0,
-            "duration_5_95": _safe_duration_5_95(arias, float(processed.dt)),
-            "dt_s": float(processed.dt),
-            "npts": float(acc_proc.size),
-        }
-        metrics_path = out_root / f"{stem}_metrics.json"
-        metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+            metrics = {
+                "pga": float(np.max(np.abs(acc_proc))) if acc_proc.size > 0 else 0.0,
+                "arias": float(arias[-1]) if arias.size > 0 else 0.0,
+                "duration_5_95": _safe_duration_5_95(arias, float(processed.dt)),
+                "dt_s": float(processed.dt),
+                "npts": float(acc_proc.size),
+            }
+            metrics_path = out_root / f"{stem}_metrics.json"
+            metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
-        t_d, acc_d = _downsample_np(t_proc, acc_proc, max_points=2400)
-        _, vel_d = _downsample_np(t_proc, vel, max_points=2400)
-        _, disp_d = _downsample_np(t_proc, disp, max_points=2400)
-        _, arias_d = _downsample_np(t_proc, arias, max_points=2400)
-        p_d, psa_d = _downsample_np(spectra.periods, spectra.psa, max_points=800)
-        f_d, fr_d = _downsample_np(freq_hz, fas_ratio, max_points=1200)
-        ff_d, raw_d = _downsample_np(freq_fft, fft_raw, max_points=1200)
-        _, proc_d = _downsample_np(freq_fft, fft_proc, max_points=1200)
+            t_d, acc_d = _downsample_np(t_proc, acc_proc, max_points=2400)
+            _, vel_d = _downsample_np(t_proc, vel, max_points=2400)
+            _, disp_d = _downsample_np(t_proc, disp, max_points=2400)
+            _, arias_d = _downsample_np(t_proc, arias, max_points=2400)
+            p_d, psa_d = _downsample_np(spectra.periods, spectra.psa, max_points=800)
+            f_d, fr_d = _downsample_np(freq_hz, fas_ratio, max_points=1200)
+            ff_d, raw_d = _downsample_np(freq_fft, fft_raw, max_points=1200)
+            _, proc_d = _downsample_np(freq_fft, fft_proc, max_points=1200)
 
-        preview = {
-            "time_s": [float(v) for v in t_d],
-            "acc_m_s2": [float(v) for v in acc_d],
-            "vel_m_s": [float(v) for v in vel_d],
-            "disp_m": [float(v) for v in disp_d],
-            "arias": [float(v) for v in arias_d],
-            "period_s": [float(v) for v in p_d],
-            "psa_m_s2": [float(v) for v in psa_d],
-            "freq_hz": [float(v) for v in f_d],
-            "fas_ratio": [float(v) for v in fr_d],
-            "fas_raw": [float(v) for v in raw_d],
-            "fas_processed": [float(v) for v in proc_d],
-            "fas_freq_hz": [float(v) for v in ff_d],
-        }
+            preview = {
+                "time_s": [float(v) for v in t_d],
+                "acc_m_s2": [float(v) for v in acc_d],
+                "vel_m_s": [float(v) for v in vel_d],
+                "disp_m": [float(v) for v in disp_d],
+                "arias": [float(v) for v in arias_d],
+                "period_s": [float(v) for v in p_d],
+                "psa_m_s2": [float(v) for v in psa_d],
+                "freq_hz": [float(v) for v in f_d],
+                "fas_ratio": [float(v) for v in fr_d],
+                "fas_raw": [float(v) for v in raw_d],
+                "fas_processed": [float(v) for v in proc_d],
+                "fas_freq_hz": [float(v) for v in ff_d],
+            }
 
-        return MotionProcessResponse(
-            processed_motion_path=str(csv_path),
-            metrics_path=str(metrics_path),
-            metrics=metrics,
-            spectra_preview=preview,
-            status="ok",
-        )
+            return MotionProcessResponse(
+                processed_motion_path=str(csv_path),
+                metrics_path=str(metrics_path),
+                metrics=metrics,
+                spectra_preview=preview,
+                status="ok",
+            )
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/runs", response_model=list[RunSummary])
     def list_runs(output_root: str = Query(default="")) -> list[RunSummary]:
@@ -1657,34 +1695,48 @@ def create_app() -> FastAPI:
 
     @app.post("/api/run", response_model=RunResponse)
     def execute_run(payload: RunRequest) -> RunResponse:
-        cfg = load_project_config(payload.config_path)
-        if payload.opensees_executable:
-            cfg.opensees.executable = payload.opensees_executable
-        backend, backend_note = _apply_runtime_backend(
-            payload.backend,
-            config_backend=cfg.analysis.solver_backend,
-            executable=cfg.opensees.executable,
-        )
-        cfg.analysis.solver_backend = backend
-        if backend == "opensees":
-            resolved = resolve_opensees_executable(cfg.opensees.executable)
-            if resolved is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"OpenSees executable not found: {cfg.opensees.executable}",
-                )
-            cfg.opensees.executable = str(resolved)
+        try:
+            config_path = _resolve_input_path(payload.config_path, label="Config file")
+            motion_path = _resolve_input_path(payload.motion_path, label="Motion file")
+            output_root = _resolve_output_root(payload.output_root)
 
-        dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
-        motion = load_motion(payload.motion_path, dt=dt, unit=cfg.motion.units)
-        result = run_analysis(cfg, motion, output_dir=payload.output_root)
-        return RunResponse(
-            run_id=result.run_id,
-            output_dir=str(result.output_dir),
-            status=result.status,
-            message=f"{backend_note} | {result.message}",
-            backend=backend,
-        )
+            cfg = load_project_config(config_path)
+            if payload.opensees_executable:
+                cfg.opensees.executable = payload.opensees_executable
+            backend, backend_note = _apply_runtime_backend(
+                payload.backend,
+                config_backend=cfg.analysis.solver_backend,
+                executable=cfg.opensees.executable,
+            )
+            cfg.analysis.solver_backend = backend
+            if backend == "opensees":
+                resolved = resolve_opensees_executable(cfg.opensees.executable)
+                if resolved is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"OpenSees executable not found: {cfg.opensees.executable}",
+                    )
+                cfg.opensees.executable = str(resolved)
+
+            dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+            motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
+            result = run_analysis(cfg, motion, output_dir=output_root)
+            return RunResponse(
+                run_id=result.run_id,
+                output_dir=str(result.output_dir),
+                status=result.status,
+                message=f"{backend_note} | {result.message}",
+                backend=backend,
+            )
+        except HTTPException:
+            raise
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Run failed: {type(exc).__name__}: {exc}",
+            ) from exc
 
     @app.get("/")
     def web_root() -> FileResponse:

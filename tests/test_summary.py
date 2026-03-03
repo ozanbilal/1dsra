@@ -166,7 +166,7 @@ def test_render_summary_markdown_contains_key_sections() -> None:
         },
     }
     md = render_summary_markdown(summary)
-    assert "# 1DSRA Campaign Summary" in md
+    assert "# StrataWave Campaign Summary" in md
     assert "Suite: `core-es`" in md
     assert "backend_ready=True" in md
     assert "execution_coverage=1.0" in md
@@ -333,3 +333,4 @@ def test_summarize_campaign_classifies_pwp_effective_mismatch() -> None:
     counts = verify["classification_counts"]
     assert isinstance(counts, dict)
     assert counts["pwp_effective_mismatch"] == 1
+

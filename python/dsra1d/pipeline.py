@@ -246,6 +246,15 @@ def run_analysis(
     run_dir = output_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     artifacts: list[tuple[str, str]] = []
+    config_snapshot_path = run_dir / "config_snapshot.json"
+    config_snapshot_path.write_text(
+        json.dumps(
+            config.model_dump(mode="json", by_alias=True),
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    artifacts.append(("config_snapshot", str(config_snapshot_path)))
 
     processed = preprocess_motion(motion, config.motion)
     # Mesh summary is computed early to validate profile/f_max discretization assumptions.
@@ -475,6 +484,7 @@ def run_analysis(
         "input_motion": str(motion.source) if motion.source else "",
         "processed_motion": str(motion_file),
         "model_tcl": str(tcl_path),
+        "config_snapshot": str(config_snapshot_path),
         "checksums": checksum_map,
     }
     if opensees_probe is not None:

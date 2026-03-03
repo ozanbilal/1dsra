@@ -7,7 +7,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
-- Initial 1DSRA v1 scaffold with:
+- Initial StrataWave v1 scaffold with:
   - CLI + Python SDK workflows
   - OpenSees adapter for effective-stress runs
   - HDF5 + SQLite result stores
@@ -21,7 +21,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - parity reporting includes backend fingerprint diagnostics
 - Dedicated release/CI parity gates hardened for 6-case OpenSees parity workflow.
 - FastAPI + React migration starter:
-  - `1dsra web` command (uvicorn-backed)
+  - `StrataWave web` command (uvicorn-backed)
   - API endpoints for run listing, signal fetch, run execution, and `surface_acc.csv` download
   - first production-path dashboard under `python/dsra1d/web/static`
   - expanded run-detail dashboard cards: surface/PSA/transfer/ru/`delta_u`/`sigma_v_eff` charts + artifact downloads
@@ -39,12 +39,30 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - React Web Studio model-builder panel:
   - create template-based YAML config files from UI
   - auto-fill generated config path into run form
+- Web results parity for constitutive views:
+  - new endpoint `GET /api/runs/{run_id}/results/hysteresis`
+  - layer-wise stress-strain loop and mobilized-strength payload
+  - `Stress-Strain` / `Mobilized Strength` tabs now render backend data
+- Wizard Soil Profile UX upgrades:
+  - per-layer `material_params` and `material_optional_args` editors
+  - layer utility controls: duplicate, reorder (up/down), CSV import/export
+  - DEEPSOIL-style table editor mode for layers (Table/Cards switch)
+  - starter profile builders (`5-Layer Starter`, preset loader)
+  - Auto Profile Creator in UI (`f_max`, points-per-wavelength, min slice thickness, max sublayers)
+  - Runs panel accordion toggle (right-top triangle collapse/expand) to free workspace while editing layers
+- Pipeline artifact enrichment:
+  - deterministic `config_snapshot.json` written per run
+  - `run_meta.json` now includes `config_snapshot`
 
 ### Fixed
 - PSA computation path now consistently uses run time-axis `dt` in pipeline/reporting flows.
 - Web/Streamlit spectra views now recompute PSA from `surface_acc` to avoid stale-curve artifacts after deterministic reruns.
+- React Wizard `Soil Profile` step no longer falls into blank-screen hook-order crash when switching steps (stabilized Step-2 render path).
+- Web motion processing now uses robust `dt` fallback (`control.dt` or `1/(20*f_max)`) for one-column motions, preventing PSA distortion from accidental `dt=1.0`.
+- AT2 import / processed-motion chaining now normalizes motion units to `m/s2` in wizard state to prevent double unit-scaling in PSA preview.
 
 ## [0.1.0] - 2026-03-01
 
 ### Added
 - First tagged baseline for repository bootstrap.
+

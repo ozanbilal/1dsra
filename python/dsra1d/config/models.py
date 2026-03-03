@@ -223,7 +223,7 @@ class OpenseesConfig(BaseModel):
 
 
 class ProjectConfig(BaseModel):
-    project_name: str = "1dsra-project"
+    project_name: str = "StrataWave-project"
     seed: int = 42
     profile: SoilProfile
     boundary_condition: BoundaryCondition = BoundaryCondition.ELASTIC_HALFSPACE
@@ -389,3 +389,4 @@ class ProjectConfig(BaseModel):
                         "material_optional_args length exceeds 30."
                     )
         return self
+

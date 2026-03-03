@@ -1,1 +1,2 @@
-"""Streamlit UI for 1DSRA."""
+"""Streamlit UI for StrataWave."""
+

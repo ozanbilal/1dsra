@@ -35,12 +35,16 @@ def load_motion_series(
     path: str | Path,
     *,
     dt_override: float | None = None,
+    fallback_dt: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     path_obj = Path(path)
     raw = _load_numeric_series(path_obj)
+    dt_fallback = float(fallback_dt)
+    if not np.isfinite(dt_fallback) or dt_fallback <= 0.0:
+        dt_fallback = 1.0
     if raw.ndim == 1:
         acc = np.asarray(raw, dtype=np.float64)
-        dt = float(dt_override) if dt_override is not None else 1.0
+        dt = float(dt_override) if dt_override is not None else dt_fallback
         time = np.arange(acc.size, dtype=np.float64) * dt
         return time, acc
 
@@ -53,7 +57,7 @@ def load_motion_series(
         return time, acc
 
     acc = arr[:, -1].astype(np.float64)
-    dt = float(dt_override) if dt_override is not None else 1.0
+    dt = float(dt_override) if dt_override is not None else dt_fallback
     time = np.arange(acc.size, dtype=np.float64) * dt
     return time, acc
 

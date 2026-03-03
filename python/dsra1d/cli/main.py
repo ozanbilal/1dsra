@@ -29,7 +29,7 @@ from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import render_summary_markdown, summarize_campaign, write_report
 from dsra1d.verify import verify_batch, verify_run
 
-app = typer.Typer(help="1DSRA CLI")
+app = typer.Typer(help="StrataWave CLI")
 RunBackendMode = Literal[
     "config",
     "auto",
@@ -1149,3 +1149,4 @@ def web(
 
 if __name__ == "__main__":
     app()
+

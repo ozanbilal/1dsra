@@ -1,4 +1,4 @@
-"""1DSRA SDK package."""
+"""StrataWave SDK package."""
 
 from dsra1d.interop.opensees import OpenSeesProbeResult, probe_opensees_executable
 from dsra1d.pipeline import load_result, run_analysis, run_batch
@@ -25,3 +25,4 @@ __all__ = [
     "verify_batch",
     "verify_run",
 ]
+

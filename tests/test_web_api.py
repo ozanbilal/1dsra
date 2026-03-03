@@ -291,6 +291,33 @@ def test_web_motion_process_endpoint(tmp_path) -> None:
     assert len(payload["spectra_preview"]["period_s"]) > 0
 
 
+def test_web_motion_process_uses_fallback_dt_for_single_column(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    motion = tmp_path / "motion_1col.csv"
+    motion.write_text("0.10\n-0.05\n0.02\n-0.01\n0.00\n", encoding="utf-8")
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/motion/process",
+        json={
+            "motion_path": str(motion),
+            "units_hint": "m/s2",
+            "baseline_mode": "remove_mean",
+            "scale_mode": "none",
+            "fallback_dt": 0.005,
+            "output_dir": str(tmp_path),
+            "output_name": "processed_1col",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["metrics"]["dt_s"] == pytest.approx(0.005)
+    assert len(payload["spectra_preview"]["period_s"]) > 0
+
+
 def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
@@ -314,3 +341,29 @@ def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
     assert summary["run_id"] == result.run_id
     assert "metrics" in summary
     assert "convergence" in summary
+
+
+def test_web_results_hysteresis_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    root = tmp_path / "web-runs"
+    client = TestClient(create_app())
+
+    resp = client.get(
+        f"/api/runs/{result.run_id}/results/hysteresis",
+        params={"output_root": str(root)},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["run_id"] == result.run_id
+    assert "source" in payload
+    assert "layers" in payload
+    assert isinstance(payload["layers"], list)
+    assert len(payload["layers"]) >= 1
+    layer0 = payload["layers"][0]
+    assert "layer_index" in layer0
+    assert "strain" in layer0 and "stress" in layer0
+    assert len(layer0["strain"]) >= 10
+    assert len(layer0["stress"]) == len(layer0["strain"])

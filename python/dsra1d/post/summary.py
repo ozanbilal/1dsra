@@ -266,7 +266,7 @@ def summarize_campaign(
 def render_summary_markdown(summary: dict[str, object]) -> str:
     benchmark = _as_dict(summary.get("benchmark"))
     lines: list[str] = []
-    lines.append("# 1DSRA Campaign Summary")
+    lines.append("# StrataWave Campaign Summary")
     lines.append("")
     lines.append(f"- Generated: `{summary.get('generated_utc', '')}`")
     lines.append(f"- Suite: `{summary.get('suite', '')}`")
@@ -332,3 +332,4 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
         lines.append(f"- Campaign policy: passed={campaign_policy.get('passed')}")
 
     return "\n".join(lines) + "\n"
+

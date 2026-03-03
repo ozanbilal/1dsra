@@ -44,11 +44,13 @@ def test_run_analysis_mock(tmp_path: Path) -> None:
     assert n_pwp_effective >= 1
     assert n_transfer >= 1
     assert (result.output_dir / "run_meta.json").exists()
+    assert (result.output_dir / "config_snapshot.json").exists()
     run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
     checksums = run_meta.get("checksums", {})
     assert isinstance(checksums, dict)
     assert "results.h5" in checksums
     assert "results.sqlite" in checksums
+    assert "config_snapshot" in run_meta
 
     store = load_result(result.output_dir)
     assert store.acc_surface.size > 0

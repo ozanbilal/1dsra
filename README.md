@@ -1,6 +1,6 @@
-# 1DSRA
+# StrataWave
 
-1DSRA is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
+StrataWave is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
 Current package version is `0.1.0`; the v1.0 roadmap focuses on effective-stress workflows, reproducible I/O, and benchmark-ready automation.
 
 ## Highlights
@@ -25,48 +25,48 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
 
-1dsra init --template effective-stress --out examples/configs/effective_stress.yml
-1dsra init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
-1dsra init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
-1dsra init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
-1dsra init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
-1dsra quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
-1dsra validate --config examples/configs/effective_stress.yml
-1dsra validate --config examples/configs/effective_stress.yml --check-backend
-1dsra validate --config examples/configs/effective_stress.yml --check-backend --require-backend-version-regex "OpenSees"
-1dsra render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
-1dsra run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
-1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
-1dsra run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
-1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
-1dsra run --config examples/configs/mkz_gqh_nonlinear.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_nl --backend nonlinear
-1dsra run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
-1dsra dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
-1dsra benchmark --suite core-es --out out/benchmarks
-1dsra benchmark --suite core-hyst --out out/benchmarks_hyst
-1dsra benchmark --suite core-linear --out out/benchmarks_linear
-1dsra benchmark --suite core-eql --out out/benchmarks_eql
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
-1dsra benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --require-explicit-checks
-1dsra verify --in out/run001/run-xxxxxxxxxxxx
-1dsra verify-batch --in out/run001 --require-runs 1
-1dsra summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
-1dsra campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
-1dsra lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min --rel-tol 0.05
-1dsra campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
+StrataWave init --template effective-stress --out examples/configs/effective_stress.yml
+StrataWave init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
+StrataWave init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
+StrataWave init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
+StrataWave init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
+StrataWave quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
+StrataWave validate --config examples/configs/effective_stress.yml
+StrataWave validate --config examples/configs/effective_stress.yml --check-backend
+StrataWave validate --config examples/configs/effective_stress.yml --check-backend --require-backend-version-regex "OpenSees"
+StrataWave render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
+StrataWave run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
+StrataWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
+StrataWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
+StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
+StrataWave run --config examples/configs/mkz_gqh_nonlinear.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_nl --backend nonlinear
+StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
+StrataWave dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
+StrataWave benchmark --suite core-es --out out/benchmarks
+StrataWave benchmark --suite core-hyst --out out/benchmarks_hyst
+StrataWave benchmark --suite core-linear --out out/benchmarks_linear
+StrataWave benchmark --suite core-eql --out out/benchmarks_eql
+StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity
+StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
+StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
+StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
+StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --require-explicit-checks
+StrataWave verify --in out/run001/run-xxxxxxxxxxxx
+StrataWave verify-batch --in out/run001 --require-runs 1
+StrataWave summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
+StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
+StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
+StrataWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min --rel-tol 0.05
+StrataWave campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
 
 ## Web UI (Streamlit)
 ```bash
 pip install -e .[ui]
-1dsra ui --host 127.0.0.1 --port 8501
+StrataWave ui --host 127.0.0.1 --port 8501
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
@@ -80,7 +80,7 @@ UI export panel includes `surface_acc.csv` and `pwp_effective.csv`, both with `d
 ## Web API + React Dashboard (Migration Starter)
 ```bash
 pip install -e .[web]
-1dsra web --host 127.0.0.1 --port 8010
+StrataWave web --host 127.0.0.1 --port 8010
 ```
 Open `http://127.0.0.1:8010`.
 Primary UI path is now React + FastAPI; Streamlit remains as engineering/debug panel.
@@ -95,6 +95,17 @@ DEEPSOIL-style 5-step wizard is available:
 - `Damping`
 - `Analysis Control`
 
+`Soil Profile` step now supports DEEPSOIL-style bulk editing:
+- `Table` mode for fast multi-layer entry and model-aware parameter editing (`pm4sand`, `pm4silt`, `mkz`, `gqh`, `elastic`)
+- `Cards` mode for per-layer detailed edits
+- Layer utilities: `duplicate`, `up/down reorder`, `CSV import/export`
+- Starter builders: `5-Layer Starter` quick button + preset loader (`five-main-layers`, `soft-over-stiff`)
+- `Automatic Profile Builder`: define main layers, then auto-slice with:
+  - `f_max` (or use Analysis Control `f_max`)
+  - points-per-wavelength
+  - minimum slice thickness
+  - max sublayers per main layer
+
 Run flow (no manual YAML editing required):
 1. Fill 5 wizard steps.
 2. Click `Generate Config`.
@@ -105,6 +116,9 @@ Run flow (no manual YAML editing required):
 - Motion import: CSV + PEER AT2
 - Baseline modes: `none`, `remove_mean`, `detrend_linear`, `deepsoil_bap_like`
 - Scaling modes: `none`, `scale_by`, `scale_to_pga`
+- Optional `dt override` in wizard for one-column motions
+- One-column CSV fallback `dt` now follows Analysis Control (`dt` or `1/(20*f_max)`) to avoid distorted PSA previews
+- Imported/processed motions are tracked in SI (`m/s2`) in wizard state to prevent double unit conversion
 - Motion preview plots: processed acceleration, PSA, FAS ratio
 - Motion outputs: processed CSV + metrics JSON
 
@@ -279,3 +293,4 @@ Use `verify` to validate post-run integrity:
 
 Use `verify-batch` for folder-level checks over multiple run directories.
 Use `summarize` to aggregate benchmark + verify outputs into campaign-level JSON/Markdown artifacts.
+

@@ -63,7 +63,7 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
             "\n".join(
                 [
                     "<html><body>",
-                    f"<h1>1DSRA Report: {result.run_id}</h1>",
+                    f"<h1>StrataWave Report: {result.run_id}</h1>",
                     f"<p>PGA(surface): {_fmt(pga)} m/s^2</p>",
                     f"<p>ru_max: {_fmt(ru_max)}</p>",
                     f"<p>delta_u_max: {_fmt(delta_u_max)} kPa (proxy units)</p>",
@@ -90,7 +90,7 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
         with PdfPages(pdf_path) as pdf:
             fig, ax = plt.subplots(figsize=(8, 5))
             ax.plot(periods, psa, lw=1.7)
-            ax.set_title(f"1DSRA PSA - {result.run_id}")
+            ax.set_title(f"StrataWave PSA - {result.run_id}")
             ax.set_xlabel("Period (s)")
             ax.set_ylabel("PSA (m/s^2)")
             ax.grid(True, alpha=0.3)
@@ -161,3 +161,4 @@ def write_report(result: ResultStore, out_dir: Path, formats: list[str]) -> list
         written.append(pdf_path)
 
     return written
+

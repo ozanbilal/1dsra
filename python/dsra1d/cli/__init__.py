@@ -1,1 +1,2 @@
-"""CLI package for 1DSRA."""
+"""CLI package for StrataWave."""
+

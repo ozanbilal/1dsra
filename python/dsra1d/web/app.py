@@ -22,6 +22,12 @@ from dsra1d.config.models import (
     ScaleMode,
 )
 from dsra1d.interop.opensees import resolve_opensees_executable
+from dsra1d.materials import (
+    bounded_damping_from_reduction,
+    generate_masing_loop,
+    gqh_modulus_reduction,
+    mkz_modulus_reduction,
+)
 from dsra1d.motion import import_peer_at2_to_csv, load_motion, load_motion_series, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
 from dsra1d.post import compute_spectra, compute_transfer_function
@@ -108,6 +114,7 @@ class WizardProfileStep(BaseModel):
 
 class WizardMotionStep(BaseModel):
     units: str = "m/s2"
+    dt_override: float | None = Field(default=None, gt=0.0)
     baseline: BaselineMode = BaselineMode.REMOVE_MEAN
     scale_mode: ScaleMode = ScaleMode.NONE
     scale_factor: float | None = None
@@ -171,6 +178,7 @@ class MotionProcessRequest(BaseModel):
     motion_path: str
     units_hint: str = "m/s2"
     dt_override: float | None = Field(default=None, gt=0.0)
+    fallback_dt: float | None = Field(default=None, gt=0.0)
     baseline_mode: BaselineMode = BaselineMode.REMOVE_MEAN
     scale_mode: ScaleMode = ScaleMode.NONE
     scale_factor: float | None = None
@@ -198,6 +206,28 @@ class ResultSummaryResponse(BaseModel):
     output_layers: list[str]
     artifacts: list[dict[str, str]]
     solver_notes: str
+
+
+class HysteresisLayerResponse(BaseModel):
+    layer_index: int
+    layer_name: str
+    material: str
+    model: str
+    is_proxy: bool = False
+    strain_amplitude: float
+    loop_energy: float
+    mobilized_strength_ratio: float
+    g_over_gmax: float
+    damping_proxy: float
+    strain: list[float]
+    stress: list[float]
+
+
+class ResultHysteresisResponse(BaseModel):
+    run_id: str
+    source: str
+    note: str = ""
+    layers: list[HysteresisLayerResponse] = Field(default_factory=list)
 
 
 def _repo_root() -> Path:
@@ -249,7 +279,7 @@ def _read_metrics(sqlite_path: Path) -> dict[str, float]:
     return metrics
 
 
-def _read_run_meta(run_dir: Path) -> dict[str, str]:
+def _read_run_meta_raw(run_dir: Path) -> dict[str, object]:
     meta_path = run_dir / "run_meta.json"
     if not meta_path.exists():
         return {}
@@ -259,6 +289,11 @@ def _read_run_meta(run_dir: Path) -> dict[str, str]:
         return {}
     if not isinstance(raw, dict):
         return {}
+    return raw
+
+
+def _read_run_meta(run_dir: Path) -> dict[str, str]:
+    raw = _read_run_meta_raw(run_dir)
     out: dict[str, str] = {}
     for key in (
         "timestamp_utc",
@@ -268,6 +303,7 @@ def _read_run_meta(run_dir: Path) -> dict[str, str]:
         "input_motion",
         "dt_s",
         "delta_t_s",
+        "config_snapshot",
     ):
         value = raw.get(key)
         if isinstance(value, str):
@@ -340,6 +376,305 @@ def _read_convergence(sqlite_path: Path) -> dict[str, object]:
         conn.close()
 
 
+def _read_layer_rows(sqlite_path: Path) -> list[dict[str, object]]:
+    if not sqlite_path.exists():
+        return []
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        rows = conn.execute(
+            "SELECT idx, name, thickness_m, unit_weight_kN_m3, vs_m_s, material "
+            "FROM layers ORDER BY idx ASC"
+        ).fetchall()
+        out: list[dict[str, object]] = []
+        for idx, name, thickness, unit_weight, vs, material in rows:
+            out.append(
+                {
+                    "idx": int(idx),
+                    "name": str(name),
+                    "thickness_m": float(thickness),
+                    "unit_weight_kN_m3": float(unit_weight),
+                    "vs_m_s": float(vs),
+                    "material": str(material),
+                }
+            )
+        return out
+    finally:
+        conn.close()
+
+
+def _read_eql_gamma_max_map(sqlite_path: Path) -> dict[int, float]:
+    if not sqlite_path.exists():
+        return {}
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        rows = conn.execute(
+            "SELECT layer_idx, gamma_max FROM eql_layers ORDER BY layer_idx ASC"
+        ).fetchall()
+        out: dict[int, float] = {}
+        for idx, gamma_max in rows:
+            try:
+                out[int(idx)] = float(gamma_max)
+            except (TypeError, ValueError):
+                continue
+        return out
+    finally:
+        conn.close()
+
+
+def _to_material_type(raw: object) -> MaterialType | None:
+    if isinstance(raw, MaterialType):
+        return raw
+    if isinstance(raw, str):
+        key = raw.strip().lower()
+        for material in MaterialType:
+            if material.value == key:
+                return material
+    return None
+
+
+def _estimate_gmax_kpa(vs_m_s: float, unit_weight_kn_m3: float) -> float:
+    if vs_m_s <= 0.0:
+        return 1.0
+    if unit_weight_kn_m3 <= 0.0:
+        unit_weight_kn_m3 = 18.0
+    rho_kg_m3 = (unit_weight_kn_m3 * 1000.0) / 9.81
+    gmax_kpa = (rho_kg_m3 * vs_m_s * vs_m_s) / 1000.0
+    return float(max(gmax_kpa, 1.0))
+
+
+def _layer_loop_profile(
+    *,
+    material: MaterialType,
+    material_params: dict[str, float],
+    vs_m_s: float,
+    unit_weight_kn_m3: float,
+) -> tuple[MaterialType, dict[str, float], bool, str]:
+    if material == MaterialType.MKZ:
+        params = dict(material_params)
+        params.setdefault("gmax", _estimate_gmax_kpa(vs_m_s, unit_weight_kn_m3))
+        params.setdefault("gamma_ref", 0.001)
+        params.setdefault("damping_min", 0.01)
+        params.setdefault("damping_max", 0.12)
+        return MaterialType.MKZ, params, False, "mkz"
+    if material == MaterialType.GQH:
+        params = dict(material_params)
+        params.setdefault("gmax", _estimate_gmax_kpa(vs_m_s, unit_weight_kn_m3))
+        params.setdefault("gamma_ref", 0.001)
+        params.setdefault("a1", 1.0)
+        params.setdefault("a2", 0.35)
+        params.setdefault("m", 2.0)
+        params.setdefault("damping_min", 0.01)
+        params.setdefault("damping_max", 0.12)
+        return MaterialType.GQH, params, False, "gqh"
+
+    # PM4/effective-stress layers are shown with an MKZ proxy until true stress-strain
+    # recorder channels are available from backend outputs.
+    gamma_ref = 0.0012 if material == MaterialType.PM4SAND else 0.0018
+    if material == MaterialType.ELASTIC:
+        gamma_ref = 0.0005
+    proxy_params = {
+        "gmax": _estimate_gmax_kpa(vs_m_s, unit_weight_kn_m3),
+        "gamma_ref": gamma_ref,
+        "damping_min": 0.01,
+        "damping_max": 0.10,
+    }
+    return MaterialType.MKZ, proxy_params, True, f"{material.value}_mkz_proxy"
+
+
+def _load_run_config_snapshot(run_dir: Path, meta_raw: dict[str, object]) -> ProjectConfig | None:
+    candidates: list[Path] = []
+    run_snapshot = run_dir / "config_snapshot.json"
+    if run_snapshot.exists():
+        candidates.append(run_snapshot)
+    meta_snapshot = meta_raw.get("config_snapshot")
+    if isinstance(meta_snapshot, str) and meta_snapshot.strip():
+        meta_path = Path(meta_snapshot).expanduser()
+        if meta_path.exists():
+            candidates.append(meta_path)
+
+    for path in candidates:
+        try:
+            return load_project_config(path)
+        except (ValueError, OSError):
+            continue
+    return None
+
+
+def _downsample_series(values: np.ndarray, max_points: int) -> list[float]:
+    if values.size == 0:
+        return []
+    if values.size <= max_points:
+        return [float(v) for v in values]
+    step = max(1, values.size // max_points)
+    return [float(v) for v in values[::step]]
+
+
+def _build_hysteresis_response(
+    *,
+    run_id: str,
+    run_dir: Path,
+    sqlite_path: Path,
+    max_points: int = 700,
+) -> ResultHysteresisResponse:
+    rs = load_result(run_dir)
+    meta_raw = _read_run_meta_raw(run_dir)
+    cfg = _load_run_config_snapshot(run_dir, meta_raw)
+    eql_gamma_max_map = _read_eql_gamma_max_map(sqlite_path)
+
+    source = "config_snapshot" if cfg is not None else "sqlite_layers_fallback"
+    note_parts: list[str] = []
+
+    pga = float(np.max(np.abs(rs.acc_surface))) if rs.acc_surface.size > 0 else 0.0
+    pga_g = max(pga / 9.81, 0.0)
+    ru_max = float(np.max(rs.ru)) if rs.ru.size > 0 else 0.0
+
+    layer_items: list[dict[str, object]] = []
+    if cfg is not None:
+        for idx, layer in enumerate(cfg.profile.layers):
+            layer_items.append(
+                {
+                    "idx": idx,
+                    "name": layer.name,
+                    "thickness_m": float(layer.thickness_m),
+                    "unit_weight_kN_m3": float(layer.unit_weight_kn_m3),
+                    "vs_m_s": float(layer.vs_m_s),
+                    "material": layer.material,
+                    "material_params": dict(layer.material_params),
+                }
+            )
+    else:
+        for row in _read_layer_rows(sqlite_path):
+            material = _to_material_type(row.get("material"))
+            if material is None:
+                continue
+            layer_items.append(
+                {
+                    "idx": row["idx"],
+                    "name": row["name"],
+                    "thickness_m": row["thickness_m"],
+                    "unit_weight_kN_m3": row["unit_weight_kN_m3"],
+                    "vs_m_s": row["vs_m_s"],
+                    "material": material,
+                    "material_params": {},
+                }
+            )
+
+    layers: list[HysteresisLayerResponse] = []
+    proxy_used = False
+    for item in layer_items:
+        idx_obj = item.get("idx")
+        name_obj = item.get("name")
+        material_obj = item.get("material")
+        if not isinstance(idx_obj, int) or not isinstance(name_obj, str):
+            continue
+        if not isinstance(material_obj, MaterialType):
+            continue
+        vs_raw = item.get("vs_m_s")
+        if not isinstance(vs_raw, (int, float)):
+            continue
+        vs_m_s = float(vs_raw)
+        unit_weight_raw = item.get("unit_weight_kN_m3")
+        if not isinstance(unit_weight_raw, (int, float)):
+            unit_weight = 18.0
+        else:
+            unit_weight = float(unit_weight_raw)
+        params = item.get("material_params", {})
+        material_params = params if isinstance(params, dict) else {}
+        typed_params: dict[str, float] = {}
+        for key, value in material_params.items():
+            if isinstance(key, str) and isinstance(value, (int, float)):
+                typed_params[key] = float(value)
+
+        loop_material, loop_params, is_proxy, model_name = _layer_loop_profile(
+            material=material_obj,
+            material_params=typed_params,
+            vs_m_s=vs_m_s,
+            unit_weight_kn_m3=unit_weight,
+        )
+        proxy_used = proxy_used or is_proxy
+
+        gamma_ref = float(loop_params.get("gamma_ref", 0.001))
+        gamma_hint = eql_gamma_max_map.get(idx_obj)
+        if gamma_hint is not None and np.isfinite(gamma_hint) and gamma_hint > 0.0:
+            gamma_a = float(np.clip(gamma_hint, 1.0e-5, 2.0e-2))
+        else:
+            gamma_a = float(
+                np.clip(
+                    5.0 * gamma_ref * (1.0 + (1.2 * pga_g) + (0.6 * ru_max)),
+                    2.5e-4,
+                    2.0e-2,
+                )
+            )
+
+        loop = generate_masing_loop(
+            material=loop_material,
+            material_params=loop_params,
+            strain_amplitude=gamma_a,
+            n_points_per_branch=140,
+        )
+        tau_peak = float(np.max(np.abs(loop.stress))) if loop.stress.size > 0 else 0.0
+        tau_cap = loop_params.get("tau_max")
+        if tau_cap is not None and tau_cap > 0.0:
+            mobilized_ratio = float(np.clip(tau_peak / tau_cap, 0.0, 1.0))
+        else:
+            tau_ref = float(max(abs(loop_params["gmax"] * gamma_a), 1.0e-9))
+            mobilized_ratio = float(np.clip(tau_peak / tau_ref, 0.0, 1.0))
+
+        if loop_material == MaterialType.MKZ:
+            g_over_gmax = float(
+                mkz_modulus_reduction(np.array([gamma_a], dtype=np.float64), gamma_ref=gamma_ref)[0]
+            )
+        else:
+            g_over_gmax = float(
+                gqh_modulus_reduction(
+                    np.array([gamma_a], dtype=np.float64),
+                    gamma_ref=gamma_ref,
+                    a1=float(loop_params.get("a1", 1.0)),
+                    a2=float(loop_params.get("a2", 0.0)),
+                    m=float(loop_params.get("m", 1.0)),
+                )[0]
+            )
+        damping_proxy = float(
+            bounded_damping_from_reduction(
+                np.array([g_over_gmax], dtype=np.float64),
+                damping_min=float(loop_params.get("damping_min", 0.01)),
+                damping_max=float(loop_params.get("damping_max", 0.12)),
+            )[0]
+        )
+        layers.append(
+            HysteresisLayerResponse(
+                layer_index=idx_obj,
+                layer_name=name_obj,
+                material=material_obj.value,
+                model=model_name,
+                is_proxy=is_proxy,
+                strain_amplitude=float(loop.strain_amplitude),
+                loop_energy=float(loop.energy_dissipation),
+                mobilized_strength_ratio=mobilized_ratio,
+                g_over_gmax=g_over_gmax,
+                damping_proxy=damping_proxy,
+                strain=_downsample_series(loop.strain, max_points=max_points),
+                stress=_downsample_series(loop.stress, max_points=max_points),
+            )
+        )
+
+    if cfg is None:
+        note_parts.append("Config snapshot not found; using sqlite layer fallback.")
+    if proxy_used:
+        note_parts.append(
+            "PM4/elastic layers shown as MKZ proxies until native recorder channels are added."
+        )
+    if not layers:
+        note_parts.append("No layer data available for hysteresis rendering.")
+
+    return ResultHysteresisResponse(
+        run_id=run_id,
+        source=source,
+        note=" ".join(note_parts).strip(),
+        layers=layers,
+    )
+
+
 def _build_wizard_schema() -> dict[str, object]:
     return {
         "steps": [
@@ -360,6 +695,7 @@ def _build_wizard_schema() -> dict[str, object]:
             "motion_step": [
                 "motion_path",
                 "units",
+                "dt_override",
                 "baseline",
                 "scale_mode",
                 "scale_factor",
@@ -564,7 +900,7 @@ def _apply_runtime_backend(
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="1DSRA Web API", version="0.1.0")
+    app = FastAPI(title="StrataWave Web API", version="0.1.0")
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
 
@@ -660,7 +996,16 @@ def create_app() -> FastAPI:
 
     @app.post("/api/motion/process", response_model=MotionProcessResponse)
     def motion_process(payload: MotionProcessRequest) -> MotionProcessResponse:
-        t_raw, acc_raw = load_motion_series(payload.motion_path, dt_override=payload.dt_override)
+        fallback_dt = (
+            float(payload.fallback_dt)
+            if payload.fallback_dt is not None
+            else 1.0 / (20.0 * 25.0)
+        )
+        t_raw, acc_raw = load_motion_series(
+            payload.motion_path,
+            dt_override=payload.dt_override,
+            fallback_dt=fallback_dt,
+        )
         dt_s = _estimate_dt(np.asarray(t_raw, dtype=np.float64))
         factor = accel_factor_to_si(payload.units_hint)
         acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
@@ -937,6 +1282,24 @@ def create_app() -> FastAPI:
             solver_notes=meta.get("message", ""),
         )
 
+    @app.get("/api/runs/{run_id}/results/hysteresis", response_model=ResultHysteresisResponse)
+    def run_results_hysteresis(
+        run_id: str,
+        output_root: str = Query(default=""),
+        max_points: int = Query(default=700, ge=120, le=5000),
+    ) -> ResultHysteresisResponse:
+        root = _safe_real_path(output_root) if output_root else _default_output_root()
+        run_dir = root / run_id
+        if not run_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        sqlite_path = run_dir / "results.sqlite"
+        return _build_hysteresis_response(
+            run_id=run_id,
+            run_dir=run_dir,
+            sqlite_path=sqlite_path,
+            max_points=max_points,
+        )
+
     @app.get("/api/runs/{run_id}/surface-acc.csv")
     def download_surface_csv(
         run_id: str,
@@ -1053,3 +1416,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

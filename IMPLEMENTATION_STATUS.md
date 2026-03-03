@@ -1,6 +1,6 @@
-# 1DSRA Implementation Status
+# StrataWave Implementation Status
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## 1. Summary
 
@@ -13,7 +13,7 @@ Current state is: **core scaffold complete, effective-stress OpenSees adapter fu
 Status: **Completed**
 
 Implemented:
-- Standalone git repo structure under `1DSRA`
+- Standalone git repo structure under `StrataWave`
 - Packaging (`pyproject.toml`), license, README
 - CI workflow (`.github/workflows/ci.yml`)
 - Developer quality gates (`ruff`, `mypy`, `pytest`, pre-commit)
@@ -26,6 +26,7 @@ Implemented:
 - Pydantic config schema (`ProjectConfig`, profile, analysis, motion, output, opensees)
 - YAML/JSON config load + template writer
 - Motion load and preprocessing (baseline correction, scale modes)
+- Web motion-process path now supports explicit/fallback `dt` handling for one-column motions (prevents implicit `dt=1.0` PSA bias)
 - Material-level parameter validation for PM4Sand/PM4Silt/elastic (`material_params`)
 - Material-level parameter validation for MKZ/GQH (required params + damping bounds)
 - Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
@@ -88,6 +89,7 @@ Implemented:
 - Transfer-function outputs now persisted (`/spectra/freq_hz`, `/spectra/transfer_abs`, SQLite `transfer_function`)
 - Time-step metadata is persisted (`run_meta.json: dt_s/delta_t_s`, HDF5 `/meta/delta_t_s`)
 - Run-level CSV artifacts are now written by pipeline (`surface_acc.csv`, `pwp_effective.csv` with `delta_t_s`)
+- Run-level config snapshot is now persisted (`config_snapshot.json`) for deterministic post-processing and UI reconstruction
 - SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
 - Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
 - `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
@@ -188,12 +190,19 @@ Missing:
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
-- FastAPI + React migration starter is now available (`1dsra web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
+- FastAPI + React migration starter is now available (`StrataWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
 - React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
+- Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors
+- Web API now exposes layer-wise hysteresis/mobilized payload (`/api/runs/{run_id}/results/hysteresis`) using stored config snapshots with sqlite fallback
+- React Results tabs `Stress-Strain` and `Mobilized Strength` now render backend data (layer selector, loop plot, mobilized ratio/energy charts) instead of static placeholders
+- React Soil Profile step now includes per-layer `material_params` and `material_optional_args` editors with material-aware default parameter sets (PM4Sand/PM4Silt/MKZ/GQH/elastic)
+- React Soil Profile step now includes layer utility actions: `duplicate`, `up/down reorder`, and `CSV import/export` for full layer-stack editing without YAML
+- React Soil Profile step now supports DEEPSOIL-style table editing mode (Table/Cards switch) plus `Auto Profile Build` (f_max, points-per-wavelength, minimum slice thickness, max sublayers per main layer)
+- React Soil Profile step now includes starter profile builders (`5-Layer Starter` quick action and preset loader)
 - MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
 - MKZ/GQH helper module now includes `generate_masing_loop` for calibration-oriented loop generation
 - Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
@@ -272,7 +281,7 @@ Status legend:
 | Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
 | Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |
 | EQL solver (SHAKE-like + deconv/conv) | Partial | Native time-domain strain-compatible EQL backend (`solver_backend: eql`) is implemented with iterative MKZ/GQH modulus+damping updates and convergence tracking | Add frequency-domain deconvolution/convolution mode and published-reference validation |
-| f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path | Expose as common mesh service across backends |
+| f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path; Web UI now has `Auto Profile Build` for interactive profile slicing from main layers | Expose shared mesh service/API across all backends and add randomization options |
 | Result store (HDF5 + SQLite) | Done | Implemented with deterministic run-id consistency checks | Add optional DuckDB/Parquet query utilities |
 | CLI coverage (`run/batch/benchmark/campaign/verify/report/ui`) | Done | End-to-end command set available | Maintain backward compatibility and docs |
 | Python SDK stable entry points | Done | `run_analysis`, `run_batch`, `load_result`, `compute_spectra` | Add examples for calibration and campaign automation |
@@ -291,10 +300,12 @@ Tracking rule for continuation:
 
 | Wave-1 (zorunlu) | Durum | Wave-2 (sonraki) | Durum |
 |---|---|---|---|
-| 5-step wizard state + config üretimi | Done | Auto-profile generation (fmax tabanlı) | Pending |
+| 5-step wizard state + config üretimi | Done | Auto-profile advanced heuristics (Vs gradient + curve-aware slicing) | Pending |
 | Motion import (`CSV`, `PEER AT2`) | Done | Thickness/Vs/dynamic curve randomization UI | Pending |
 | Baseline pipeline opsiyonları (`deepsoil_bap_like` dahil) | Done | Genişletilmiş database browser parity | Pending |
 | Scale by / scale to PGA | Done | Multi-profile random batch scenario editor | Pending |
+| Soil Profile tablo/kart editörü + katman yardımcıları (duplicate/reorder/CSV) | Done | Bulk layer templates library (regional presets) | Pending |
+| Auto Profile Builder (`f_max`, points/wavelength, min slice, max sublayers) | Done | Stochastic/randomized auto-profile realizations | Pending |
 | Results tab yapısı (`Time Histories`, `Spectral`, `Profile`, `Convergence`) | Partial | Advanced mobilized strength and convergence diagnostics parity | Pending |
 | Run tree (`project -> motion -> run`) | Done | DEEPSOIL-style batch navigator parity (full) | Pending |
 
@@ -306,3 +317,4 @@ Notes:
 
 - Single source of truth: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
 - Update rule: when benchmark tolerances/reference-basis change, update confidence matrix in the same commit.
+

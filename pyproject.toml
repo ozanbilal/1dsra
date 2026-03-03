@@ -3,14 +3,14 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "1dsra"
+name = "stratawave"
 version = "0.1.0"
 description = "1D Site Response Analysis toolkit with OpenSees adapter"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
 authors = [
-  { name = "1DSRA Contributors" }
+  { name = "StrataWave Contributors" }
 ]
 dependencies = [
   "numpy>=2.0",
@@ -43,6 +43,8 @@ web = [
 ]
 
 [project.scripts]
+StrataWave = "dsra1d.cli.main:app"
+stratawave = "dsra1d.cli.main:app"
 1dsra = "dsra1d.cli.main:app"
 
 [tool.setuptools]
@@ -98,3 +100,4 @@ disable_error_code = ["untyped-decorator"]
 minversion = "8.0"
 addopts = "-q"
 testpaths = ["tests"]
+

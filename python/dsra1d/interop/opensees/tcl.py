@@ -295,7 +295,7 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
         "-time -node $nodeL(1) -dof 1 accel"
     )
     lines.append("set pwpNode $nodeL([expr {int(($nNodeY + 1) / 2)}])")
-    lines.append("recorder Node -file \"$output_dir/pwp_raw.out\" -time -node $pwpNode -dof 3 vel")
+    lines.append("recorder Node -file \"$output_dir/pwp_raw.out\" -time -node $pwpNode -dof 3 disp")
     lines.append("set in [open $motion_file r]")
     lines.append("set raw [split [string trim [read $in]] \"\\n\"]")
     lines.append("close $in")

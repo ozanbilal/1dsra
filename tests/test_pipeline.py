@@ -2,8 +2,10 @@ import json
 import sqlite3
 from pathlib import Path
 
+import dsra1d.pipeline as pipeline_mod
 import h5py
 from dsra1d.config import load_project_config
+from dsra1d.interop.opensees.runner import OpenSeesRunOutput
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
 
@@ -77,6 +79,29 @@ def test_run_analysis_opensees_missing_executable_fallback(tmp_path: Path) -> No
     assert result.hdf5_path.exists()
     assert result.sqlite_path.exists()
     assert (result.output_dir / "run_meta.json").exists()
+
+
+def test_run_analysis_opensees_missing_required_outputs_falls_back(tmp_path, monkeypatch) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "opensees"
+    cfg.analysis.retries = 0
+    cfg.opensees.executable = "OpenSees"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    def _fake_run_opensees(executable, tcl_file, cwd, timeout_s, extra_args=None):
+        _ = (executable, tcl_file, cwd, timeout_s, extra_args)
+        return OpenSeesRunOutput(
+            returncode=0,
+            stdout="fake ok",
+            stderr="",
+            command=["OpenSees", str(tcl_file)],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_opensees", _fake_run_opensees)
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-missing-outs")
+    assert result.status == "error"
+    assert "required output files" in result.message
 
 
 def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:

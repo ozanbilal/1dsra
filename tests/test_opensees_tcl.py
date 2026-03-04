@@ -36,6 +36,7 @@ def test_render_tcl_contains_expected_blocks() -> None:
     assert "pattern UniformExcitation" in script
     assert "surface_acc.out" in script
     assert "pwp_ru.out" in script
+    assert "-dof 3 disp" in script
     validate_tcl_script(script)
 
 

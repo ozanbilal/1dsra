@@ -207,6 +207,33 @@ def _estimate_dt_from_axis(axis: np.ndarray, fallback: float) -> float:
     return float(fallback)
 
 
+def _has_min_samples(path: Path, min_samples: int = 2) -> bool:
+    if not path.exists() or path.stat().st_size <= 0:
+        return False
+    try:
+        arr = np.loadtxt(path, ndmin=2)
+    except Exception:
+        return False
+    if arr.ndim == 1:
+        return int(arr.size) >= min_samples
+    return int(arr.shape[0]) >= min_samples
+
+
+def _validate_opensees_run_outputs(run_dir: Path) -> None:
+    missing: list[str] = []
+    surface_path = run_dir / "surface_acc.out"
+    ru_path = run_dir / "pwp_ru.out"
+    if not _has_min_samples(surface_path, min_samples=2):
+        missing.append(surface_path.name)
+    if not _has_min_samples(ru_path, min_samples=2):
+        missing.append(ru_path.name)
+    if missing:
+        raise OpenSeesExecutionError(
+            "OpenSees finished without required output files: "
+            + ", ".join(missing)
+        )
+
+
 def _write_surface_csv(path: Path, time: np.ndarray, acc: np.ndarray, dt_s: float) -> None:
     n = int(min(time.size, acc.size))
     with path.open("w", encoding="utf-8", newline="\n") as f:
@@ -263,7 +290,12 @@ def run_analysis(
     np.savetxt(motion_file, processed.acc, delimiter=",")
     artifacts.append(("motion_processed", str(motion_file)))
 
-    tcl = render_tcl(config, motion_file=motion_file, output_dir=run_dir)
+    # Use run-local relative paths so OpenSees execution is independent of caller cwd.
+    tcl = render_tcl(
+        config,
+        motion_file=Path(motion_file.name),
+        output_dir=Path("."),
+    )
     validate_tcl_script(tcl)
     tcl_path = run_dir / "model.tcl"
     tcl_path.write_text(tcl, encoding="utf-8")
@@ -299,7 +331,7 @@ def run_analysis(
             try:
                 run_output = run_opensees(
                     executable=config.opensees.executable,
-                    tcl_file=tcl_path,
+                    tcl_file=Path(tcl_path.name),
                     cwd=run_dir,
                     timeout_s=config.analysis.timeout_s,
                     extra_args=config.opensees.extra_args,
@@ -309,6 +341,7 @@ def run_analysis(
                 opensees_stderr_log = run_dir / "opensees_stderr.log"
                 opensees_stdout_log.write_text(run_output.stdout, encoding="utf-8")
                 opensees_stderr_log.write_text(run_output.stderr, encoding="utf-8")
+                _validate_opensees_run_outputs(run_dir)
                 break
             except OpenSeesExecutionError as exc:
                 opensees_command = exc.command

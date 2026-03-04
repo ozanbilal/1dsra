@@ -69,6 +69,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - run selector with up to 6 overlays
   - overlay charts for surface acceleration, PSA (5%), and transfer `|H(f)|`
   - reference-based diagnostics added (`PSA ratio`, transfer/surface `Δ`, `ΔPGA` and PGA ratio metrics)
+- React Results Frame mode:
+  - one-click `Open Results Frame` focus view for de-cluttered result inspection
+  - dedicated run selector and artifact downloads in focused mode
 - Run diagnostics:
   - new backend readiness endpoint `GET /api/backend/opensees/probe`
   - wizard now surfaces OpenSees availability and explicit run blockers when backend is set to `opensees`
@@ -122,6 +125,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - fixed Python 3.12 strict-typing regression in web profile-summary response model (`ResultProfileLayerRow`) caused by alias/constructor mismatch
 - Chart readability:
   - all SVG charts now include axis lines, tick marks, numeric tick labels, and horizontal grid lines (single-series and multi-series views)
+- Wizard damping routing:
+  - `damping_step.mode=rayleigh` is now mapped into `analysis.damping_mode` config fields
+  - native `linear/eql/nonlinear` solvers now consume Rayleigh coefficients (`mode_1`, `mode_2`) instead of metadata-only handling
+  - `rayleigh_update_matrix` is now routed for nonlinear runs (secant-stiffness based damping-matrix refresh path)
 
 ## [0.1.0] - 2026-03-01
 

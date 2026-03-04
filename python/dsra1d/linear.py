@@ -44,6 +44,26 @@ def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
     return 0.02
 
 
+def _rayleigh_coefficients(
+    damping_ratio: float,
+    mode_1_hz: float,
+    mode_2_hz: float,
+) -> tuple[float, float]:
+    xi = float(np.clip(damping_ratio, 0.0, 0.5))
+    f1 = float(max(mode_1_hz, 1.0e-6))
+    f2 = float(max(mode_2_hz, 1.0e-6))
+    if f2 <= f1:
+        f2 = f1 + 1.0e-6
+    w1 = 2.0 * np.pi * f1
+    w2 = 2.0 * np.pi * f2
+    denom = w1 + w2
+    if denom <= 0.0:
+        return 0.0, 0.0
+    alpha = (2.0 * xi * w1 * w2) / denom
+    beta = (2.0 * xi) / denom
+    return float(alpha), float(beta)
+
+
 def _solve_shear_beam_response(
     config: ProjectConfig,
     motion: Motion,
@@ -78,6 +98,7 @@ def _solve_shear_beam_response(
     m_elem = np.zeros(n_elem, dtype=np.float64)
     k_elem = np.zeros(n_elem, dtype=np.float64)
     c_elem = np.zeros(n_elem, dtype=np.float64)
+    xi_elem = np.zeros(n_elem, dtype=np.float64)
 
     for j, elem in enumerate(element_slices):
         layer_slice = layer_by_idx[elem.layer_index]
@@ -104,6 +125,7 @@ def _solve_shear_beam_response(
         m_elem[j] = m_j
         k_elem[j] = k_j
         c_elem[j] = c_j
+        xi_elem[j] = xi
 
     m_diag_full = np.zeros(n_nodes, dtype=np.float64)
     m_diag_full[0] += 0.5 * m_elem[0]
@@ -129,8 +151,18 @@ def _solve_shear_beam_response(
         c_full[i1, i1] += c
 
     k_mat = k_full[:n_free, :n_free]
-    c_mat = c_full[:n_free, :n_free]
     m_mat = np.diag(m_diag)
+
+    if config.analysis.damping_mode == "rayleigh":
+        xi_target = float(np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12)))
+        alpha, beta_rayleigh = _rayleigh_coefficients(
+            damping_ratio=xi_target,
+            mode_1_hz=config.analysis.rayleigh_mode_1_hz,
+            mode_2_hz=config.analysis.rayleigh_mode_2_hz,
+        )
+        c_mat = (alpha * m_mat) + (beta_rayleigh * k_mat)
+    else:
+        c_mat = c_full[:n_free, :n_free]
 
     dt = float(motion.dt)
     acc_g = np.asarray(motion.acc, dtype=np.float64)

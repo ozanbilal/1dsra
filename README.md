@@ -115,6 +115,15 @@ Run flow (no manual YAML editing required):
 2. Click `Generate Config`.
 3. Click `Run Now`.
 4. Inspect results tabs (`Time Histories`, `Spectral`, `Profile`, `Convergence`) and download artifacts.
+5. Use `Open Results Frame` in Results header to switch into a full-width output workspace.
+
+Damping routing:
+- Wizard `Damping` step writes directly into config analysis fields:
+  - `damping_mode`
+  - `rayleigh_mode_1_hz`
+  - `rayleigh_mode_2_hz`
+  - `rayleigh_update_matrix`
+- Native `linear`, `eql`, and `nonlinear` backends now consume these fields at runtime.
 
 ### Motion Tools (Wave-1)
 - Motion import: CSV + PEER AT2

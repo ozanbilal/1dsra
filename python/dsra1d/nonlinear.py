@@ -21,6 +21,43 @@ def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
     return 0.02
 
 
+def _rayleigh_coefficients(
+    damping_ratio: float,
+    mode_1_hz: float,
+    mode_2_hz: float,
+) -> tuple[float, float]:
+    xi = float(np.clip(damping_ratio, 0.0, 0.5))
+    f1 = float(max(mode_1_hz, 1.0e-6))
+    f2 = float(max(mode_2_hz, 1.0e-6))
+    if f2 <= f1:
+        f2 = f1 + 1.0e-6
+    w1 = 2.0 * np.pi * f1
+    w2 = 2.0 * np.pi * f2
+    denom = w1 + w2
+    if denom <= 0.0:
+        return 0.0, 0.0
+    alpha = (2.0 * xi * w1 * w2) / denom
+    beta = (2.0 * xi) / denom
+    return float(alpha), float(beta)
+
+
+def _assemble_tridiagonal_from_element_values(
+    elem_values: npt.ArrayLike,
+    n_nodes: int,
+) -> FloatArray:
+    values = np.asarray(elem_values, dtype=np.float64)
+    mat = np.zeros((n_nodes, n_nodes), dtype=np.float64)
+    for j, val_raw in enumerate(values):
+        i0 = j
+        i1 = j + 1
+        val = float(max(val_raw, 0.0))
+        mat[i0, i0] += val
+        mat[i0, i1] -= val
+        mat[i1, i0] -= val
+        mat[i1, i1] += val
+    return mat
+
+
 def _element_backbone_stress(
     material: MaterialType,
     params: dict[str, float],
@@ -170,7 +207,9 @@ def solve_nonlinear_sh_response(
     n_free = n_nodes - 1  # base-fixed model
 
     m_elem = np.zeros(n_elem, dtype=np.float64)
+    k_elem = np.zeros(n_elem, dtype=np.float64)
     c_elem = np.zeros(n_elem, dtype=np.float64)
+    xi_elem = np.zeros(n_elem, dtype=np.float64)
     dz_elem = np.zeros(n_elem, dtype=np.float64)
     constitutive_states: list[_ElementConstitutiveState] = []
 
@@ -186,7 +225,9 @@ def solve_nonlinear_sh_response(
         k_j = g_mod * area / dz
         c_j = 2.0 * xi * np.sqrt(max(k_j * m_j, 1.0e-12))
         m_elem[j] = m_j
+        k_elem[j] = k_j
         c_elem[j] = c_j
+        xi_elem[j] = xi
         dz_elem[j] = dz
         reload_factor_raw = cfg_layer.material_params.get("reload_factor", 2.0)
         reload_factor = float(np.clip(reload_factor_raw, 0.5, 4.0))
@@ -207,17 +248,27 @@ def solve_nonlinear_sh_response(
     m_diag = m_diag_full[:n_free]
     if np.any(m_diag <= 0.0):
         raise ValueError("Non-positive nodal mass encountered in nonlinear solver.")
-
-    c_full = np.zeros((n_nodes, n_nodes), dtype=np.float64)
-    for j in range(n_elem):
-        i0 = j
-        i1 = j + 1
-        c = c_elem[j]
-        c_full[i0, i0] += c
-        c_full[i0, i1] -= c
-        c_full[i1, i0] -= c
-        c_full[i1, i1] += c
+    m_mat = np.diag(m_diag)
+    c_full = _assemble_tridiagonal_from_element_values(c_elem, n_nodes)
     c_mat = c_full[:n_free, :n_free]
+    k_initial_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
+    k_initial = k_initial_full[:n_free, :n_free]
+
+    use_rayleigh = config.analysis.damping_mode == "rayleigh"
+    if use_rayleigh:
+        xi_target = float(np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12)))
+        alpha_rayleigh, beta_rayleigh = _rayleigh_coefficients(
+            damping_ratio=xi_target,
+            mode_1_hz=config.analysis.rayleigh_mode_1_hz,
+            mode_2_hz=config.analysis.rayleigh_mode_2_hz,
+        )
+        c_rayleigh_const = (alpha_rayleigh * m_mat) + (beta_rayleigh * k_initial)
+        rayleigh_update_matrix = bool(config.analysis.rayleigh_update_matrix)
+    else:
+        alpha_rayleigh = 0.0
+        beta_rayleigh = 0.0
+        c_rayleigh_const = c_mat
+        rayleigh_update_matrix = False
 
     dt = float(motion.dt)
     dt_sub = dt / float(substeps)
@@ -236,6 +287,7 @@ def solve_nonlinear_sh_response(
             u_full = np.zeros((n_nodes,), dtype=np.float64)
             u_full[:n_free] = u
             f_int_full = np.zeros((n_nodes,), dtype=np.float64)
+            k_sec_elem = np.zeros(n_elem, dtype=np.float64) if rayleigh_update_matrix else None
             for j in range(n_elem):
                 dz = float(max(dz_elem[j], 1.0e-9))
                 gamma = float((u_full[j] - u_full[j + 1]) / dz)
@@ -243,9 +295,21 @@ def solve_nonlinear_sh_response(
                 force = tau * area
                 f_int_full[j] += force
                 f_int_full[j + 1] -= force
+                if k_sec_elem is not None:
+                    if abs(gamma) > 1.0e-10:
+                        g_sec = abs(float(tau) / gamma)
+                    else:
+                        g_sec = constitutive_states[j].gmax_fallback
+                    k_sec_elem[j] = max(g_sec * area / dz, 1.0e-9)
             f_int = f_int_full[:n_free]
             f_ext = -m_diag * ag
-            a_curr = (f_ext - (c_mat @ v) - f_int) / m_diag
+            if k_sec_elem is not None:
+                k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
+                k_sec = k_sec_full[:n_free, :n_free]
+                c_step = (alpha_rayleigh * m_mat) + (beta_rayleigh * k_sec)
+            else:
+                c_step = c_rayleigh_const
+            a_curr = (f_ext - (c_step @ v) - f_int) / m_diag
             v = v + dt_sub * a_curr
             u = u + dt_sub * v
             a_prev = a_curr

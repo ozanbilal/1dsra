@@ -1172,6 +1172,16 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     if backend_raw not in {"config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"}:
         backend_raw = "opensees"
 
+    damping_mode_raw = str(analysis_dict.get("damping_mode", "frequency_independent"))
+    damping_mode = (
+        damping_mode_raw
+        if damping_mode_raw in {"frequency_independent", "rayleigh"}
+        else "frequency_independent"
+    )
+    rayleigh_mode_1 = _as_positive_float_or_none(analysis_dict.get("rayleigh_mode_1_hz"))
+    rayleigh_mode_2 = _as_positive_float_or_none(analysis_dict.get("rayleigh_mode_2_hz"))
+    rayleigh_update = bool(analysis_dict.get("rayleigh_update_matrix", False))
+
     requested_opensees_executable = str(opensees_dict.get("executable", "OpenSees"))
 
     wizard_payload = {
@@ -1192,10 +1202,10 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
             "motion_path": "",
         },
         "damping_step": {
-            "mode": "frequency_independent",
-            "update_matrix": False,
-            "mode_1": None,
-            "mode_2": None,
+            "mode": damping_mode,
+            "update_matrix": rayleigh_update,
+            "mode_1": rayleigh_mode_1 if rayleigh_mode_1 is not None else 1.0,
+            "mode_2": rayleigh_mode_2 if rayleigh_mode_2 is not None else 5.0,
         },
         "control_step": {
             "dt": _as_positive_float_or_none(analysis_dict.get("dt")),
@@ -1298,15 +1308,18 @@ def _build_wizard_schema() -> dict[str, object]:
 
 def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, object], list[str]]:
     warnings: list[str] = []
-    if req.damping_step.mode == "rayleigh":
-        warnings.append(
-            "damping_step.mode=rayleigh is recorded for UI parity "
-            "but native damping routing is not yet wired."
-        )
-    if req.damping_step.update_matrix:
-        warnings.append(
-            "damping_step.update_matrix is accepted but currently acts as metadata only."
-        )
+    mode_1 = (
+        float(req.damping_step.mode_1)
+        if req.damping_step.mode_1 is not None
+        else 1.0
+    )
+    mode_2 = (
+        float(req.damping_step.mode_2)
+        if req.damping_step.mode_2 is not None
+        else 5.0
+    )
+    if mode_2 <= mode_1:
+        mode_2 = mode_1 + 1.0e-6
 
     layers: list[dict[str, object]] = []
     for layer in req.profile_step.layers:
@@ -1331,6 +1344,10 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
             "f_max": req.control_step.f_max,
             "solver_backend": req.analysis_step.solver_backend,
             "pm4_validation_profile": req.analysis_step.pm4_validation_profile,
+            "damping_mode": req.damping_step.mode,
+            "rayleigh_mode_1_hz": mode_1,
+            "rayleigh_mode_2_hz": mode_2,
+            "rayleigh_update_matrix": req.damping_step.update_matrix,
             "timeout_s": req.control_step.timeout_s,
             "retries": req.control_step.retries,
         },

@@ -46,3 +46,18 @@ def test_nonlinear_solver_reload_factor_changes_response() -> None:
     assert surface_default.shape == surface_changed.shape
     # Non-Masing factor change should alter the surface response.
     assert not np.allclose(surface_default, surface_changed)
+
+
+def test_nonlinear_solver_rayleigh_update_matrix_returns_finite_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.analysis.solver_backend = "nonlinear"
+    cfg.analysis.damping_mode = "rayleigh"
+    cfg.analysis.rayleigh_mode_1_hz = 1.0
+    cfg.analysis.rayleigh_mode_2_hz = 10.0
+    cfg.analysis.rayleigh_update_matrix = True
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    time, surface = solve_nonlinear_sh_response(cfg, motion)
+    assert time.shape == surface.shape
+    assert np.all(np.isfinite(surface))
+    assert float(np.std(surface)) > 0.0

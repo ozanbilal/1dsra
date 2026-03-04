@@ -68,8 +68,20 @@ class AnalysisControl(BaseModel):
     f_max: PositiveFloat = 25.0
     solver_backend: Literal["opensees", "mock", "linear", "eql", "nonlinear"] = "opensees"
     pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
+    damping_mode: Literal["frequency_independent", "rayleigh"] = "frequency_independent"
+    rayleigh_mode_1_hz: PositiveFloat = 1.0
+    rayleigh_mode_2_hz: PositiveFloat = 5.0
+    rayleigh_update_matrix: bool = False
     timeout_s: int = 180
     retries: int = 1
+
+    @model_validator(mode="after")
+    def validate_rayleigh_modes(self) -> AnalysisControl:
+        if self.rayleigh_mode_2_hz <= self.rayleigh_mode_1_hz:
+            raise ValueError(
+                "analysis.rayleigh_mode_2_hz must be greater than analysis.rayleigh_mode_1_hz."
+            )
+        return self
 
 
 class Layer(BaseModel):

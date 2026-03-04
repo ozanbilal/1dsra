@@ -45,6 +45,25 @@ def test_eql_solver_returns_finite_response_and_iterations() -> None:
     assert float(np.std(eql.response.surface_acc)) > 0.0
 
 
+def test_linear_solver_rayleigh_mode_changes_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_mock.yml"))
+    cfg.analysis.solver_backend = "linear"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    _, surface_default = solve_linear_sh_response(cfg, motion)
+
+    cfg_rayleigh = cfg.model_copy(deep=True)
+    cfg_rayleigh.analysis.damping_mode = "rayleigh"
+    cfg_rayleigh.analysis.rayleigh_mode_1_hz = 0.8
+    cfg_rayleigh.analysis.rayleigh_mode_2_hz = 12.0
+    _, surface_rayleigh = solve_linear_sh_response(cfg_rayleigh, motion)
+
+    assert surface_default.shape == surface_rayleigh.shape
+    assert np.all(np.isfinite(surface_rayleigh))
+    assert not np.allclose(surface_default, surface_rayleigh)
+
+
 def test_run_analysis_eql_backend_writes_summary_artifact(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/mkz_gqh_mock.yml"))
     cfg.analysis.solver_backend = "eql"

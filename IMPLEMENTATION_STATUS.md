@@ -207,6 +207,10 @@ Missing:
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
 - FastAPI + React migration starter is now available (`StrataWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
+- React dashboard now includes a dedicated `Results Frame` focus mode so outputs can be reviewed in a full-width workspace (without Wizard/Runs crowding)
+- Wizard `Damping` step is now solver-routed:
+  - `rayleigh` mode writes `analysis.damping_mode`, `rayleigh_mode_1_hz`, `rayleigh_mode_2_hz`, `rayleigh_update_matrix`
+  - native linear/eql/nonlinear backends now consume Rayleigh damping in runtime
 - Results `Convergence` tab now includes OpenSees log-derived diagnostics for non-EQL runs (warning/divergence counters and severity)
 - Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage

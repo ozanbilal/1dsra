@@ -832,6 +832,7 @@ function App() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState("");
   const [activeResultTab, setActiveResultTab] = useState("Time Histories");
   const [runsPanelOpen, setRunsPanelOpen] = useState(false);
+  const [resultsFrameMode, setResultsFrameMode] = useState("integrated");
   const [backendProbe, setBackendProbe] = useState(null);
   const [backendProbeLoading, setBackendProbeLoading] = useState(false);
   const [compareRunIds, setCompareRunIds] = useState([]);
@@ -1953,6 +1954,12 @@ function App() {
   if (!wizardValidation.motion_step.valid) runBlockingIssues.push("Motion step is incomplete.");
   if (backendBlockingIssue) runBlockingIssues.push(backendBlockingIssue);
   const canRunNow = runBlockingIssues.length === 0;
+  const isResultsFrameMode = resultsFrameMode === "results_only";
+  const layoutModeClass = isResultsFrameMode
+    ? "layout-results-focus"
+    : runsPanelOpen
+      ? "layout-workspace-open"
+      : "layout-workspace-collapsed";
   const configTemplateDescription =
     TEMPLATE_DESCRIPTIONS[configTemplateKey] ||
     "Template description is not available for this preset.";
@@ -1989,11 +1996,9 @@ function App() {
       </header>
 
       <section
-        className=${`layout ${
-          runsPanelOpen ? "layout-workspace-open" : "layout-workspace-collapsed"
-        }`}
+        className=${`layout ${layoutModeClass}`}
       >
-        <aside className="panel side-panel">
+        <aside className=${`panel side-panel ${isResultsFrameMode ? "side-panel-hidden" : ""}`}>
           <h2>Wizard</h2>
           <div className="tab-row">
             ${WIZARD_STEPS.map(
@@ -2887,8 +2892,14 @@ function App() {
           <div className=${`status status-${statusKind}`}>${status}</div>
         </aside>
 
-        <main className=${`panel workspace-panel ${runsPanelOpen ? "workspace-open" : "workspace-collapsed"}`}>
-          <section className="panel-block">
+        <main
+          className=${`panel workspace-panel ${
+            runsPanelOpen ? "workspace-open" : "workspace-collapsed"
+          } ${isResultsFrameMode ? "workspace-results-focus" : ""}`}
+        >
+          ${!isResultsFrameMode
+            ? html`
+                <section className="panel-block">
             <div className="row between">
               <h2 className="runs-heading">Runs</h2>
               <div className="accordion-actions">
@@ -3001,23 +3012,70 @@ function App() {
                     Runs panel collapsed. Sag ustteki ucgen ile tekrar acabilirsiniz.
                   </div>
                 `}
-          </section>
+                </section>
+              `
+            : null}
 
           <section className="panel-block">
             <div className="row between">
-              <h3>Results</h3>
-              ${selectedRunId
-                ? html`
-                    <div className="download-row">
-                      <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
-                      <a className="btn-min" href=${artifactLinks.pwp}>pwp_effective.csv</a>
-                      <a className="btn-min" href=${artifactLinks.h5}>results.h5</a>
-                      <a className="btn-min" href=${artifactLinks.sqlite}>results.sqlite</a>
-                      <a className="btn-min" href=${artifactLinks.meta}>run_meta.json</a>
-                    </div>
-                  `
-                : null}
+              <h3>${isResultsFrameMode ? "Results Frame" : "Results"}</h3>
+              <div className="row">
+                <button
+                  className="btn-min"
+                  onClick=${() =>
+                    setResultsFrameMode((prev) =>
+                      prev === "results_only" ? "integrated" : "results_only"
+                    )}
+                >
+                  ${isResultsFrameMode ? "Back to Workspace" : "Open Results Frame"}
+                </button>
+                ${selectedRunId
+                  ? html`
+                      <div className="download-row">
+                        <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
+                        <a className="btn-min" href=${artifactLinks.pwp}>pwp_effective.csv</a>
+                        <a className="btn-min" href=${artifactLinks.h5}>results.h5</a>
+                        <a className="btn-min" href=${artifactLinks.sqlite}>results.sqlite</a>
+                        <a className="btn-min" href=${artifactLinks.meta}>run_meta.json</a>
+                      </div>
+                    `
+                  : null}
+              </div>
             </div>
+
+            ${isResultsFrameMode
+              ? html`
+                  <div className="row results-frame-controls">
+                    <div className="field">
+                      <label>Selected Run</label>
+                      <select
+                        value=${selectedRunId || ""}
+                        onInput=${(e) => setSelectedRunId(e.target.value)}
+                      >
+                        <option value="">Select run</option>
+                        ${runs.map(
+                          (run) => html`
+                            <option value=${run.run_id}>
+                              ${run.run_id} | ${mini(run.motion_name || run.input_motion || "")}
+                            </option>
+                          `
+                        )}
+                      </select>
+                    </div>
+                    <div className="field align-end">
+                      <button
+                        className="btn-sub"
+                        onClick=${() => {
+                          loadRuns().catch(() => {});
+                          loadRunsTree().catch(() => {});
+                        }}
+                      >
+                        Refresh Runs
+                      </button>
+                    </div>
+                  </div>
+                `
+              : null}
 
             <div className="tab-row results-tab-row">
               ${RESULT_TABS.map(

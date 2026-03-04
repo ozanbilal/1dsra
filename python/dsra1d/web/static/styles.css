@@ -71,6 +71,14 @@ body {
   grid-template-columns: minmax(620px, 43%) minmax(0, 1fr);
 }
 
+.layout.layout-results-focus {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.layout.layout-results-focus .side-panel {
+  display: none;
+}
+
 .panel {
   padding: 0.85rem;
 }
@@ -220,6 +228,10 @@ button:hover {
   min-height: 42px;
   padding: 0.35rem;
   border-radius: 12px;
+}
+
+.workspace-results-focus {
+  padding: 0.95rem;
 }
 
 .tab-row {
@@ -724,6 +736,12 @@ pre {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
   padding: 0.55rem;
+}
+
+.results-frame-controls {
+  margin-top: 0.45rem;
+  margin-bottom: 0.5rem;
+  align-items: flex-end;
 }
 
 .compare-selector-grid {

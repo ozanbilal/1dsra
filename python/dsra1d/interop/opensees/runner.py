@@ -45,6 +45,7 @@ class OpenSeesProbeResult:
     stderr: str
     command: list[str]
     binary_sha256: str
+    assumed_available: bool = False
 
 
 def _sha256_file(path: Path) -> str:
@@ -154,6 +155,7 @@ def probe_opensees_executable(
             stderr=f"OpenSees executable not found: {executable}",
             command=[],
             binary_sha256="",
+            assumed_available=False,
         )
 
     version_cmd = [str(resolved)]
@@ -174,10 +176,12 @@ def probe_opensees_executable(
             stderr=str(exc),
             command=version_cmd,
             binary_sha256="",
+            assumed_available=False,
         )
 
     command = version_cmd
     version_timed_out = _probe_timed_out(stderr)
+    assumed_available = False
     if not available:
         try:
             fb_available, fb_version, fb_stdout, fb_stderr, fb_cmd = _probe_with_tcl_script(
@@ -199,6 +203,7 @@ def probe_opensees_executable(
             command = fb_cmd
         elif _probe_timed_out(fb_stderr) and version_timed_out:
             available = True
+            assumed_available = True
             if version_line == "unknown" and fb_version != "unknown":
                 version_line = fb_version
             timeout_note = (
@@ -222,6 +227,7 @@ def probe_opensees_executable(
         stderr=stderr,
         command=command,
         binary_sha256=_sha256_file(resolved),
+        assumed_available=assumed_available,
     )
 
 

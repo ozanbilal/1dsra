@@ -34,6 +34,8 @@ def test_web_backend_probe_endpoint() -> None:
     assert isinstance(payload.get("requested"), str)
     assert payload["requested"]
     assert "available" in payload
+    assert "assumed_available" in payload
+    assert isinstance(payload["assumed_available"], bool)
     assert "version" in payload
 
 
@@ -485,6 +487,83 @@ def test_web_wizard_sanity_check_warns_for_low_timeout_budget(tmp_path) -> None:
     assert timeout_checks[0].get("status") in {"warning", "ok"}
     derived = payload.get("derived", {})
     assert float(derived.get("timeout_recommended_s", 0.0)) >= 120.0
+
+
+def test_web_wizard_sanity_check_warns_when_probe_is_assumed_available(
+    tmp_path, monkeypatch
+) -> None:
+    from dsra1d.interop.opensees.runner import OpenSeesProbeResult
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    def _fake_probe(executable: str, extra_args=None, timeout_s: int = 5):
+        _ = (executable, extra_args, timeout_s)
+        return OpenSeesProbeResult(
+            available=True,
+            assumed_available=True,
+            resolved=Path("C:/tools/OpenSees.exe"),
+            version="unknown",
+            stdout="",
+            stderr="probe timeout fallback",
+            command=["OpenSees", "-version"],
+            binary_sha256="a" * 64,
+        )
+
+    monkeypatch.setattr("dsra1d.web.app.probe_opensees_executable", _fake_probe)
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/wizard/sanity-check",
+        json={
+            "analysis_step": {
+                "project_name": "wizard-assumed-probe-case",
+                "boundary_condition": "elastic_halfspace",
+                "solver_backend": "opensees",
+                "pm4_validation_profile": "basic",
+            },
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "L1",
+                        "thickness_m": 5.0,
+                        "unit_weight_kN_m3": 18.0,
+                        "vs_m_s": 180.0,
+                        "material": "pm4sand",
+                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material_optional_args": [],
+                    }
+                ]
+            },
+            "motion_step": {
+                "motion_path": "examples/motions/sample_motion.csv",
+                "units": "m/s2",
+                "baseline": "remove_mean",
+                "scale_mode": "none",
+            },
+            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
+            "control_step": {
+                "f_max": 25.0,
+                "timeout_s": 120,
+                "retries": 1,
+                "write_hdf5": True,
+                "write_sqlite": True,
+                "parquet_export": False,
+                "opensees_executable": "OpenSees",
+                "output_dir": str(tmp_path / "out"),
+                "config_output_dir": str(tmp_path),
+                "config_file_name": "wizard_assumed_probe.yml",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    checks = payload.get("checks", [])
+    backend_checks = [c for c in checks if c.get("name") == "backend_probe"]
+    assert backend_checks
+    assert backend_checks[0].get("status") == "warning"
+    assert "assumed" in str(backend_checks[0].get("message", "")).lower()
+    derived = payload.get("derived", {})
+    assert derived.get("opensees_probe_assumed_available") is True
 
 
 def test_web_config_from_wizard_invalid_opensees_material_returns_400(tmp_path) -> None:

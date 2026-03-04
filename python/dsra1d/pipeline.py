@@ -429,6 +429,7 @@ def run_analysis(
         )
         opensees_probe = {
             "available": probe.available,
+            "assumed_available": probe.assumed_available,
             "resolved": str(probe.resolved) if probe.resolved is not None else "",
             "version": probe.version,
             "command": probe.command,

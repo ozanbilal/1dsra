@@ -520,6 +520,11 @@ button:hover {
   background: rgba(140, 36, 31, 0.14);
 }
 
+.probe-chip.warn {
+  color: #8c5e12;
+  background: rgba(166, 118, 21, 0.16);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.52;

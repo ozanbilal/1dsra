@@ -361,6 +361,7 @@ class BackendProbeResponse(BaseModel):
     requested: str
     resolved: str | None = None
     available: bool
+    assumed_available: bool = False
     version: str = ""
     error: str = ""
     binary_sha256: str | None = None
@@ -2011,14 +2012,29 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
             str(probe.resolved) if probe.resolved is not None else None
         )
         derived["opensees_available"] = bool(probe.available)
+        derived["opensees_probe_assumed_available"] = bool(probe.assumed_available)
         if probe.available:
-            checks.append(
-                WizardSanityCheckItem(
-                    name="backend_probe",
-                    status="ok",
-                    message=f"OpenSees available: {probe.resolved}",
+            if probe.assumed_available:
+                msg = (
+                    "OpenSees probe timed out and availability is assumed; "
+                    "runtime execution will confirm."
                 )
-            )
+                checks.append(
+                    WizardSanityCheckItem(
+                        name="backend_probe",
+                        status="warning",
+                        message=msg,
+                    )
+                )
+                warnings.append(msg)
+            else:
+                checks.append(
+                    WizardSanityCheckItem(
+                        name="backend_probe",
+                        status="ok",
+                        message=f"OpenSees available: {probe.resolved}",
+                    )
+                )
         else:
             msg = f"OpenSees executable not available ({requested_executable})."
             if requested_backend == "opensees":
@@ -2187,6 +2203,7 @@ def create_app() -> FastAPI:
             requested=effective_executable,
             resolved=str(probe.resolved) if probe.resolved is not None else None,
             available=bool(probe.available),
+            assumed_available=bool(probe.assumed_available),
             version=str(probe.version or ""),
             error=str(probe.stderr or ""),
             binary_sha256=probe.binary_sha256 or None,

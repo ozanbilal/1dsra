@@ -89,6 +89,7 @@ def test_probe_opensees_executable_double_timeout_assumes_available(monkeypatch)
     monkeypatch.setattr(runner_mod.subprocess, "run", _fake_run)
     probe = probe_opensees_executable(sys.executable, timeout_s=1)
     assert probe.available is True
+    assert probe.assumed_available is True
     assert "assuming executable is available" in probe.stderr.lower()
     assert len(calls) >= 2
     assert calls[0][-1] == "-version"

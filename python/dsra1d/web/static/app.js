@@ -1464,6 +1464,7 @@ function App() {
       setBackendProbe({
         requested: executable,
         available: false,
+        assumed_available: false,
         version: "",
         error: String(err),
       });
@@ -2208,6 +2209,13 @@ function App() {
     isOpenSeesMode && backendProbe && backendProbe.available === false
       ? `OpenSees executable not available (${backendProbe.requested || "OpenSees"}). Use backend=auto/mock or set valid executable path.`
       : "";
+  const backendProbeAssumedIssue =
+    isOpenSeesMode &&
+    backendProbe &&
+    backendProbe.available === true &&
+    backendProbe.assumed_available === true
+      ? "OpenSees probe timed out; availability is assumed and final validation will occur at runtime."
+      : "";
   const runBlockingIssues = [];
   if (!canGenerateConfig) runBlockingIssues.push("Fix wizard validation issues first.");
   if (!wizardValidation.motion_step.valid) runBlockingIssues.push("Motion step is incomplete.");
@@ -2390,8 +2398,20 @@ function App() {
                 </div>
                 ${backendProbe
                   ? html`
-                      <div className=${`probe-chip ${backendProbe.available ? "ok" : "bad"}`}>
-                        ${backendProbe.available ? "OpenSees available" : "OpenSees not available"}
+                      <div
+                        className=${`probe-chip ${
+                          backendProbe.available
+                            ? backendProbe.assumed_available
+                              ? "warn"
+                              : "ok"
+                            : "bad"
+                        }`}
+                      >
+                        ${backendProbe.available
+                          ? backendProbe.assumed_available
+                            ? "OpenSees assumed available"
+                            : "OpenSees available"
+                          : "OpenSees not available"}
                       </div>
                       <div className="muted">
                         ${backendProbe.resolved ? `Resolved: ${backendProbe.resolved}` : ""}
@@ -2402,6 +2422,9 @@ function App() {
                   : html`<div className="muted">No backend probe yet.</div>`}
                 ${backendBlockingIssue
                   ? html`<div className="warn-box"><strong>Run Blocker:</strong> ${backendBlockingIssue}</div>`
+                  : null}
+                ${backendProbeAssumedIssue
+                  ? html`<div className="warn-box"><strong>Backend Warning:</strong> ${backendProbeAssumedIssue}</div>`
                   : null}
               </div>
             </div>
@@ -3031,9 +3054,19 @@ function App() {
               </div>
               ${backendProbe
                 ? html`
-                    <div className=${`probe-chip ${backendProbe.available ? "ok" : "bad"}`}>
+                    <div
+                      className=${`probe-chip ${
+                        backendProbe.available
+                          ? backendProbe.assumed_available
+                            ? "warn"
+                            : "ok"
+                          : "bad"
+                      }`}
+                    >
                       ${backendProbe.available
-                        ? `OpenSees ok: ${backendProbe.requested}`
+                        ? backendProbe.assumed_available
+                          ? `OpenSees assumed: ${backendProbe.requested}`
+                          : `OpenSees ok: ${backendProbe.requested}`
                         : `OpenSees missing: ${backendProbe.requested}`}
                     </div>
                   `

@@ -713,6 +713,11 @@ def validate(
                 print(f"- {err}")
             raise typer.Exit(code=5)
         print(f"[green]OpenSees executable[/green]: {probe.resolved}")
+        if bool(getattr(probe, "assumed_available", False)):
+            print(
+                "[yellow]OpenSees probe warning[/yellow]: "
+                "version checks timed out; runtime execution will be the final availability check."
+            )
         if cfg.opensees.extra_args:
             print(f"[cyan]OpenSees extra args[/cyan]: {cfg.opensees.extra_args}")
         print(f"[cyan]OpenSees version probe[/cyan]: {probe.version}")

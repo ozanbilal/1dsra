@@ -269,7 +269,7 @@ class ResultProfileLayerRow(BaseModel):
     name: str
     material: str
     thickness_m: float
-    unit_weight_kn_m3: float = Field(alias="unit_weight_kN_m3")
+    unit_weight_kn_m3: float = Field(serialization_alias="unit_weight_kN_m3")
     vs_m_s: float
     z_top_m: float
     z_bottom_m: float

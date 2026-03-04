@@ -117,6 +117,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - Profile tab now renders layer-wise summary table (`z_top`, `z_bottom`, `n_sub`, `gamma_max`, material/VS/weight) plus global effective-stress KPIs
 - Runtime backend normalization:
   - fixed `backend=config|auto` handling when config backend is `auto` (resolves to OpenSees when available, otherwise deterministic mock fallback)
+- CI/mypy compatibility:
+  - fixed Python 3.12 strict-typing regression in web profile-summary response model (`ResultProfileLayerRow`) caused by alias/constructor mismatch
 
 ## [0.1.0] - 2026-03-01
 

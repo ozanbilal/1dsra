@@ -217,6 +217,7 @@ Missing:
 - Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
 - New profile summary API (`GET /api/runs/{run_id}/results/profile-summary`) and Profile tab layer table (depth bounds, sublayer count, `gamma_max` when available)
 - Runtime backend resolver now handles `backend=config|auto` with `config.solver_backend=auto` deterministically (OpenSees if available, else mock fallback)
+- CI reliability: fixed Python 3.12 mypy strict-typing break in web profile-summary model field aliasing
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)

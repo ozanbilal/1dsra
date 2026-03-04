@@ -13,6 +13,7 @@ This checklist is the operational gate for `v*` tags.
 
 ## Human-reviewed (must be confirmed)
 - `SCIENTIFIC_CONFIDENCE_MATRIX.md` updated with latest verification date and confidence tier
+- Repository variable `DSRA1D_CI_OPENSEES_SHA256` equals `benchmarks/policies/release_signoff.yml:opensees_fingerprint`
 - PM4 calibration notes reviewed and consistent with strict/strict_plus validation ranges
 - Release notes include known limitations and unsupported production scenarios
 

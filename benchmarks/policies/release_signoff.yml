@@ -11,6 +11,5 @@ fail_on_skip: true
 require_explicit_checks: true
 require_opensees: true
 
-# Set the production OpenSees binary fingerprint to enforce strict release signoff.
-# Keep empty for local/dev flows.
-opensees_fingerprint: ""
+# OpenSees binary fingerprint (sha256) required for strict release signoff.
+opensees_fingerprint: "5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d"

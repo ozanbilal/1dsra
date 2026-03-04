@@ -935,6 +935,9 @@ def test_cli_summarize_writes_outputs(tmp_path: Path) -> None:
 def test_cli_summarize_strict_signoff_passes_with_input_dir(tmp_path: Path) -> None:
     campaign_dir = tmp_path / "campaign_release"
     campaign_dir.mkdir(parents=True, exist_ok=True)
+    policy_sha = str(
+        cli_main._load_release_signoff_policy().get("opensees_fingerprint", "")
+    ).strip()
     benchmark_report = {
         "suite": "release-signoff",
         "all_passed": True,
@@ -950,8 +953,9 @@ def test_cli_summarize_strict_signoff_passes_with_input_dir(tmp_path: Path) -> N
             "require_runs": 18,
             "require_opensees": True,
             "min_execution_coverage": 1.0,
-            "require_backend_sha256": "",
+            "require_backend_sha256": policy_sha,
         },
+        "backend_probe": {"binary_sha256": policy_sha},
         "cases": [],
     }
     verify_batch_report = {

@@ -286,6 +286,8 @@ Set repository variable `DSRA1D_CI_OPENSEES_EXE` (or ensure `OpenSees` is on PAT
 for deterministic executable resolution on the dedicated runner.
 Release path also requires fingerprint variable:
 - `DSRA1D_CI_OPENSEES_SHA256`
+It must match `benchmarks/policies/release_signoff.yml:opensees_fingerprint`
+(currently `5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d`).
 Use execution coverage policy for campaign/benchmark suites:
 - `--min-execution-coverage <0..1>` (fails if executed case ratio is below target)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.

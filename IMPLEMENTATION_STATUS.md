@@ -361,4 +361,5 @@ Notes:
 
 - Single source of truth: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
 - Update rule: when benchmark tolerances/reference-basis change, update confidence matrix in the same commit.
+- Release rule: `opensees-parity.binary_fingerprint` must match both policy fingerprint (`benchmarks/policies/release_signoff.yml`) and strict-signoff observed backend SHA256.
 

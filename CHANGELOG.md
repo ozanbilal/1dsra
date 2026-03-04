@@ -26,6 +26,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - release workflow now runs machine checks via `scripts/check_release_signoff.py`
   - CI dedicated OpenSees parity runner moved to non-optional release-signoff gate
   - release machine-check now enforces exact 64-hex sha256 match between signoff observed fingerprint and `SCIENTIFIC_CONFIDENCE_MATRIX.md`
+  - release policy fingerprint is now explicitly locked in `benchmarks/policies/release_signoff.yml`
 - FastAPI + React migration starter:
   - `StrataWave web` command (uvicorn-backed)
   - API endpoints for run listing, signal fetch, run execution, and `surface_acc.csv` download

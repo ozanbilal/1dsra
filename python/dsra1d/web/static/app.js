@@ -1211,11 +1211,6 @@ function App() {
   async function runNow() {
     if (!wizard) return;
     const motionPath = wizard.motion_step?.motion_path || "";
-    if (!generatedConfigPath) {
-      setStatusKind("warn");
-      setStatus("Generate config first.");
-      return;
-    }
     if (!motionPath) {
       setStatusKind("warn");
       setStatus("Motion path is required.");
@@ -1224,6 +1219,39 @@ function App() {
     setStatusKind("info");
     setStatus("Running analysis...");
     try {
+      const sanity = await requestJSON("/api/wizard/sanity-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(wizard),
+      });
+      setSanityReport(sanity);
+      if (!sanity.ok) {
+        const blockers = Array.isArray(sanity.blockers) ? sanity.blockers : [];
+        setStatusKind("err");
+        setStatus(`Run blocked by sanity check: ${blockers.join(" | ") || "unknown blocker"}`);
+        return;
+      }
+
+      let configPath = generatedConfigPath;
+      if (!configPath) {
+        setStatusKind("info");
+        setStatus("Generating config from wizard before run...");
+        const gen = await requestJSON("/api/config/from-wizard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(wizard),
+        });
+        configPath = gen.config_path || "";
+        setGeneratedConfigPath(configPath);
+        setGeneratedConfigYaml(gen.config_yaml || "");
+        setConfigWarnings(gen.warnings || []);
+      }
+      if (!configPath) {
+        setStatusKind("err");
+        setStatus("Run aborted: config path could not be generated.");
+        return;
+      }
+
       const targetOutputRoot = wizard.control_step?.output_dir || outputRoot || "out/web";
       if (targetOutputRoot !== outputRoot) {
         setOutputRoot(targetOutputRoot);
@@ -1232,7 +1260,7 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          config_path: generatedConfigPath,
+          config_path: configPath,
           motion_path: motionPath,
           output_root: targetOutputRoot,
           backend: wizard.analysis_step?.solver_backend || "config",
@@ -1736,7 +1764,6 @@ function App() {
   const runBlockingIssues = [];
   if (!canGenerateConfig) runBlockingIssues.push("Fix wizard validation issues first.");
   if (!wizardValidation.motion_step.valid) runBlockingIssues.push("Motion step is incomplete.");
-  if (!hasText(generatedConfigPath)) runBlockingIssues.push("Generate Config must be completed.");
   if (backendBlockingIssue) runBlockingIssues.push(backendBlockingIssue);
   const canRunNow = runBlockingIssues.length === 0;
   const configTemplateDescription =

@@ -112,6 +112,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Wizard/run readiness tooling:
   - new endpoint `POST /api/wizard/sanity-check` (config validation, motion path resolution, dt/f_max consistency, backend probe, material/backend compatibility)
   - Step-5 UI now includes `Run Sanity Check` with blocker/warning breakdown cards
+  - `Run Now` now auto-generates config when missing and runs sanity-check before execution (single-click path)
 - Profile results enrichment:
   - new endpoint `GET /api/runs/{run_id}/results/profile-summary`
   - Profile tab now renders layer-wise summary table (`z_top`, `z_bottom`, `n_sub`, `gamma_max`, material/VS/weight) plus global effective-stress KPIs

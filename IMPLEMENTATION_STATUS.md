@@ -215,6 +215,7 @@ Missing:
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
 - New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
 - Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
+- Step-5 `Run Now` now supports single-click execution by auto-generating config (if missing) and enforcing sanity-check blockers before launch
 - New profile summary API (`GET /api/runs/{run_id}/results/profile-summary`) and Profile tab layer table (depth bounds, sublayer count, `gamma_max` when available)
 - Runtime backend resolver now handles `backend=config|auto` with `config.solver_backend=auto` deterministically (OpenSees if available, else mock fallback)
 - CI reliability: fixed Python 3.12 mypy strict-typing break in web profile-summary model field aliasing

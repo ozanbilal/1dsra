@@ -78,6 +78,7 @@ def test_web_runs_endpoint_includes_health_summary(tmp_path) -> None:
     assert "solver_failed_converge_count" in row
     assert "solver_analyze_failed_count" in row
     assert "solver_divide_by_zero_count" in row
+    assert "solver_dynamic_fallback_failed_count" in row
 
 
 def test_web_static_assets_served() -> None:

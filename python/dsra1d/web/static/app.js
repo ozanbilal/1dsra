@@ -306,6 +306,18 @@ function runSeverityLabel(run) {
 
 function runWarningHint(run) {
   if (!run || typeof run !== "object") return "";
+  const divideByZero = Number(run.solver_divide_by_zero_count);
+  if (Number.isFinite(divideByZero) && divideByZero > 0) {
+    return `divide_by_zero:${Math.round(divideByZero)}`;
+  }
+  const fallbackFailed = Number(run.solver_dynamic_fallback_failed_count);
+  if (Number.isFinite(fallbackFailed) && fallbackFailed > 0) {
+    return `fallback_failed:${Math.round(fallbackFailed)}`;
+  }
+  const failedConverge = Number(run.solver_failed_converge_count);
+  if (Number.isFinite(failedConverge) && failedConverge > 0) {
+    return `failed_converge:${Math.round(failedConverge)}`;
+  }
   const warnings = Number(run.solver_warning_count);
   if (Number.isFinite(warnings) && warnings > 0) return `warnings:${Math.round(warnings)}`;
   if (run.convergence_mode === "eql" && run.converged === false) return "eql:not-converged";

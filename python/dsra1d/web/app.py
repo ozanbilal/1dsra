@@ -83,6 +83,7 @@ class RunSummary(BaseModel):
     solver_failed_converge_count: int | None = None
     solver_analyze_failed_count: int | None = None
     solver_divide_by_zero_count: int | None = None
+    solver_dynamic_fallback_failed_count: int | None = None
 
 
 class ConfigTemplateRequest(BaseModel):
@@ -930,6 +931,7 @@ def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:
             "solver_failed_converge_count": None,
             "solver_analyze_failed_count": None,
             "solver_divide_by_zero_count": None,
+            "solver_dynamic_fallback_failed_count": None,
         }
 
     if "iterations" in conv or "max_change_last" in conv:
@@ -942,6 +944,7 @@ def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:
             "solver_failed_converge_count": None,
             "solver_analyze_failed_count": None,
             "solver_divide_by_zero_count": None,
+            "solver_dynamic_fallback_failed_count": None,
         }
 
     severity = str(conv.get("severity", "unknown")).strip().lower() or "unknown"
@@ -953,6 +956,7 @@ def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:
         "solver_failed_converge_count": _optional_int(conv.get("failed_converge_count")),
         "solver_analyze_failed_count": _optional_int(conv.get("analyze_failed_count")),
         "solver_divide_by_zero_count": _optional_int(conv.get("divide_by_zero_count")),
+        "solver_dynamic_fallback_failed_count": _optional_int(conv.get("dynamic_fallback_failed")),
     }
 
 
@@ -2156,6 +2160,9 @@ def create_app() -> FastAPI:
                     ),
                     solver_divide_by_zero_count=cast(
                         int | None, health["solver_divide_by_zero_count"]
+                    ),
+                    solver_dynamic_fallback_failed_count=cast(
+                        int | None, health["solver_dynamic_fallback_failed_count"]
                     ),
                 )
             )

@@ -220,7 +220,7 @@ Missing:
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
-- `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`) for pre-detail triage
+- `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`, `dynamic_fallback_failed`) for pre-detail triage
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
 - New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
 - Step-5 now includes a `Run Sanity Check` action and structured readiness result cards

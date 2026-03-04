@@ -1,12 +1,36 @@
 {
   "lin01": {
     "checks": {
-      "pga": { "expected": 0.037939741827670376, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 111.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 214350605981.02686, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 20.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.037939741827670376,
+        "abs_tol": 0.001896987091383519,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 111.0,
+        "abs_tol": 5.550000000000001,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 1.175688411116151,
+        "abs_tol": 0.05878442055580755,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 24.99999999999998,
+        "abs_tol": 1.2499999999999991,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -23,12 +47,36 @@
   },
   "lin02": {
     "checks": {
-      "pga": { "expected": 0.12706186588191126, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 267.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 636993684041.2794, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 10.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.12706186588191126,
+        "abs_tol": 0.006353093294095564,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 267.0,
+        "abs_tol": 13.350000000000001,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 2.514731956592501,
+        "abs_tol": 0.12573659782962507,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 12.49999999999999,
+        "abs_tol": 0.6249999999999996,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -45,12 +93,36 @@
   },
   "lin03": {
     "checks": {
-      "pga": { "expected": 0.11324564606792345, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 172.5, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 695118016910.6688, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 10.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.11324564606792345,
+        "abs_tol": 0.005662282303396173,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 172.5,
+        "abs_tol": 8.625,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.9989332275197601,
+        "abs_tol": 0.04994666137598801,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 12.49999999999999,
+        "abs_tol": 0.6249999999999996,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,

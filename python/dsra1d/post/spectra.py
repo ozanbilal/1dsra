@@ -69,9 +69,13 @@ def compute_transfer_function(
     input_signal: np.ndarray,
     output_signal: np.ndarray,
     dt: float,
+    *,
+    amplitude_floor_ratio: float = 1.0e-4,
 ) -> tuple[np.ndarray, np.ndarray]:
     if dt <= 0.0:
         raise ValueError("dt must be > 0 for transfer function.")
+    if not (0.0 < amplitude_floor_ratio < 1.0):
+        raise ValueError("amplitude_floor_ratio must be in (0, 1).")
     n = min(int(input_signal.size), int(output_signal.size))
     if n < 2:
         return np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64)
@@ -84,8 +88,15 @@ def compute_transfer_function(
     x_fft = np.fft.rfft(x)
     y_fft = np.fft.rfft(y)
     freq = np.fft.rfftfreq(n, d=dt)
-    denom = np.maximum(np.abs(x_fft), 1.0e-12)
-    h_abs = np.abs(y_fft) / denom
+
+    amp_x = np.abs(x_fft)
+    amp_y = np.abs(y_fft)
+    amp_ref = float(np.max(amp_x)) if amp_x.size else 0.0
+    amp_floor = max(amp_ref * amplitude_floor_ratio, 1.0e-12)
+    valid = amp_x >= amp_floor
+
+    h_abs = np.zeros_like(amp_x, dtype=np.float64)
+    h_abs[valid] = amp_y[valid] / amp_x[valid]
     if h_abs.size > 0:
         h_abs[0] = 0.0
     return freq.astype(np.float64), h_abs.astype(np.float64)

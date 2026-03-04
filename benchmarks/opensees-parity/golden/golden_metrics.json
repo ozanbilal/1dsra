@@ -2,33 +2,33 @@
   "parity01": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 0.0200028,
+        "abs_tol": 0.00300042,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 1.1403304347826088e-14,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": -4.07079e-14,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 172.50000000000003,
+        "abs_tol": 25.875000000000004,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 1.1271860769206146,
+        "abs_tol": 0.16907791153809218,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 74.99999999999993,
+        "abs_tol": 11.24999999999999,
         "rel_tol": 0.0
       }
     },
@@ -48,33 +48,33 @@
   "parity02": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 3.43233,
+        "abs_tol": 0.5148495,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 2.23683111459149e-16,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": -2.16418e-15,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 191.55,
+        "abs_tol": 28.7325,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 1.1272001974720134,
+        "abs_tol": 0.169080029620802,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 93.74999999999991,
+        "abs_tol": 14.062499999999988,
         "rel_tol": 0.0
       }
     },
@@ -94,33 +94,33 @@
   "parity03": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 0.0798345,
+        "abs_tol": 0.011975175,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 6.748554913294798e-16,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": -1.99513e-15,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 173.0,
+        "abs_tol": 25.95,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 2.4937533275990797,
+        "abs_tol": 0.37406299913986196,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 64.99999999999994,
+        "abs_tol": 9.749999999999991,
         "rel_tol": 0.0
       }
     },
@@ -140,33 +140,33 @@
   "parity04": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 0.0303607,
+        "abs_tol": 0.004554105,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 9.285320145757419e-18,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 1.30271e-14,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 192.10000000000002,
+        "abs_tol": 28.815,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 9.171391354711485,
+        "abs_tol": 1.3757087032067228,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 112.5,
+        "abs_tol": 16.875,
         "rel_tol": 0.0
       }
     },
@@ -186,33 +186,33 @@
   "parity05": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 2.45166,
+        "abs_tol": 0.367749,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 1.1187955729166668e-15,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 3.00846e-14,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 153.59999999999997,
+        "abs_tol": 23.039999999999996,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 3.849960971402072,
+        "abs_tol": 0.5774941457103108,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 99.99999999999999,
+        "abs_tol": 14.999999999999996,
         "rel_tol": 0.0
       }
     },
@@ -232,33 +232,33 @@
   "parity06": {
     "checks": {
       "pga": {
-        "expected": 0.0,
-        "abs_tol": 1000.0,
+        "expected": 0.0792006,
+        "abs_tol": 0.01188009,
         "rel_tol": 0.0
       },
       "ru_max": {
-        "expected": 0.0,
-        "abs_tol": 2.0,
+        "expected": 7.855407750144592e-18,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "delta_u_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 1.01825e-15,
+        "abs_tol": 1e-08,
         "rel_tol": 0.0
       },
       "sigma_v_eff_min": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 172.9,
+        "abs_tol": 25.935,
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 9.171530844920909,
+        "abs_tol": 1.3757296267381363,
         "rel_tol": 0.0
       },
       "transfer_peak_freq_hz": {
-        "expected": 0.0,
-        "abs_tol": 1000000.0,
+        "expected": 128.57142857142856,
+        "abs_tol": 19.28571428571428,
         "rel_tol": 0.0
       }
     },

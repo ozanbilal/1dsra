@@ -1,12 +1,36 @@
 {
   "eql01": {
     "checks": {
-      "pga": { "expected": 0.03953029115756858, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 111.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 225758190980.94278, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 20.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.03953029115756858,
+        "abs_tol": 0.001976514557878429,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 111.0,
+        "abs_tol": 5.550000000000001,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 1.2443036891527273,
+        "abs_tol": 0.062215184457636366,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 24.99999999999998,
+        "abs_tol": 1.2499999999999991,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -23,12 +47,36 @@
   },
   "eql02": {
     "checks": {
-      "pga": { "expected": 0.06903264687193689, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 243.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 396849558470.98376, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 15.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.06903264687193689,
+        "abs_tol": 0.0034516323435968446,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 243.0,
+        "abs_tol": 12.15,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 2.2007781962913313,
+        "abs_tol": 0.11003890981456657,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 12.49999999999999,
+        "abs_tol": 0.6249999999999996,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,
@@ -45,12 +93,36 @@
   },
   "eql03": {
     "checks": {
-      "pga": { "expected": 0.04514805765284903, "abs_tol": 1.0e-6, "rel_tol": 0.0 },
-      "ru_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "delta_u_max": { "expected": 0.0, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "sigma_v_eff_min": { "expected": 149.6, "abs_tol": 1.0e-9, "rel_tol": 0.0 },
-      "transfer_abs_max": { "expected": 295027720042.3374, "abs_tol": 0.0, "rel_tol": 0.05 },
-      "transfer_peak_freq_hz": { "expected": 10.0, "abs_tol": 0.5, "rel_tol": 0.0 }
+      "pga": {
+        "expected": 0.04514805765284903,
+        "abs_tol": 0.0022574028826424517,
+        "rel_tol": 0.0
+      },
+      "ru_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "delta_u_max": {
+        "expected": 0.0,
+        "abs_tol": 1e-08,
+        "rel_tol": 0.0
+      },
+      "sigma_v_eff_min": {
+        "expected": 149.6,
+        "abs_tol": 7.48,
+        "rel_tol": 0.0
+      },
+      "transfer_abs_max": {
+        "expected": 0.9598175779197687,
+        "abs_tol": 0.04799087889598844,
+        "rel_tol": 0.0
+      },
+      "transfer_peak_freq_hz": {
+        "expected": 12.49999999999999,
+        "abs_tol": 0.6249999999999996,
+        "rel_tol": 0.0
+      }
     },
     "constraints": {
       "ru_min": 0.0,

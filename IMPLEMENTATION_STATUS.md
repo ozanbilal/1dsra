@@ -124,6 +124,7 @@ Implemented:
 - `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - OpenSees parity suite expanded to 6-case matrix (`parity01`..`parity06`) with explicit-check golden envelopes
+- OpenSees parity golden envelopes were re-locked from real-binary local runs (6/6 execution coverage) including transfer metrics (`transfer_abs_max`, `transfer_peak_freq_hz`)
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Backend fingerprint policy options (`--require-backend-version-regex`, `--require-backend-sha256`) for `validate`, `benchmark`, and `campaign`
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input

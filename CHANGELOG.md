@@ -91,6 +91,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - run-level log diagnostics are now extracted (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`)
   - diagnostics are persisted in `run_meta.json` and `opensees_diagnostics.json`
   - run summary/convergence views now show OpenSees log diagnostics for non-EQL runs
+- Transfer function stabilization:
+  - `compute_transfer_function` now masks low-energy frequency bins using amplitude-floor logic
+  - prevents artificial `|H(f)|` blow-ups when input FFT denominator approaches zero
+  - benchmark golden envelopes for `core-linear`, `core-eql`, and `opensees-parity` were refreshed to match the stabilized transfer metric behavior
 
 ## [0.1.0] - 2026-03-01
 

@@ -11,9 +11,9 @@ It is the single table used for release sign-off discussions.
 | `core-hyst` | 3 | Internal MKZ/GQH nonlinear regression envelope | `pga` abs `1e-6`, `ru_max` abs `1e-8`, `delta_u_max` abs `1e-8`, `sigma_v_eff_min` abs `1e-6`, dt-sensitivity threshold `5.0` | No published dataset lock yet | Medium |
 | `core-linear` | 3 | Internal linear SH regression + transfer response checks | `pga/ru/delta_u/sigma_v_eff_min` abs `1e-6`..`1e-9`, `transfer_abs_max` rel `5%`, `transfer_peak_freq_hz` abs `0.5 Hz`, dt-sensitivity `5.0` | Partially physics-grounded, not yet external publication lock | Medium-High |
 | `core-eql` | 3 | Internal EQL regression envelope + convergence persistence | `pga/ru/delta_u/sigma_v_eff_min` abs `1e-6`..`1e-9`, `transfer_abs_max` rel `5%`, `transfer_peak_freq_hz` abs `0.5 Hz`, dt-sensitivity `5.0` | No published SHAKE/DEEPSOIL lock yet | Medium |
-| `opensees-parity` | 6 | OpenSees backend parity suite (dedicated real-binary runner required) | Explicit-check schema enforced; current tolerances are intentionally broad placeholders pending final lock with production binary | Published/reference parity lock **in progress** (pending final envelope freeze); PM4 runtime convergence hardening applied (`FirstCall` + permeability staging) | Low-Medium (rising after lock) |
+| `opensees-parity` | 6 | OpenSees backend parity suite (dedicated real-binary runner required) | Explicit checks now locked from real-binary measurements (including transfer metrics) with deterministic + dt-sensitivity gates | Local real-binary parity envelope lock completed; cross-runner/production-binary reconfirmation still required before final sign-off | Medium |
 
 Notes:
 - “Published/reference alignment” means comparison against external references (published studies, official example sets, or locked real-binary parity envelopes).
-- After dedicated runner lock, update `opensees-parity` tolerances from broad placeholders to measured envelopes and raise confidence tier.
+- After dedicated release runner confirmation, keep `opensees-parity` envelopes synced with production binary fingerprint and raise confidence tier to Medium-High.
 - UI parity note: React/FastAPI wizard and motion tools only orchestrate config/motion/run flow; scientific confidence remains gated by numerical backend benchmarks and parity suites, not by UI layer behavior alone.

@@ -800,6 +800,10 @@ pre {
   background: rgba(45, 57, 68, 0.1);
 }
 
+.profile-health-grid {
+  margin-bottom: 8px;
+}
+
 .json-details {
   border: 1px dashed rgba(45, 57, 68, 0.24);
   border-radius: 10px;

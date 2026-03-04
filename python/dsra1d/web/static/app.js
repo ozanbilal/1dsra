@@ -347,6 +347,25 @@ function buildConvergenceView(summary) {
   };
 }
 
+function buildProfileHealthCards(view) {
+  if (!view || !view.available) return [];
+  if (view.mode === "eql") {
+    const pick = new Set(["Converged", "Iterations", "max_change_last", "max_change_max"]);
+    return (view.cards || []).filter((c) => pick.has(c.label));
+  }
+  if (view.mode === "solver") {
+    const pick = new Set([
+      "warning_count",
+      "failed_converge_count",
+      "analyze_failed_count",
+      "divide_by_zero_count",
+      "dynamic_fallback_failed",
+    ]);
+    return (view.cards || []).filter((c) => pick.has(c.label));
+  }
+  return [];
+}
+
 function mini(text) {
   if (!text) return "";
   const asText = String(text);
@@ -1415,6 +1434,10 @@ function App() {
   }, [runSignal, selectedRun]);
 
   const convergenceView = useMemo(() => buildConvergenceView(runSummary), [runSummary]);
+  const profileHealthCards = useMemo(
+    () => buildProfileHealthCards(convergenceView),
+    [convergenceView]
+  );
 
   const hysteresisView = useMemo(() => {
     const layers = Array.isArray(runHysteresis?.layers) ? runHysteresis.layers : [];
@@ -2845,6 +2868,29 @@ function App() {
                       <span>Layers</span><b>${(runSummary.output_layers || []).join(", ") || "n/a"}</b>
                     </div>
                   </div>
+                  <div className=${`status ${convergenceSeverityClass(convergenceView.severity)}`}>
+                    <div className="row between">
+                      <strong>Solver Health</strong>
+                      <span className=${`diag-chip ${convergenceSeverityClass(convergenceView.severity)}`}>
+                        ${String(convergenceView.severity || "neutral").toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="muted">${convergenceView.subtitle || "No diagnostics."}</div>
+                  </div>
+                  ${profileHealthCards.length > 0
+                    ? html`
+                        <div className="metric-grid profile-health-grid">
+                          ${profileHealthCards.map(
+                            (item) => html`
+                              <div key=${`profile-health-${item.label}`} className="metric-card">
+                                <span>${item.label}</span>
+                                <b>${item.value}</b>
+                              </div>
+                            `
+                          )}
+                        </div>
+                      `
+                    : null}
                   <div className="muted">
                     Solver notes: ${runSummary.solver_notes || "n/a"}<br />
                     Motion: ${runSummary.input_motion || "n/a"}

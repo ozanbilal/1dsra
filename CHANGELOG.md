@@ -102,6 +102,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Web UI convergence diagnostics:
   - `Convergence` tab now shows structured solver/EQL diagnostics cards with severity badges
   - raw convergence payload moved under collapsible details section
+  - `Profile` tab now includes a compact solver-health summary (severity badge + key diagnostics)
 
 ## [0.1.0] - 2026-03-01
 

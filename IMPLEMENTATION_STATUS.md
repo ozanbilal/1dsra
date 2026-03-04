@@ -64,6 +64,7 @@ Implemented:
   - dynamic stage uses step-by-step fallback (`KrylovNewton` -> `ModifiedNewton` + substep retry)
 - OpenSees Tcl now emits per-layer representative stress/strain element recorders (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) for UI hysteresis channels
 - CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
+- OpenSees backend probe hardening: if both `-version` and Tcl fallback probes timeout, probe now reports "assumed available" to avoid false blockers (final authority is runtime execution)
 - Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
 
 Current level:

@@ -78,6 +78,23 @@ def test_probe_opensees_executable_timeout_falls_back_to_tcl(monkeypatch) -> Non
     assert calls[1][-1].endswith(".tcl")
 
 
+def test_probe_opensees_executable_double_timeout_assumes_available(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        _ = kwargs
+        calls.append([str(x) for x in cmd])
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr(runner_mod.subprocess, "run", _fake_run)
+    probe = probe_opensees_executable(sys.executable, timeout_s=1)
+    assert probe.available is True
+    assert "assuming executable is available" in probe.stderr.lower()
+    assert len(calls) >= 2
+    assert calls[0][-1] == "-version"
+    assert calls[1][-1].endswith(".tcl")
+
+
 def test_validate_backend_probe_requirements_ok() -> None:
     probe = OpenSeesProbeResult(
         available=True,

@@ -82,6 +82,11 @@ def _first_non_empty_line(*values: str) -> str:
     return "unknown"
 
 
+def _probe_timed_out(stderr: str) -> bool:
+    text = (stderr or "").lower()
+    return "command timed out after" in text
+
+
 def _run_probe_command(
     cmd: list[str],
     *,
@@ -172,6 +177,7 @@ def probe_opensees_executable(
         )
 
     command = version_cmd
+    version_timed_out = _probe_timed_out(stderr)
     if not available:
         try:
             fb_available, fb_version, fb_stdout, fb_stderr, fb_cmd = _probe_with_tcl_script(
@@ -190,6 +196,16 @@ def probe_opensees_executable(
             version_line = fb_version
             stdout = fb_stdout
             stderr = fb_stderr
+            command = fb_cmd
+        elif _probe_timed_out(fb_stderr) and version_timed_out:
+            available = True
+            if version_line == "unknown" and fb_version != "unknown":
+                version_line = fb_version
+            timeout_note = (
+                "OpenSees probe timed out for both -version and Tcl fallback; "
+                "assuming executable is available and deferring final check to runtime execution."
+            )
+            stderr = f"{stderr}\n{timeout_note}".strip() if stderr else timeout_note
             command = fb_cmd
         elif version_line == "unknown":
             version_line = fb_version if fb_version != "unknown" else version_line

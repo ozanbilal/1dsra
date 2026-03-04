@@ -363,21 +363,32 @@ function buildConvergenceView(summary) {
   const divideByZero = toFiniteNumber(raw.divide_by_zero_count);
   const initCount = toFiniteNumber(raw.pm4_initialize_count);
   const fallbackFailed = toFiniteNumber(raw.dynamic_fallback_failed);
+  const timeoutConfigured = toFiniteNumber(raw.timeout_s_configured);
+  const timeoutEffective = toFiniteNumber(raw.timeout_s_effective);
+  const timeoutRecovered = Boolean(raw.timeout_recovered);
+  const timeoutRecoveredCoverage = toFiniteNumber(raw.timeout_recovered_coverage);
   const severity = String(raw.severity || "unknown").toLowerCase();
+  const source = String(raw.source || "opensees_logs");
+  const isTimeoutMetaOnly =
+    source === "opensees_timeout_recovered" || source === "opensees_meta";
 
   return {
     mode: "solver",
     available: true,
     severity,
     title:
-      severity === "ok"
+      timeoutRecovered
+        ? "Solver timeout recovered outputs"
+        : severity === "ok"
         ? "Solver diagnostics clean"
         : severity === "critical"
           ? "Solver diagnostics critical"
           : "Solver diagnostics warning",
-    subtitle: "OpenSees log-derived quality diagnostics",
+    subtitle: isTimeoutMetaOnly
+      ? "OpenSees runtime timeout/metadata diagnostics"
+      : "OpenSees log-derived quality diagnostics",
     cards: [
-      { label: "Source", value: String(raw.source || "opensees_logs") },
+      { label: "Source", value: source },
       { label: "Severity", value: severity || "unknown" },
       { label: "warning_count", value: fmt(warningCount ?? NaN, 0) },
       { label: "failed_converge_count", value: fmt(failedConverge ?? NaN, 0) },
@@ -385,6 +396,10 @@ function buildConvergenceView(summary) {
       { label: "divide_by_zero_count", value: fmt(divideByZero ?? NaN, 0) },
       { label: "pm4_initialize_count", value: fmt(initCount ?? NaN, 0) },
       { label: "dynamic_fallback_failed", value: fmt(fallbackFailed ?? NaN, 0) },
+      { label: "timeout_s_configured", value: fmt(timeoutConfigured ?? NaN, 0) },
+      { label: "timeout_s_effective", value: fmt(timeoutEffective ?? NaN, 0) },
+      { label: "timeout_recovered", value: timeoutRecovered ? "yes" : "no" },
+      { label: "timeout_recovered_coverage", value: fmt(timeoutRecoveredCoverage ?? NaN, 3) },
     ],
     raw,
   };
@@ -403,6 +418,10 @@ function buildProfileHealthCards(view) {
       "analyze_failed_count",
       "divide_by_zero_count",
       "dynamic_fallback_failed",
+      "timeout_s_configured",
+      "timeout_s_effective",
+      "timeout_recovered",
+      "timeout_recovered_coverage",
     ]);
     return (view.cards || []).filter((c) => pick.has(c.label));
   }

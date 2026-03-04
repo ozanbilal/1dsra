@@ -774,6 +774,49 @@ def test_web_results_summary_fallback_without_output_root() -> None:
         shutil.rmtree(fallback_root, ignore_errors=True)
 
 
+def test_web_results_summary_exposes_timeout_recovery_convergence(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    run_dir = Path(result.output_dir)
+    run_meta_path = run_dir / "run_meta.json"
+    meta = json.loads(run_meta_path.read_text(encoding="utf-8"))
+    meta["solver_backend"] = "opensees"
+    meta["timeout_s_configured"] = 120
+    meta["timeout_s_effective"] = 540
+    meta["opensees_timeout_recovered"] = {
+        "recovered": True,
+        "coverage_ratio": 0.91,
+        "timeout_s_effective": 540,
+    }
+    meta.pop("opensees_diagnostics", None)
+    run_meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    root = tmp_path / "web-runs"
+    client = TestClient(create_app())
+    summary_resp = client.get(
+        f"/api/runs/{result.run_id}/results/summary",
+        params={"output_root": str(root)},
+    )
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()
+    conv = summary["convergence"]
+    assert conv["available"] is True
+    assert conv["source"] == "opensees_timeout_recovered"
+    assert conv["severity"] == "warning"
+    assert int(conv["timeout_s_configured"]) == 120
+    assert int(conv["timeout_s_effective"]) == 540
+    assert conv["timeout_recovered"] is True
+
+    runs_resp = client.get("/api/runs", params={"output_root": str(root)})
+    assert runs_resp.status_code == 200
+    rows = runs_resp.json()
+    row = next(item for item in rows if item["run_id"] == result.run_id)
+    assert row["convergence_mode"] == "solver"
+    assert row["convergence_severity"] == "warning"
+
+
 def test_web_runs_endpoint_scans_nested_output_root(tmp_path) -> None:
     from dsra1d.config import load_project_config
     from dsra1d.motion import load_motion

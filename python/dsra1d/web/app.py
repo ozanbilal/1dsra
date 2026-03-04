@@ -950,10 +950,13 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
         meta_raw = _read_run_meta_raw(run_dir)
         diag_raw = meta_raw.get("opensees_diagnostics")
         if isinstance(diag_raw, dict):
-            diag = dict(diag_raw)
+            diag = _with_timeout_meta(dict(diag_raw), meta_raw)
             diag["available"] = True
             diag.setdefault("source", "opensees_logs")
             return diag
+        meta_conv = _convergence_from_opensees_meta(meta_raw)
+        if meta_conv is not None:
+            return meta_conv
         return {"available": False}
     conn = sqlite3.connect(sqlite_path)
     try:
@@ -969,10 +972,13 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
                 meta_raw = _read_run_meta_raw(run_dir)
                 diag_raw = meta_raw.get("opensees_diagnostics")
                 if isinstance(diag_raw, dict):
-                    diag = dict(diag_raw)
+                    diag = _with_timeout_meta(dict(diag_raw), meta_raw)
                     diag["available"] = True
                     diag.setdefault("source", "opensees_logs")
                     return diag
+                meta_conv = _convergence_from_opensees_meta(meta_raw)
+                if meta_conv is not None:
+                    return meta_conv
             return {"available": False}
         return {
             "available": True,
@@ -1001,6 +1007,74 @@ def _optional_int(value: object) -> int | None:
         return int(float(text))
     except (TypeError, ValueError):
         return None
+
+
+def _optional_float(value: object) -> float | None:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return float(int(value))
+        if isinstance(value, (int, float)):
+            parsed = float(value)
+            return parsed if np.isfinite(parsed) else None
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = float(text)
+        return parsed if np.isfinite(parsed) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _with_timeout_meta(conv: dict[str, object], meta_raw: dict[str, object]) -> dict[str, object]:
+    out = dict(conv)
+    timeout_cfg = _optional_int(meta_raw.get("timeout_s_configured"))
+    timeout_eff = _optional_int(meta_raw.get("timeout_s_effective"))
+    if timeout_cfg is not None:
+        out["timeout_s_configured"] = timeout_cfg
+    if timeout_eff is not None:
+        out["timeout_s_effective"] = timeout_eff
+
+    recovered_raw = meta_raw.get("opensees_timeout_recovered")
+    if isinstance(recovered_raw, dict):
+        recovered = bool(recovered_raw.get("recovered", False))
+        out["timeout_recovered"] = recovered
+        coverage = _optional_float(recovered_raw.get("coverage_ratio"))
+        if coverage is not None:
+            out["timeout_recovered_coverage"] = coverage
+        if recovered:
+            out["severity"] = "warning"
+            out.setdefault("source", "opensees_timeout_recovered")
+    return out
+
+
+def _convergence_from_opensees_meta(meta_raw: dict[str, object]) -> dict[str, object] | None:
+    backend = str(meta_raw.get("solver_backend", "")).strip().lower()
+    if backend != "opensees":
+        return None
+    timeout_cfg = _optional_int(meta_raw.get("timeout_s_configured"))
+    timeout_eff = _optional_int(meta_raw.get("timeout_s_effective"))
+    recovered_raw = meta_raw.get("opensees_timeout_recovered")
+    recovered = (
+        bool(recovered_raw.get("recovered", False))
+        if isinstance(recovered_raw, dict)
+        else False
+    )
+    if timeout_cfg is None and timeout_eff is None and not recovered:
+        return None
+    conv: dict[str, object] = {
+        "available": True,
+        "source": "opensees_timeout_recovered" if recovered else "opensees_meta",
+        "severity": "warning" if recovered else "ok",
+        "warning_count": 0,
+        "failed_converge_count": 0,
+        "analyze_failed_count": 0,
+        "divide_by_zero_count": 0,
+        "pm4_initialize_count": 0,
+        "dynamic_fallback_failed": False,
+    }
+    return _with_timeout_meta(conv, meta_raw)
 
 
 def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:

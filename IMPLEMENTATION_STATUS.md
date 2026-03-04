@@ -220,6 +220,7 @@ Missing:
   - native linear/eql/nonlinear backends now consume Rayleigh damping in runtime
 - Results `Convergence` tab now includes OpenSees log-derived diagnostics for non-EQL runs (warning/divergence counters and severity)
 - Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
+- Results `Convergence` and profile health cards now surface OpenSees timeout diagnostics/recovery metadata (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage) even when log-level diagnostics are absent
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility

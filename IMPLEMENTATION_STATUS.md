@@ -1,6 +1,6 @@
 # StrataWave Implementation Status
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## 1. Summary
 
@@ -54,6 +54,11 @@ Implemented:
   - `elastic_halfspace` base with Lysmer-style dashpot (`uniaxialMaterial Viscous` + `zeroLength`)
 - Configurable u-p assembly constants in `opensees` config:
   - `column_width_m`, `thickness_m`, `fluid_bulk_modulus`, `fluid_mass_density`, `h_perm`, `v_perm`, `gravity_steps`
+- OpenSees u-p stabilization updates applied in generated Tcl:
+  - hydraulic conductivity (`h_perm/v_perm`) converted to quadUP permeability coefficients
+  - gravity stage uses high temporary permeability and restores target permeability via `parameter/updateParameter`
+  - PM4 dynamic-stage `FirstCall` initialization is applied per element/material tag
+  - dynamic stage uses step-by-step fallback (`KrylovNewton` -> `ModifiedNewton` + substep retry)
 - CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
 - Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
 
@@ -62,7 +67,7 @@ Current level:
 - It is calibration-ready scaffold, not yet full benchmark-validated engineering template set.
 
 ### Phase 3 - Effective Stress (PM4Sand/PM4Silt)
-Status: **Partial**
+Status: **Partial (runtime-stable baseline)**
 
 Implemented:
 - PM4Sand/PM4Silt command blocks in generated TCL
@@ -75,6 +80,10 @@ Implemented:
 - Effective-stress normalization outputs in result stores:
   - HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
   - SQLite `metrics`: `delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`
+- PM4 runtime stability hardening in OpenSees assembly:
+  - stage-transition `FirstCall` hook for PM4 elements
+  - gravity-to-dynamic permeability staging path
+  - robust dynamic fallback path without immediate hard abort
 
 Not completed:
 - Full parameter coverage and robust validation of PM4 inputs

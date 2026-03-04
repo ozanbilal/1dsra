@@ -187,6 +187,10 @@ Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 - `quadUP` element assembly
 - boundary conditions (`rigid` or `elastic_halfspace` with Lysmer-style dashpot), gravity+dynamic stages
 - surface acceleration and pore-pressure ratio recorder outputs
+- PM4 stage-transition hardening:
+  - `FirstCall` initialization per PM4 element/material after `updateMaterialStage ... -stage 1`
+  - gravity stage with temporary high permeability, then restore user `h_perm/v_perm`
+  - user `h_perm/v_perm` are treated as hydraulic conductivity (m/s) and converted to quadUP coefficients in Tcl
 
 Use CLI `render-tcl` when you want to inspect/export OpenSees Tcl and processed motion
 without running the solver backend.

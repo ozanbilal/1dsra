@@ -37,6 +37,13 @@ def test_render_tcl_contains_expected_blocks() -> None:
     assert "surface_acc.out" in script
     assert "pwp_ru.out" in script
     assert "-dof 3 disp" in script
+    assert "updateParameter $pTag $hPerm" in script
+    assert "foreach pTag $hPermParamTags" in script
+    assert "foreach pTag $vPermParamTags" in script
+    assert "algorithm KrylovNewton" in script
+    assert "constraints Penalty 1.0e16 1.0e16" in script
+    assert "set pm4MatTags {" in script
+    assert "setParameter -value 0 -ele $e FirstCall $matTag" in script
     validate_tcl_script(script)
 
 
@@ -84,8 +91,12 @@ def test_render_tcl_uses_opensees_u_p_parameters_from_config() -> None:
     assert "set thickness 1.30000000" in script
     assert "set fBulk 3100000.00000000" in script
     assert "set fMass 1.20000000" in script
-    assert "set hPerm 0.00002000" in script
-    assert "set vPerm 0.00004000" in script
+    assert "set hPermInput 0.00002000" in script
+    assert "set vPermInput 0.00004000" in script
+    assert "set hPerm [expr {$hPermInput / $permDen}]" in script
+    assert "set vPerm [expr {$vPermInput / $permDen}]" in script
+    assert "set hPermGrav 1.0" in script
+    assert "set vPermGrav 1.0" in script
     assert "set okG [analyze 33 $dt]" in script
 
 

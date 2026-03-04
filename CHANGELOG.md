@@ -82,6 +82,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - React Wizard `Soil Profile` step no longer falls into blank-screen hook-order crash when switching steps (stabilized Step-2 render path).
 - Web motion processing now uses robust `dt` fallback (`control.dt` or `1/(20*f_max)`) for one-column motions, preventing PSA distortion from accidental `dt=1.0`.
 - AT2 import / processed-motion chaining now normalizes motion units to `m/s2` in wizard state to prevent double unit-scaling in PSA preview.
+- OpenSees PM4 runtime stability improved:
+  - added PM4 `FirstCall` initialization during stage transition in generated Tcl
+  - added gravity permeability staging (high temporary permeability -> target `h_perm/v_perm`)
+  - converted configured hydraulic conductivity (`m/s`) to quadUP permeability coefficients in Tcl
+  - strengthened gravity/dynamic fallback solve sequence (`KrylovNewton` + substep retry)
 
 ## [0.1.0] - 2026-03-01
 

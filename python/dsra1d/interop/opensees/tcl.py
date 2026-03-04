@@ -258,9 +258,9 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append("set eleTag 1")
     lines.append("for {set e 1} {$e <= $nElemY} {incr e} {")
     lines.append("    set n1 $nodeL($e)")
-    lines.append("    set n2 $nodeR($e)")
+    lines.append("    set n2 $nodeL([expr {$e + 1}])")
     lines.append("    set n3 $nodeR([expr {$e + 1}])")
-    lines.append("    set n4 $nodeL([expr {$e + 1}])")
+    lines.append("    set n4 $nodeR($e)")
     lines.append("    set matTag [lindex $matByElem [expr {$e - 1}]]")
     lines.append(
         "    element quadUP $eleTag $n1 $n2 $n3 $n4 "

@@ -20,6 +20,14 @@ from dsra1d.motion import load_motion
 from dsra1d.pipeline import run_analysis
 from dsra1d.types import Motion, RunResult
 
+CORE_RELEASE_SIGNOFF_SUITES: tuple[str, ...] = (
+    "core-es",
+    "core-hyst",
+    "core-linear",
+    "core-eql",
+    "opensees-parity",
+)
+
 
 def _parse_opensees_extra_args_override(raw: str) -> list[str]:
     value = raw.strip()
@@ -422,6 +430,76 @@ def _evaluate_dt_sensitivity(
     }
 
 
+def _build_release_signoff_report(
+    subreports: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    cases: list[dict[str, object]] = []
+    skipped = 0
+    ran = 0
+    total_cases = 0
+    skipped_backend = 0
+    checks_explicit_runs = 0
+    backend_missing_cases: list[str] = []
+    all_passed = True
+
+    opensees_probe: dict[str, object] | None = None
+    backend_ready = True
+    backend_fingerprint_ok = True
+
+    for suite_name in CORE_RELEASE_SIGNOFF_SUITES:
+        sub = subreports.get(suite_name, {})
+        sub_cases_raw = sub.get("cases", [])
+        sub_cases = sub_cases_raw if isinstance(sub_cases_raw, list) else []
+        for case_obj in sub_cases:
+            if not isinstance(case_obj, dict):
+                continue
+            case = dict(case_obj)
+            orig_name = str(case.get("name", "unknown"))
+            case["name"] = f"{suite_name}::{orig_name}"
+            case["suite"] = suite_name
+            cases.append(case)
+
+        skipped += int(sub.get("skipped", 0) or 0)
+        ran += int(sub.get("ran", 0) or 0)
+        total_cases += int(sub.get("total_cases", 0) or 0)
+        skipped_backend += int(sub.get("skipped_backend", 0) or 0)
+        checks_explicit_runs += int(sub.get("checks_explicit_runs", 0) or 0)
+        all_passed = all_passed and bool(sub.get("all_passed", False))
+
+        missing_raw = sub.get("backend_missing_cases", [])
+        if isinstance(missing_raw, list):
+            for name in missing_raw:
+                backend_missing_cases.append(f"{suite_name}::{name}")
+
+        if suite_name == "opensees-parity":
+            backend_ready = bool(sub.get("backend_ready", False))
+            backend_fingerprint_ok = bool(sub.get("backend_fingerprint_ok", False))
+            probe_raw = sub.get("backend_probe")
+            if isinstance(probe_raw, dict):
+                opensees_probe = dict(probe_raw)
+
+    execution_coverage = (float(ran) / float(total_cases)) if total_cases > 0 else 0.0
+    report: dict[str, object] = {
+        "suite": "release-signoff",
+        "component_suites": list(CORE_RELEASE_SIGNOFF_SUITES),
+        "cases": cases,
+        "all_passed": all_passed,
+        "skipped": skipped,
+        "ran": ran,
+        "total_cases": total_cases,
+        "skipped_backend": skipped_backend,
+        "backend_ready": backend_ready,
+        "backend_fingerprint_ok": backend_fingerprint_ok,
+        "execution_coverage": execution_coverage,
+        "checks_explicit_runs": checks_explicit_runs,
+        "backend_missing_cases": backend_missing_cases,
+        "subreports": subreports,
+    }
+    if opensees_probe is not None:
+        report["backend_probe"] = opensees_probe
+    return report
+
+
 def run_benchmark_suite(
     suite: str,
     output_dir: Path,
@@ -429,6 +507,17 @@ def run_benchmark_suite(
     require_backend_version_regex: str | None = None,
     require_backend_sha256: str | None = None,
 ) -> dict[str, object]:
+    if suite == "release-signoff":
+        subreports: dict[str, dict[str, object]] = {}
+        for component in CORE_RELEASE_SIGNOFF_SUITES:
+            subreports[component] = run_benchmark_suite(
+                suite=component,
+                output_dir=output_dir,
+                require_backend_version_regex=require_backend_version_regex,
+                require_backend_sha256=require_backend_sha256,
+            )
+        return _build_release_signoff_report(subreports)
+
     if suite not in {"core-es", "core-hyst", "core-linear", "core-eql", "opensees-parity"}:
         raise ValueError(f"Unknown suite: {suite}")
 

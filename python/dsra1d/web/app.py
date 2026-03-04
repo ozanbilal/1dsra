@@ -248,6 +248,46 @@ class ResultSummaryResponse(BaseModel):
     solver_notes: str
 
 
+class ParitySuiteStatus(BaseModel):
+    suite: str
+    all_passed: bool
+    ran: int
+    total_cases: int
+    skipped: int
+    skipped_backend: int
+    execution_coverage: float
+    backend_ready: bool
+    backend_fingerprint_ok: bool
+    binary_fingerprint: str = ""
+    block_reasons: list[str] = Field(default_factory=list)
+    skip_reasons: dict[str, int] = Field(default_factory=dict)
+
+
+class ParityLatestResponse(BaseModel):
+    found: bool
+    report_path: str = ""
+    suite: str = ""
+    generated_utc: str = ""
+    suites: list[ParitySuiteStatus] = Field(default_factory=list)
+
+
+class ScientificConfidenceRow(BaseModel):
+    suite: str
+    case_count: int
+    reference_basis: str
+    tolerance_policy: str
+    binary_fingerprint: str
+    last_verified_utc: str
+    confidence_tier: str
+    status_notes: str = ""
+
+
+class ScientificConfidenceResponse(BaseModel):
+    source_path: str
+    last_updated: str = ""
+    rows: list[ScientificConfidenceRow] = Field(default_factory=list)
+
+
 class WizardSanityCheckItem(BaseModel):
     name: str
     status: Literal["ok", "warning", "blocker"]
@@ -509,6 +549,184 @@ def _read_run_meta(run_dir: Path) -> dict[str, str]:
         elif isinstance(value, (int, float)):
             out[key] = str(value)
     return out
+
+
+def _json_mapping(path: Path) -> dict[str, object]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if np.isfinite(value):
+            return int(value)
+        return default
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return default
+    return default
+
+
+def _as_float(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        f = float(value)
+        return f if np.isfinite(f) else default
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _extract_suite_reports(report: dict[str, object]) -> list[tuple[str, dict[str, object]]]:
+    suite = str(report.get("suite", "")).strip()
+    if suite == "release-signoff":
+        sub_raw = report.get("subreports")
+        if isinstance(sub_raw, dict):
+            out: list[tuple[str, dict[str, object]]] = []
+            for key, value in sub_raw.items():
+                if isinstance(value, dict):
+                    out.append((str(key), dict(value)))
+            if out:
+                return out
+    return [(suite or "unknown", report)]
+
+
+def _suite_skip_reasons(cases: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if str(case.get("status", "")).strip().lower() != "skipped":
+            continue
+        skip_kind = str(case.get("skip_kind", "")).strip()
+        reason = str(case.get("reason", "")).strip()
+        key = skip_kind or reason or "unknown_skip"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _suite_parity_status(suite: str, report: dict[str, object]) -> ParitySuiteStatus:
+    cases_raw = report.get("cases")
+    cases = [c for c in cases_raw if isinstance(c, dict)] if isinstance(cases_raw, list) else []
+    skip_reasons = _suite_skip_reasons(cases)
+    backend_probe = report.get("backend_probe")
+    backend_probe_dict = backend_probe if isinstance(backend_probe, dict) else {}
+    binary_fingerprint = str(backend_probe_dict.get("binary_sha256", "")).strip().lower()
+
+    all_passed = bool(report.get("all_passed", False))
+    skipped = _as_int(report.get("skipped", 0), 0)
+    skipped_backend = _as_int(report.get("skipped_backend", 0), 0)
+    backend_ready = bool(report.get("backend_ready", True))
+    backend_fingerprint_ok = bool(report.get("backend_fingerprint_ok", True))
+    block_reasons: list[str] = []
+    if not all_passed:
+        block_reasons.append("all_passed=false")
+    if skipped > 0:
+        block_reasons.append("skipped>0")
+    if skipped_backend > 0:
+        block_reasons.append("skipped_backend>0")
+    if not backend_ready:
+        block_reasons.append("backend_ready=false")
+    if not backend_fingerprint_ok:
+        block_reasons.append("backend_fingerprint_ok=false")
+
+    return ParitySuiteStatus(
+        suite=suite,
+        all_passed=all_passed,
+        ran=_as_int(report.get("ran", 0), 0),
+        total_cases=_as_int(report.get("total_cases", len(cases)), 0),
+        skipped=skipped,
+        skipped_backend=skipped_backend,
+        execution_coverage=_as_float(report.get("execution_coverage", 0.0), 0.0),
+        backend_ready=backend_ready,
+        backend_fingerprint_ok=backend_fingerprint_ok,
+        binary_fingerprint=binary_fingerprint,
+        block_reasons=block_reasons,
+        skip_reasons=skip_reasons,
+    )
+
+
+def _is_parity_report(report: dict[str, object]) -> bool:
+    suite = str(report.get("suite", "")).strip()
+    if suite in {"opensees-parity", "release-signoff"}:
+        return True
+    sub_raw = report.get("subreports")
+    if isinstance(sub_raw, dict) and "opensees-parity" in sub_raw:
+        return True
+    return False
+
+
+def _find_latest_parity_report(output_root: Path) -> tuple[Path, dict[str, object]] | None:
+    if not output_root.exists() or not output_root.is_dir():
+        return None
+    candidates = sorted(
+        output_root.rglob("benchmark_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        report = _json_mapping(path)
+        if report and _is_parity_report(report):
+            return path, report
+    return None
+
+
+def _parse_scientific_confidence_matrix(path: Path) -> tuple[str, list[ScientificConfidenceRow]]:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    last_updated = ""
+    for line in lines:
+        if line.lower().startswith("last updated:"):
+            last_updated = line.split(":", 1)[1].strip()
+            break
+
+    table_lines = [line for line in lines if line.strip().startswith("|")]
+    if len(table_lines) < 3:
+        return last_updated, []
+    header = [c.strip().lower() for c in table_lines[0].strip().strip("|").split("|")]
+    rows: list[ScientificConfidenceRow] = []
+    for line in table_lines[2:]:
+        cols = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cols) != len(header):
+            continue
+        row_map = {header[i]: cols[i] for i in range(len(header))}
+        suite = row_map.get("suite", "").strip()
+        if not suite:
+            continue
+        case_count_raw = row_map.get("case_count", row_map.get("case count", "0"))
+        case_count = _as_int(case_count_raw.replace("`", ""), 0)
+        rows.append(
+            ScientificConfidenceRow(
+                suite=suite,
+                case_count=case_count,
+                reference_basis=row_map.get("reference_basis", row_map.get("reference basis", "")),
+                tolerance_policy=row_map.get(
+                    "tolerance_policy", row_map.get("tolerance policy", "")
+                ),
+                binary_fingerprint=row_map.get(
+                    "binary_fingerprint", row_map.get("binary fingerprint", "")
+                ),
+                last_verified_utc=row_map.get(
+                    "last_verified_utc", row_map.get("last verified utc", "")
+                ),
+                confidence_tier=row_map.get(
+                    "confidence_tier", row_map.get("confidence tier", "")
+                ),
+                status_notes=row_map.get("status_notes", row_map.get("status notes", "")),
+            )
+        )
+    return last_updated, rows
 
 
 def _read_project_name(sqlite_path: Path) -> str:
@@ -1947,6 +2165,42 @@ def create_app() -> FastAPI:
                 )
             )
         return items
+
+    @app.get("/api/parity/latest", response_model=ParityLatestResponse)
+    def parity_latest(output_root: str = Query(default="")) -> ParityLatestResponse:
+        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
+        latest = _find_latest_parity_report(root)
+        if latest is None:
+            return ParityLatestResponse(found=False)
+        path, report = latest
+        suite_name = str(report.get("suite", "")).strip()
+        generated_utc = str(report.get("generated_utc", "")).strip()
+        suite_rows = [
+            _suite_parity_status(sub_suite, sub_report)
+            for sub_suite, sub_report in _extract_suite_reports(report)
+        ]
+        return ParityLatestResponse(
+            found=True,
+            report_path=str(path),
+            suite=suite_name,
+            generated_utc=generated_utc,
+            suites=suite_rows,
+        )
+
+    @app.get("/api/science/confidence", response_model=ScientificConfidenceResponse)
+    def science_confidence() -> ScientificConfidenceResponse:
+        matrix_path = _repo_root() / "SCIENTIFIC_CONFIDENCE_MATRIX.md"
+        if not matrix_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Scientific confidence matrix not found: {matrix_path}",
+            )
+        last_updated, rows = _parse_scientific_confidence_matrix(matrix_path)
+        return ScientificConfidenceResponse(
+            source_path=str(matrix_path),
+            last_updated=last_updated,
+            rows=rows,
+        )
 
     @app.get("/api/runs/tree")
     def runs_tree(output_root: str = Query(default="")) -> dict[str, object]:

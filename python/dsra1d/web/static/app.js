@@ -839,6 +839,9 @@ function App() {
   const [compareReferenceId, setCompareReferenceId] = useState("");
   const [compareSignals, setCompareSignals] = useState({});
   const [compareLoading, setCompareLoading] = useState(false);
+  const [parityLatest, setParityLatest] = useState(null);
+  const [scienceConfidence, setScienceConfidence] = useState([]);
+  const [scienceMatrixMeta, setScienceMatrixMeta] = useState({ source_path: "", last_updated: "" });
 
   const [at2Path, setAt2Path] = useState("");
   const [motionPreview, setMotionPreview] = useState(null);
@@ -1296,6 +1299,34 @@ function App() {
     }
   }
 
+  async function loadParityLatest(rootOverride = outputRoot) {
+    const query = makeRunQuery(rootOverride);
+    try {
+      const payload = await requestJSON(`/api/parity/latest${query}`);
+      setParityLatest(payload);
+      return payload;
+    } catch {
+      setParityLatest(null);
+      return null;
+    }
+  }
+
+  async function loadScienceConfidence() {
+    try {
+      const payload = await requestJSON("/api/science/confidence");
+      setScienceConfidence(Array.isArray(payload.rows) ? payload.rows : []);
+      setScienceMatrixMeta({
+        source_path: payload.source_path || "",
+        last_updated: payload.last_updated || "",
+      });
+      return payload;
+    } catch {
+      setScienceConfidence([]);
+      setScienceMatrixMeta({ source_path: "", last_updated: "" });
+      return null;
+    }
+  }
+
   async function loadRunDetail(runId, rootOverride = outputRoot) {
     if (!runId) return;
     const fetchWithRoot = async (rootCandidate) => {
@@ -1692,6 +1723,8 @@ function App() {
     loadWizardSchema().catch(() => {});
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
+    loadParityLatest().catch(() => {});
+    loadScienceConfidence().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1702,6 +1735,7 @@ function App() {
   useEffect(() => {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
+    loadParityLatest().catch(() => {});
   }, [outputRoot]);
 
   useEffect(() => {
@@ -1980,6 +2014,23 @@ function App() {
       fMaxUsed: cfg.fMax,
     };
   }, [autoProfile, controlStep?.f_max, layers]);
+
+  const paritySuites = useMemo(
+    () => (Array.isArray(parityLatest?.suites) ? parityLatest.suites : []),
+    [parityLatest]
+  );
+  const parityPrimary = useMemo(() => {
+    if (!paritySuites.length) return null;
+    return (
+      paritySuites.find((row) => String(row.suite || "").toLowerCase() === "opensees-parity") ||
+      paritySuites[0]
+    );
+  }, [paritySuites]);
+  const parityBlockText = useMemo(() => {
+    if (!parityPrimary || !Array.isArray(parityPrimary.block_reasons)) return "";
+    const nonEmpty = parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0);
+    return nonEmpty.join(" | ");
+  }, [parityPrimary]);
 
   if (!schema || !wizard) {
     return html`<div className="shell"><div className="panel">Loading...</div></div>`;

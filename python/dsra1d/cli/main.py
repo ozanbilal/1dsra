@@ -13,9 +13,10 @@ from typing import Literal, cast
 
 import numpy as np
 import typer
+import yaml
 from rich import print
 
-from dsra1d.benchmark import run_benchmark_suite
+from dsra1d.benchmark import CORE_RELEASE_SIGNOFF_SUITES, run_benchmark_suite
 from dsra1d.config import ProjectConfig, load_project_config, write_config_template
 from dsra1d.interop.opensees import (
     probe_opensees_executable,
@@ -39,6 +40,92 @@ RunBackendMode = Literal[
     "eql",
     "nonlinear",
 ]
+
+
+def _release_signoff_policy_path() -> Path:
+    return _repo_root() / "benchmarks" / "policies" / "release_signoff.yml"
+
+
+def _load_release_signoff_policy() -> dict[str, object]:
+    defaults: dict[str, object] = {
+        "component_suites": list(CORE_RELEASE_SIGNOFF_SUITES),
+        "require_runs": 18,
+        "min_execution_coverage": 1.0,
+        "fail_on_skip": True,
+        "require_explicit_checks": True,
+        "require_opensees": True,
+        "opensees_fingerprint": "",
+    }
+    policy_path = _release_signoff_policy_path()
+    if not policy_path.exists():
+        defaults["policy_path"] = str(policy_path)
+        return defaults
+    try:
+        raw = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        defaults["policy_path"] = str(policy_path)
+        return defaults
+    if not isinstance(raw, dict):
+        defaults["policy_path"] = str(policy_path)
+        return defaults
+
+    merged = dict(defaults)
+    for key in (
+        "component_suites",
+        "require_runs",
+        "min_execution_coverage",
+        "fail_on_skip",
+        "require_explicit_checks",
+        "require_opensees",
+        "opensees_fingerprint",
+    ):
+        if key in raw:
+            merged[key] = raw[key]
+    merged["policy_path"] = str(policy_path)
+    return merged
+
+
+def _resolve_release_signoff_flags(
+    *,
+    suite: str,
+    fail_on_skip: bool,
+    require_runs: int,
+    require_opensees: bool,
+    min_execution_coverage: float,
+    require_explicit_checks: bool,
+    require_backend_sha256: str | None,
+) -> tuple[bool, int, bool, float, bool, str | None, dict[str, object]]:
+    if suite != "release-signoff":
+        return (
+            fail_on_skip,
+            require_runs,
+            require_opensees,
+            min_execution_coverage,
+            require_explicit_checks,
+            require_backend_sha256,
+            {},
+        )
+
+    policy = _load_release_signoff_policy()
+    policy_require_runs = int(policy.get("require_runs", 18))
+    policy_min_cov = float(policy.get("min_execution_coverage", 1.0))
+    policy_fail_on_skip = bool(policy.get("fail_on_skip", True))
+    policy_require_explicit = bool(policy.get("require_explicit_checks", True))
+    policy_require_opensees = bool(policy.get("require_opensees", True))
+    policy_fingerprint_raw = str(policy.get("opensees_fingerprint", "")).strip().lower()
+    effective_sha = require_backend_sha256
+    if not effective_sha and policy_fingerprint_raw:
+        effective_sha = policy_fingerprint_raw
+
+    return (
+        fail_on_skip or policy_fail_on_skip,
+        max(require_runs, policy_require_runs),
+        require_opensees or policy_require_opensees,
+        max(min_execution_coverage, policy_min_cov),
+        require_explicit_checks or policy_require_explicit,
+        effective_sha,
+        policy,
+    )
 
 
 def _load_json_mapping(path: Path) -> dict[str, object]:
@@ -179,7 +266,7 @@ def _enforce_backend_ready_policy(
 ) -> None:
     if not require_opensees:
         return
-    if suite != "opensees-parity":
+    if suite not in {"opensees-parity", "release-signoff"}:
         return
     backend_ready_raw = report.get("backend_ready", True)
     backend_ready = bool(backend_ready_raw)
@@ -394,6 +481,42 @@ def _print_benchmark_coverage(report: dict[str, object]) -> None:
     )
 
 
+def _print_pm4_validation_checklist(cfg: ProjectConfig) -> None:
+    required_by_material: dict[str, tuple[str, ...]] = {
+        "pm4sand": ("Dr", "G0", "hpo"),
+        "pm4silt": ("Su", "Su_Rat", "G_o", "h_po"),
+    }
+    pm4_layers = [
+        (idx, layer)
+        for idx, layer in enumerate(cfg.profile.layers, start=1)
+        if layer.material.value in required_by_material
+    ]
+    if not pm4_layers:
+        return
+
+    print("[cyan]PM4 parameter checklist[/cyan]")
+    print(f"- validation_profile: {cfg.analysis.pm4_validation_profile}")
+    for idx, layer in pm4_layers:
+        required = required_by_material[layer.material.value]
+        present = sorted(layer.material_params.keys())
+        missing = [k for k in required if k not in layer.material_params]
+        status = "ok" if not missing else f"missing={missing}"
+        print(
+            f"- Layer {idx} ({layer.name}, {layer.material.value}): "
+            f"required={list(required)} present={present} status={status}"
+        )
+
+    if cfg.analysis.pm4_validation_profile in {"strict", "strict_plus"}:
+        print("[cyan]PM4 strict range hints[/cyan]")
+        print("- pm4sand: Dr(0,1], G0(50,3000], hpo(0.01,5.0]")
+        print("- pm4silt: Su(0,1000], Su_Rat(0,1], G_o(50,3000], h_po(0.01,5.0]")
+    if cfg.analysis.pm4_validation_profile == "strict_plus":
+        print("[cyan]strict_plus additional hints[/cyan]")
+        print("- boundary_condition must be elastic_halfspace")
+        print("- PM4-only layer stack expected")
+        print("- permeability ratio h_perm/v_perm should be within [1e-2, 1e2]")
+
+
 VALID_GOLDEN_METRICS: set[str] = {
     "pga",
     "ru_max",
@@ -558,6 +681,7 @@ def validate(
             print(f"[cyan]OpenSees extra args[/cyan]: {cfg.opensees.extra_args}")
         print(f"[cyan]OpenSees version probe[/cyan]: {probe.version}")
         print(f"[cyan]OpenSees binary sha256[/cyan]: {probe.binary_sha256}")
+    _print_pm4_validation_checklist(cfg)
     print(f"[green]Valid config[/green]: {cfg.project_name}")
 
 
@@ -728,6 +852,23 @@ def benchmark(
 ) -> None:
     if not (0.0 <= min_execution_coverage <= 1.0):
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
+    (
+        fail_on_skip,
+        require_runs,
+        require_opensees,
+        min_execution_coverage,
+        require_explicit_checks,
+        require_backend_sha256,
+        release_signoff_policy,
+    ) = _resolve_release_signoff_flags(
+        suite=suite,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+        require_opensees=require_opensees,
+        min_execution_coverage=min_execution_coverage,
+        require_explicit_checks=require_explicit_checks,
+        require_backend_sha256=require_backend_sha256,
+    )
     report = _run_benchmark_with_optional_override(
         suite,
         out,
@@ -745,6 +886,8 @@ def benchmark(
         require_backend_version_regex=require_backend_version_regex,
         require_backend_sha256=require_backend_sha256,
     )
+    if suite == "release-signoff":
+        report["release_signoff_policy"] = release_signoff_policy
     report_path = out / f"benchmark_{suite}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {report_path}")
@@ -795,6 +938,23 @@ def campaign(
 ) -> None:
     if not (0.0 <= min_execution_coverage <= 1.0):
         raise typer.BadParameter("--min-execution-coverage must be within [0, 1].")
+    (
+        fail_on_skip,
+        require_runs,
+        require_opensees,
+        min_execution_coverage,
+        require_explicit_checks,
+        require_backend_sha256,
+        release_signoff_policy,
+    ) = _resolve_release_signoff_flags(
+        suite=suite,
+        fail_on_skip=fail_on_skip,
+        require_runs=require_runs,
+        require_opensees=require_opensees,
+        min_execution_coverage=min_execution_coverage,
+        require_explicit_checks=require_explicit_checks,
+        require_backend_sha256=require_backend_sha256,
+    )
     out.mkdir(parents=True, exist_ok=True)
     report = _run_benchmark_with_optional_override(
         suite,
@@ -813,6 +973,8 @@ def campaign(
         require_backend_version_regex=require_backend_version_regex,
         require_backend_sha256=require_backend_sha256,
     )
+    if suite == "release-signoff":
+        report["release_signoff_policy"] = release_signoff_policy
     benchmark_path = out / f"benchmark_{suite}.json"
     benchmark_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"[green]Benchmark report:[/green] {benchmark_path}")
@@ -866,20 +1028,116 @@ def campaign(
 
 @app.command("summarize")
 def summarize(
-    benchmark_report: Path = typer.Option(..., "--benchmark-report"),
+    benchmark_report: Path | None = typer.Option(None, "--benchmark-report"),
     verify_batch_report: Path | None = typer.Option(None, "--verify-batch-report"),
-    out: Path = typer.Option(Path("out/summary"), "--out"),
+    input: Path | None = typer.Option(None, "--input"),
+    out: Path | None = typer.Option(None, "--out"),
+    strict_signoff: bool = typer.Option(False, "--strict-signoff"),
 ) -> None:
-    benchmark_data = _load_json_mapping(benchmark_report)
-    verify_data = (
-        _load_json_mapping(verify_batch_report)
-        if verify_batch_report is not None
-        else None
-    )
+    benchmark_path = benchmark_report
+    verify_path = verify_batch_report
+    if input is not None:
+        if not input.exists() or not input.is_dir():
+            raise typer.BadParameter(f"--input must be an existing directory: {input}")
+        if benchmark_path is None:
+            preferred = input / "benchmark_release-signoff.json"
+            if preferred.exists():
+                benchmark_path = preferred
+            else:
+                candidates = sorted(
+                    input.glob("benchmark_*.json"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                benchmark_path = candidates[0] if candidates else None
+        if verify_path is None:
+            cand_verify = input / "verify_batch_report.json"
+            if cand_verify.exists():
+                verify_path = cand_verify
+
+    if benchmark_path is None:
+        raise typer.BadParameter(
+            "Benchmark report is required. Provide --benchmark-report or --input."
+        )
+
+    benchmark_data = _load_json_mapping(benchmark_path)
+    verify_data = _load_json_mapping(verify_path) if verify_path is not None else None
     summary = summarize_campaign(benchmark_data, verify_data)
-    out.mkdir(parents=True, exist_ok=True)
-    json_path = out / "campaign_summary.json"
-    markdown_path = out / "campaign_summary.md"
+    out_dir = out or input or Path("out/summary")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "campaign_summary.json"
+    markdown_path = out_dir / "campaign_summary.md"
+
+    if strict_signoff:
+        policy = _load_release_signoff_policy()
+        benchmark_block = summary.get("benchmark")
+        policy_block = summary.get("policy")
+        benchmark_obj = benchmark_block if isinstance(benchmark_block, dict) else {}
+        policy_obj = policy_block if isinstance(policy_block, dict) else {}
+        campaign_policy_obj = (
+            policy_obj.get("campaign") if isinstance(policy_obj.get("campaign"), dict) else {}
+        )
+        bench_policy_obj = (
+            policy_obj.get("benchmark") if isinstance(policy_obj.get("benchmark"), dict) else {}
+        )
+        verify_policy_obj = (
+            policy_obj.get("verify_batch")
+            if isinstance(policy_obj.get("verify_batch"), dict)
+            else {}
+        )
+        report_probe = (
+            benchmark_data.get("backend_probe")
+            if isinstance(benchmark_data.get("backend_probe"), dict)
+            else {}
+        )
+        report_probe_sha = str(report_probe.get("binary_sha256", "")).strip().lower()
+        policy_sha = str(policy.get("opensees_fingerprint", "")).strip().lower()
+
+        ran = int(benchmark_obj.get("ran", 0) or 0)
+        skipped = int(benchmark_obj.get("skipped", 0) or 0)
+        coverage = float(benchmark_obj.get("execution_coverage", 0.0) or 0.0)
+        backend_fingerprint_ok = bool(benchmark_obj.get("backend_fingerprint_ok", False))
+        campaign_passed = bool(campaign_policy_obj.get("passed", False))
+        verify_present = verify_data is not None
+        verify_passed = bool(verify_policy_obj.get("passed", False)) if verify_present else False
+        suite_name = str(summary.get("suite", ""))
+
+        conditions = {
+            "suite_release_signoff": suite_name == "release-signoff",
+            "campaign_policy_passed": campaign_passed,
+            "verify_report_present": verify_present,
+            "verify_policy_passed": verify_passed,
+            "require_runs_ok": ran >= int(policy.get("require_runs", 18)),
+            "min_execution_coverage_ok": coverage
+            >= float(policy.get("min_execution_coverage", 1.0)),
+            "fail_on_skip_ok": (not bool(policy.get("fail_on_skip", True))) or (skipped == 0),
+            "backend_fingerprint_ok": backend_fingerprint_ok,
+            "fingerprint_match": (not policy_sha) or (report_probe_sha == policy_sha),
+        }
+        signoff_passed = all(bool(v) for v in conditions.values())
+        summary["signoff"] = {
+            "strict_signoff": True,
+            "policy_path": str(policy.get("policy_path", _release_signoff_policy_path())),
+            "policy": {
+                "require_runs": int(policy.get("require_runs", 18)),
+                "min_execution_coverage": float(policy.get("min_execution_coverage", 1.0)),
+                "fail_on_skip": bool(policy.get("fail_on_skip", True)),
+                "require_explicit_checks": bool(policy.get("require_explicit_checks", True)),
+                "opensees_fingerprint": policy_sha,
+            },
+            "observed": {
+                "ran": ran,
+                "skipped": skipped,
+                "execution_coverage": coverage,
+                "backend_probe_sha256": report_probe_sha,
+                "benchmark_require_backend_sha256": str(
+                    bench_policy_obj.get("require_backend_sha256", "")
+                ).strip().lower(),
+            },
+            "conditions": conditions,
+            "passed": signoff_passed,
+        }
+
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     markdown_path.write_text(
         render_summary_markdown(summary),
@@ -887,6 +1145,12 @@ def summarize(
     )
     print(f"[green]Campaign summary JSON:[/green] {json_path}")
     print(f"[green]Campaign summary Markdown:[/green] {markdown_path}")
+    if strict_signoff:
+        signoff = summary.get("signoff")
+        passed = bool(signoff.get("passed", False)) if isinstance(signoff, dict) else False
+        if not passed:
+            print("[red]Strict signoff failed[/red]")
+            raise typer.Exit(code=13)
 
 
 @app.command("lock-golden")

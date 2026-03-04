@@ -1,0 +1,455 @@
+project_name: wizard-project
+seed: 42
+profile:
+  layers:
+  - name: Layer-1_s1
+    thickness_m: 0.5
+    unit_weight_kN_m3: 17.5
+    vs_m_s: 140.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-1_s2
+    thickness_m: 0.5
+    unit_weight_kN_m3: 17.5
+    vs_m_s: 140.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-1_s3
+    thickness_m: 0.5
+    unit_weight_kN_m3: 17.5
+    vs_m_s: 140.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-1_s4
+    thickness_m: 0.5
+    unit_weight_kN_m3: 17.5
+    vs_m_s: 140.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-2_s1
+    thickness_m: 0.6
+    unit_weight_kN_m3: 18.0
+    vs_m_s: 180.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-2_s2
+    thickness_m: 0.6
+    unit_weight_kN_m3: 18.0
+    vs_m_s: 180.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-2_s3
+    thickness_m: 0.6
+    unit_weight_kN_m3: 18.0
+    vs_m_s: 180.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-2_s4
+    thickness_m: 0.6
+    unit_weight_kN_m3: 18.0
+    vs_m_s: 180.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-2_s5
+    thickness_m: 0.6
+    unit_weight_kN_m3: 18.0
+    vs_m_s: 180.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s1
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s2
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s3
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s4
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s5
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-3_s6
+    thickness_m: 0.83333
+    unit_weight_kN_m3: 18.5
+    vs_m_s: 240.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s1
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s2
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s3
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s4
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s5
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s6
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-4_s7
+    thickness_m: 1.14286
+    unit_weight_kN_m3: 19.0
+    vs_m_s: 320.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s1
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s2
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s3
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s4
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s5
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+  - name: Layer-5_s6
+    thickness_m: 2.0
+    unit_weight_kN_m3: 19.5
+    vs_m_s: 520.0
+    material: gqh
+    material_params:
+      gmax: 110000.0
+      gamma_ref: 0.001
+      a1: 1.0
+      a2: 0.45
+      m: 2.0
+      damping_min: 0.01
+      damping_max: 0.12
+      reload_factor: 1.6
+    material_optional_args: []
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.01
+  t_end: null
+  f_max: 25.0
+  solver_backend: nonlinear
+  pm4_validation_profile: basic
+  timeout_s: 180
+  retries: 1
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+  scale_factor: null
+  target_pga: null
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: true
+opensees:
+  executable: OpenSees
+  extra_args: []
+  require_version_regex: null
+  require_binary_sha256: null
+  column_width_m: 1.0
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 1.0e-05
+  v_perm: 1.0e-05
+  gravity_steps: 20

@@ -1,0 +1,16 @@
+component_suites:
+  - core-es
+  - core-hyst
+  - core-linear
+  - core-eql
+  - opensees-parity
+
+require_runs: 18
+min_execution_coverage: 1.0
+fail_on_skip: true
+require_explicit_checks: true
+require_opensees: true
+
+# Set the production OpenSees binary fingerprint to enforce strict release signoff.
+# Keep empty for local/dev flows.
+opensees_fingerprint: ""

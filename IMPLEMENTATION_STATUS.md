@@ -125,6 +125,7 @@ Implemented:
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - OpenSees parity suite expanded to 6-case matrix (`parity01`..`parity06`) with explicit-check golden envelopes
 - OpenSees parity golden envelopes were re-locked from real-binary local runs (6/6 execution coverage) including transfer metrics (`transfer_abs_max`, `transfer_peak_freq_hz`)
+- OpenSees parity constraints now include solver-quality gates from diagnostics (`solver_warning_max`, `solver_failed_converge_max`, `solver_analyze_failed_max`, `solver_divide_by_zero_max`, `solver_dynamic_fallback_failed_max`)
 - Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
 - Backend fingerprint policy options (`--require-backend-version-regex`, `--require-backend-sha256`) for `validate`, `benchmark`, and `campaign`
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input

@@ -61,7 +61,7 @@ StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --requir
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
-StrataWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min --rel-tol 0.05
+StrataWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min,transfer_abs_max,transfer_peak_freq_hz,solver_warning_count,solver_failed_converge_count,solver_analyze_failed_count,solver_divide_by_zero_count,solver_dynamic_fallback_failed --rel-tol 0.05
 StrataWave campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
 

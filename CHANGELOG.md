@@ -95,6 +95,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `compute_transfer_function` now masks low-energy frequency bins using amplitude-floor logic
   - prevents artificial `|H(f)|` blow-ups when input FFT denominator approaches zero
   - benchmark golden envelopes for `core-linear`, `core-eql`, and `opensees-parity` were refreshed to match the stabilized transfer metric behavior
+- Benchmark quality gating:
+  - benchmark reports now carry OpenSees solver diagnostics as actual metrics
+  - `opensees-parity` golden constraints now gate warning/convergence/divide-by-zero counters
+  - `lock-golden` metric catalog extended with solver diagnostic metric names
 
 ## [0.1.0] - 2026-03-01
 

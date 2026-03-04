@@ -38,7 +38,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -84,7 +89,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -130,7 +140,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -176,7 +191,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -222,7 +242,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {
@@ -268,7 +293,12 @@
       "delta_u_min": -1000000.0,
       "sigma_v_eff_min": -1000000.0,
       "pga_min": 0.0,
-      "pga_max": 1000.0
+      "pga_max": 1000.0,
+      "solver_warning_max": 0.0,
+      "solver_failed_converge_max": 0.0,
+      "solver_analyze_failed_max": 0.0,
+      "solver_divide_by_zero_max": 0.0,
+      "solver_dynamic_fallback_failed_max": 0.0
     },
     "deterministic": true,
     "dt_sensitivity": {

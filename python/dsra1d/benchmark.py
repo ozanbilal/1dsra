@@ -69,6 +69,40 @@ def _load_case_outputs(hdf5_path: Path) -> dict[str, np.ndarray]:
     }
 
 
+def _load_opensees_diagnostics(run_dir: Path) -> dict[str, float]:
+    meta_path = run_dir / "run_meta.json"
+    if not meta_path.exists():
+        return {}
+    try:
+        raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    diag_raw = raw.get("opensees_diagnostics")
+    if not isinstance(diag_raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key in (
+        "warning_count",
+        "failed_converge_count",
+        "analyze_failed_count",
+        "divide_by_zero_count",
+        "pm4_initialize_count",
+    ):
+        value = diag_raw.get(key)
+        if isinstance(value, bool):
+            out[key] = float(int(value))
+        elif isinstance(value, (int, float)):
+            out[key] = float(value)
+    dynamic_fallback_failed = diag_raw.get("dynamic_fallback_failed")
+    if isinstance(dynamic_fallback_failed, bool):
+        out["dynamic_fallback_failed"] = float(int(dynamic_fallback_failed))
+    elif isinstance(dynamic_fallback_failed, (int, float)):
+        out["dynamic_fallback_failed"] = float(dynamic_fallback_failed)
+    return out
+
+
 def _load_spectra(hdf5_path: Path) -> tuple[np.ndarray, np.ndarray]:
     with h5py.File(hdf5_path, "r") as h5:
         periods = np.array(h5["/spectra/periods"], dtype=np.float64)
@@ -195,6 +229,69 @@ def _evaluate_constraints(
     )
     pga_bounds_ok = (pga_actual >= pga_min_limit) and (pga_actual <= pga_max_limit)
 
+    solver_warning_max = _as_float(
+        constraints.get("solver_warning_max", float("inf")),
+        float("inf"),
+    )
+    solver_failed_converge_max = _as_float(
+        constraints.get("solver_failed_converge_max", float("inf")),
+        float("inf"),
+    )
+    solver_analyze_failed_max = _as_float(
+        constraints.get("solver_analyze_failed_max", float("inf")),
+        float("inf"),
+    )
+    solver_divide_by_zero_max = _as_float(
+        constraints.get("solver_divide_by_zero_max", float("inf")),
+        float("inf"),
+    )
+    solver_dynamic_fallback_failed_max = _as_float(
+        constraints.get("solver_dynamic_fallback_failed_max", float("inf")),
+        float("inf"),
+    )
+    solver_warning_actual = _as_float(actual_metrics.get("solver_warning_count"), float("nan"))
+    solver_failed_converge_actual = _as_float(
+        actual_metrics.get("solver_failed_converge_count"),
+        float("nan"),
+    )
+    solver_analyze_failed_actual = _as_float(
+        actual_metrics.get("solver_analyze_failed_count"),
+        float("nan"),
+    )
+    solver_divide_by_zero_actual = _as_float(
+        actual_metrics.get("solver_divide_by_zero_count"),
+        float("nan"),
+    )
+    solver_dynamic_fallback_failed_actual = _as_float(
+        actual_metrics.get("solver_dynamic_fallback_failed"),
+        float("nan"),
+    )
+
+    def _limit_ok(actual: float, limit: float) -> bool:
+        if np.isinf(limit):
+            return True
+        if np.isnan(actual):
+            return False
+        return actual <= limit
+
+    solver_warning_ok = _limit_ok(solver_warning_actual, solver_warning_max)
+    solver_failed_converge_ok = _limit_ok(
+        solver_failed_converge_actual,
+        solver_failed_converge_max,
+    )
+    solver_analyze_failed_ok = _limit_ok(
+        solver_analyze_failed_actual,
+        solver_analyze_failed_max,
+    )
+    solver_divide_by_zero_ok = _limit_ok(
+        solver_divide_by_zero_actual,
+        solver_divide_by_zero_max,
+    )
+    solver_dynamic_fallback_failed_ok = _limit_ok(
+        solver_dynamic_fallback_failed_actual,
+        solver_dynamic_fallback_failed_max,
+    )
+
     monotonic_requested = bool(constraints.get("ru_monotonic_nondecreasing", False))
     if monotonic_requested and ru.size > 1:
         ru_mono_ok = bool(np.all(np.diff(ru) >= -1.0e-10))
@@ -216,6 +313,21 @@ def _evaluate_constraints(
         "pga_bounds_ok": pga_bounds_ok,
         "ru_monotonic_requested": monotonic_requested,
         "ru_monotonic_ok": ru_mono_ok,
+        "solver_warning_max": solver_warning_max,
+        "solver_warning_actual": solver_warning_actual,
+        "solver_warning_ok": solver_warning_ok,
+        "solver_failed_converge_max": solver_failed_converge_max,
+        "solver_failed_converge_actual": solver_failed_converge_actual,
+        "solver_failed_converge_ok": solver_failed_converge_ok,
+        "solver_analyze_failed_max": solver_analyze_failed_max,
+        "solver_analyze_failed_actual": solver_analyze_failed_actual,
+        "solver_analyze_failed_ok": solver_analyze_failed_ok,
+        "solver_divide_by_zero_max": solver_divide_by_zero_max,
+        "solver_divide_by_zero_actual": solver_divide_by_zero_actual,
+        "solver_divide_by_zero_ok": solver_divide_by_zero_ok,
+        "solver_dynamic_fallback_failed_max": solver_dynamic_fallback_failed_max,
+        "solver_dynamic_fallback_failed_actual": solver_dynamic_fallback_failed_actual,
+        "solver_dynamic_fallback_failed_ok": solver_dynamic_fallback_failed_ok,
     }
     all_ok = (
         ru_bounds_ok
@@ -223,6 +335,11 @@ def _evaluate_constraints(
         and sigma_v_eff_min_ok
         and pga_bounds_ok
         and ru_mono_ok
+        and solver_warning_ok
+        and solver_failed_converge_ok
+        and solver_analyze_failed_ok
+        and solver_divide_by_zero_ok
+        and solver_dynamic_fallback_failed_ok
     )
     return result, all_ok
 
@@ -469,6 +586,26 @@ def run_benchmark_suite(
             "transfer_abs_max": transfer_abs_max,
             "transfer_peak_freq_hz": transfer_peak_freq_hz,
         }
+        diag_metrics = _load_opensees_diagnostics(run_result.output_dir)
+        if diag_metrics:
+            actual_metrics["solver_warning_count"] = float(
+                diag_metrics.get("warning_count", 0.0)
+            )
+            actual_metrics["solver_failed_converge_count"] = float(
+                diag_metrics.get("failed_converge_count", 0.0)
+            )
+            actual_metrics["solver_analyze_failed_count"] = float(
+                diag_metrics.get("analyze_failed_count", 0.0)
+            )
+            actual_metrics["solver_divide_by_zero_count"] = float(
+                diag_metrics.get("divide_by_zero_count", 0.0)
+            )
+            actual_metrics["solver_dynamic_fallback_failed"] = float(
+                diag_metrics.get("dynamic_fallback_failed", 0.0)
+            )
+            actual_metrics["solver_pm4_initialize_count"] = float(
+                diag_metrics.get("pm4_initialize_count", 0.0)
+            )
         signature = _result_signature(series)
 
         expected = golden.get(case["name"], {})

@@ -401,6 +401,11 @@ VALID_GOLDEN_METRICS: set[str] = {
     "sigma_v_eff_min",
     "transfer_abs_max",
     "transfer_peak_freq_hz",
+    "solver_warning_count",
+    "solver_failed_converge_count",
+    "solver_analyze_failed_count",
+    "solver_divide_by_zero_count",
+    "solver_dynamic_fallback_failed",
 }
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,8 +15,53 @@ def _load_numeric_series(path_obj: Path) -> np.ndarray:
     try:
         raw = np.loadtxt(path_obj, delimiter=",", ndmin=1)
     except ValueError:
-        raw = np.loadtxt(path_obj, delimiter=None, ndmin=1)
+        try:
+            raw = np.loadtxt(path_obj, delimiter=None, ndmin=1)
+        except ValueError:
+            raw = _load_numeric_series_with_headers(path_obj)
     return np.asarray(raw, dtype=np.float64)
+
+
+def _load_numeric_series_with_headers(path_obj: Path) -> np.ndarray:
+    rows: list[list[float]] = []
+    for line in path_obj.read_text(encoding="utf-8", errors="ignore").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        normalized = text.replace(";", ",")
+        tokens = (
+            [tok.strip() for tok in normalized.split(",")]
+            if "," in normalized
+            else text.split()
+        )
+        if not tokens:
+            continue
+        values: list[float] = []
+        failed = False
+        for token in tokens:
+            if not token:
+                continue
+            try:
+                values.append(float(token))
+            except ValueError:
+                failed = True
+                break
+        if failed or not values:
+            continue
+        rows.append(values)
+
+    if not rows:
+        raise ValueError(f"No numeric rows found in motion file: {path_obj}")
+
+    widths = Counter(len(row) for row in rows)
+    target_width = widths.most_common(1)[0][0]
+    filtered = [row for row in rows if len(row) == target_width]
+    if not filtered:
+        raise ValueError(f"No consistent numeric rows found in motion file: {path_obj}")
+
+    if target_width == 1:
+        return np.asarray([row[0] for row in filtered], dtype=np.float64)
+    return np.asarray(filtered, dtype=np.float64)
 
 
 def _try_infer_dt_from_time(time_axis: np.ndarray) -> float | None:

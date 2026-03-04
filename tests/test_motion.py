@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 from dsra1d.config.models import BaselineMode, MotionConfig, ScaleMode
-from dsra1d.motion import import_peer_at2_to_csv, load_motion
+from dsra1d.motion import import_peer_at2_to_csv, load_motion, load_motion_series
 from dsra1d.motion.processing import preprocess_motion
 from dsra1d.types import Motion
 from dsra1d.units import STD_GRAVITY_M_S2
@@ -29,6 +29,31 @@ def test_load_motion_unit_conversion_from_g(tmp_path: Path) -> None:
     assert mot.unit == "m/s2"
     assert np.isclose(mot.acc[0], 0.1 * STD_GRAVITY_M_S2)
     assert np.isclose(mot.acc[1], -0.2 * STD_GRAVITY_M_S2)
+
+
+def test_load_motion_with_csv_header_row(tmp_path: Path) -> None:
+    motion_file = tmp_path / "motion_with_header.csv"
+    motion_file.write_text(
+        "time_s,acc_m_s2\n0.00,0.10\n0.01,-0.20\n0.02,0.00\n",
+        encoding="utf-8",
+    )
+    mot = load_motion(motion_file, dt=0.01, unit="m/s2")
+    assert mot.acc.shape == (3,)
+    assert np.isclose(mot.acc[0], 0.10)
+    assert np.isclose(mot.acc[1], -0.20)
+
+
+def test_load_motion_series_with_csv_header_row(tmp_path: Path) -> None:
+    motion_file = tmp_path / "motion_with_header.csv"
+    motion_file.write_text(
+        "time_s,acc_m_s2\n0.00,0.10\n0.01,-0.20\n0.02,0.00\n",
+        encoding="utf-8",
+    )
+    time, acc = load_motion_series(motion_file, fallback_dt=0.02)
+    assert time.shape == (3,)
+    assert acc.shape == (3,)
+    assert np.isclose(time[1] - time[0], 0.01)
+    assert np.isclose(acc[1], -0.20)
 
 
 def test_scale_to_pga_respects_config_units(tmp_path: Path) -> None:

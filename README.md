@@ -249,6 +249,7 @@ Apache-2.0
 - CI workflow enforces matrix quality gates (`ruff`, `mypy`, `pytest`) and native suite campaign gates (`core-es`, `core-hyst`, `core-linear`, `core-eql`).
 - Dedicated OpenSees runner gate is mandatory in CI/release (`self-hosted, linux, x64, opensees`) and uses `release-signoff`.
 - Release workflow enforces strict signoff (`1dsra summarize --strict-signoff`) and machine checks (`scripts/check_release_signoff.py`).
+- Before tagging a release, set `opensees-parity` fingerprint in `SCIENTIFIC_CONFIDENCE_MATRIX.md` to the exact 64-hex sha256 observed on dedicated signoff run.
 - Version bump helper: `python scripts/release_bump.py --version 0.1.0`
 - Release tag guard: `python scripts/check_release_tag.py --tag v0.1.0`
 - Changelog guard: `python scripts/check_changelog.py --tag v0.1.0`

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
+
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -47,6 +50,13 @@ def _parse_matrix_rows(matrix_path: Path) -> list[dict[str, str]]:
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit(message)
+
+
+def _normalize_sha256(value: str) -> str:
+    text = value.strip().lower()
+    if text.startswith("sha256:"):
+        text = text.split(":", 1)[1].strip()
+    return text
 
 
 def main() -> int:
@@ -114,8 +124,12 @@ def main() -> int:
     if args.require_fingerprint:
         observed_obj = signoff.get("observed")
         observed = observed_obj if isinstance(observed_obj, dict) else {}
-        sha = str(observed.get("backend_probe_sha256", "")).strip()
-        _require(bool(sha), "signoff.observed.backend_probe_sha256 must be non-empty.")
+        observed_sha = _normalize_sha256(str(observed.get("backend_probe_sha256", "")))
+        _require(bool(observed_sha), "signoff.observed.backend_probe_sha256 must be non-empty.")
+        _require(
+            SHA256_RE.fullmatch(observed_sha) is not None,
+            "signoff.observed.backend_probe_sha256 must be 64-hex sha256.",
+        )
 
     matrix_path = args.matrix
     _require(matrix_path.exists(), f"Scientific confidence matrix not found: {matrix_path}")
@@ -141,10 +155,19 @@ def main() -> int:
         _require(bool(value), f"Matrix opensees-parity row has empty field: {key}")
 
     if args.require_fingerprint:
-        fingerprint = str(parity_row.get("binary_fingerprint", "")).strip("` ").lower()
+        matrix_fingerprint = _normalize_sha256(
+            str(parity_row.get("binary_fingerprint", "")).strip("` ")
+        )
         _require(
-            fingerprint not in {"", "-", "pending", "todo", "tbd", "unknown"},
-            "Matrix opensees-parity binary_fingerprint must be explicit for release signoff.",
+            SHA256_RE.fullmatch(matrix_fingerprint) is not None,
+            (
+                "Matrix opensees-parity binary_fingerprint must be a "
+                "64-hex sha256 for release signoff."
+            ),
+        )
+        _require(
+            matrix_fingerprint == observed_sha,
+            "Matrix opensees-parity binary_fingerprint must match signoff observed backend sha256.",
         )
 
     print("Release signoff artifacts validated.")

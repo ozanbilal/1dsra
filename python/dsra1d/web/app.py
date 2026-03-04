@@ -289,6 +289,22 @@ class ScientificConfidenceResponse(BaseModel):
     rows: list[ScientificConfidenceRow] = Field(default_factory=list)
 
 
+class ReleaseSignoffLatestResponse(BaseModel):
+    found: bool
+    summary_path: str = ""
+    generated_utc: str = ""
+    suite: str = ""
+    strict_signoff: bool = False
+    signoff_passed: bool = False
+    benchmark_all_passed: bool = False
+    verify_ok: bool = False
+    campaign_policy_passed: bool = False
+    observed_backend_sha256: str = ""
+    policy_backend_sha256: str = ""
+    condition_failures: list[str] = Field(default_factory=list)
+    conditions: dict[str, bool] = Field(default_factory=dict)
+
+
 class WizardSanityCheckItem(BaseModel):
     name: str
     status: Literal["ok", "warning", "blocker"]
@@ -682,6 +698,34 @@ def _find_latest_parity_report(output_root: Path) -> tuple[Path, dict[str, objec
         report = _json_mapping(path)
         if report and _is_parity_report(report):
             return path, report
+    return None
+
+
+def _is_release_signoff_summary(summary: dict[str, object]) -> bool:
+    suite = str(summary.get("suite", "")).strip().lower()
+    if suite != "release-signoff":
+        return False
+    signoff_raw = summary.get("signoff")
+    signoff = signoff_raw if isinstance(signoff_raw, dict) else {}
+    policy_raw = summary.get("policy")
+    policy = policy_raw if isinstance(policy_raw, dict) else {}
+    return bool(signoff) or bool(policy)
+
+
+def _find_latest_release_signoff_summary(
+    output_root: Path,
+) -> tuple[Path, dict[str, object]] | None:
+    if not output_root.exists() or not output_root.is_dir():
+        return None
+    candidates = sorted(
+        output_root.rglob("campaign_summary.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        summary = _json_mapping(path)
+        if summary and _is_release_signoff_summary(summary):
+            return path, summary
     return None
 
 
@@ -2202,6 +2246,58 @@ def create_app() -> FastAPI:
             source_path=str(matrix_path),
             last_updated=last_updated,
             rows=rows,
+        )
+
+    @app.get("/api/release/signoff/latest", response_model=ReleaseSignoffLatestResponse)
+    def release_signoff_latest(
+        output_root: str = Query(default=""),
+    ) -> ReleaseSignoffLatestResponse:
+        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
+        latest = _find_latest_release_signoff_summary(root)
+        if latest is None:
+            return ReleaseSignoffLatestResponse(found=False)
+
+        path, summary = latest
+        signoff_raw = summary.get("signoff")
+        signoff = signoff_raw if isinstance(signoff_raw, dict) else {}
+        conditions_raw = signoff.get("conditions")
+        conditions_map = conditions_raw if isinstance(conditions_raw, dict) else {}
+        conditions = {str(k): bool(v) for k, v in conditions_map.items()}
+        failures = [name for name, ok in conditions.items() if not ok]
+
+        benchmark_raw = summary.get("benchmark")
+        benchmark = benchmark_raw if isinstance(benchmark_raw, dict) else {}
+        verify_raw = summary.get("verify_batch")
+        verify = verify_raw if isinstance(verify_raw, dict) else {}
+        policy_raw = summary.get("policy")
+        policy = policy_raw if isinstance(policy_raw, dict) else {}
+        campaign_policy_raw = policy.get("campaign")
+        campaign_policy = (
+            campaign_policy_raw if isinstance(campaign_policy_raw, dict) else {}
+        )
+        observed_raw = signoff.get("observed")
+        observed = observed_raw if isinstance(observed_raw, dict) else {}
+        signoff_policy_raw = signoff.get("policy")
+        signoff_policy = signoff_policy_raw if isinstance(signoff_policy_raw, dict) else {}
+
+        return ReleaseSignoffLatestResponse(
+            found=True,
+            summary_path=str(path),
+            generated_utc=str(summary.get("generated_utc", "")),
+            suite=str(summary.get("suite", "")),
+            strict_signoff=bool(signoff.get("strict_signoff", False)),
+            signoff_passed=bool(signoff.get("passed", False)),
+            benchmark_all_passed=bool(benchmark.get("all_passed", False)),
+            verify_ok=bool(verify.get("ok", False)),
+            campaign_policy_passed=bool(campaign_policy.get("passed", False)),
+            observed_backend_sha256=str(observed.get("backend_probe_sha256", ""))
+            .strip()
+            .lower(),
+            policy_backend_sha256=str(signoff_policy.get("opensees_fingerprint", ""))
+            .strip()
+            .lower(),
+            condition_failures=failures,
+            conditions=conditions,
         )
 
     @app.get("/api/runs/tree")

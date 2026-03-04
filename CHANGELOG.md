@@ -44,6 +44,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `signals` payload includes `dt_s`, `delta_t_s`, and `delta_t`
   - config-template endpoints: `GET /api/config/templates`, `POST /api/config/template`
   - parity/science visibility endpoints: `GET /api/parity/latest`, `GET /api/science/confidence`
+  - release signoff visibility endpoint: `GET /api/release/signoff/latest`
 - React Web Studio model-builder panel:
   - create template-based YAML config files from UI
   - auto-fill generated config path into run form
@@ -83,7 +84,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Results quality visibility:
   - added `Parity Health` card (coverage, fingerprint, blockers)
   - added `Scientific Confidence` card (suite tiers + verification timestamps)
-  - added `Release Blockers` card (go/no-go, parity/science/runtime checks, blocker and warning lists)
+  - added `Release Blockers` card (go/no-go, parity/science/signoff/runtime checks, blocker and warning lists)
 - Run diagnostics:
   - new backend readiness endpoint `GET /api/backend/opensees/probe`
   - wizard now surfaces OpenSees availability and explicit run blockers when backend is set to `opensees`

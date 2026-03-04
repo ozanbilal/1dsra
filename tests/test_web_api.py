@@ -802,6 +802,55 @@ def test_web_parity_latest_endpoint_reads_latest_report(tmp_path) -> None:
     assert "block_reasons" in row
 
 
+def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "campaign"
+    root.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "suite": "release-signoff",
+        "generated_utc": "2026-03-04T12:45:00Z",
+        "benchmark": {"all_passed": True},
+        "verify_batch": {"ok": True},
+        "policy": {"campaign": {"passed": False}},
+        "signoff": {
+            "strict_signoff": True,
+            "passed": False,
+            "conditions": {"campaign_policy_passed": False, "backend_fingerprint_ok": True},
+            "observed": {"backend_probe_sha256": "a" * 64},
+            "policy": {"opensees_fingerprint": "b" * 64},
+        },
+    }
+    (root / "campaign_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    client = TestClient(create_app())
+    resp = client.get("/api/release/signoff/latest", params={"output_root": str(root)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["found"] is True
+    assert payload["suite"] == "release-signoff"
+    assert payload["strict_signoff"] is True
+    assert payload["signoff_passed"] is False
+    assert payload["campaign_policy_passed"] is False
+    assert "campaign_policy_passed" in payload["condition_failures"]
+    assert payload["observed_backend_sha256"] == "a" * 64
+    assert payload["policy_backend_sha256"] == "b" * 64
+
+
+def test_web_release_signoff_latest_endpoint_handles_missing_summary(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "empty"
+    root.mkdir(parents=True, exist_ok=True)
+    client = TestClient(create_app())
+    resp = client.get("/api/release/signoff/latest", params={"output_root": str(root)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["found"] is False
+
+
 def test_web_science_confidence_endpoint_returns_rows() -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

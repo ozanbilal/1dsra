@@ -163,6 +163,7 @@ Included API endpoints:
 - `POST /api/run` (run analysis from config + motion paths)
 - `GET /api/parity/latest?output_root=<path>`
 - `GET /api/science/confidence`
+- `GET /api/release/signoff/latest?output_root=<path>`
 
 ## OpenSees Integration
 Set the OpenSees executable in config:

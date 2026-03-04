@@ -423,6 +423,7 @@ function isSha256(value) {
 function buildReleaseHealth({
   parityLatest,
   parityPrimary,
+  releaseSignoff,
   scienceConfidence,
   runSummary,
   selectedRun,
@@ -453,6 +454,30 @@ function buildReleaseHealth({
         ? parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0)
         : [];
       blockers.push(`Parity gate failed${reasons.length ? `: ${reasons.join(", ")}` : ""}.`);
+    }
+  }
+
+  if (!releaseSignoff || !releaseSignoff.found) {
+    warnings.push("Release signoff summary not found under current output root.");
+    checks.push({ label: "release_signoff_summary", ok: false, value: "missing" });
+  } else {
+    checks.push({
+      label: "release_signoff_summary",
+      ok: true,
+      value: mini(releaseSignoff.summary_path || ""),
+    });
+    const strict = Boolean(releaseSignoff.strict_signoff);
+    const passed = Boolean(releaseSignoff.signoff_passed);
+    checks.push({ label: "strict_signoff", ok: strict, value: strict ? "enabled" : "disabled" });
+    checks.push({ label: "signoff_passed", ok: passed, value: passed ? "true" : "false" });
+    if (!strict) blockers.push("Release signoff summary is not strict-signoff.");
+    if (!passed) {
+      const failed = Array.isArray(releaseSignoff.condition_failures)
+        ? releaseSignoff.condition_failures
+        : [];
+      blockers.push(
+        `Release signoff not passed${failed.length ? `: ${failed.join(", ")}` : ""}.`
+      );
     }
   }
 
@@ -975,6 +1000,7 @@ function App() {
   const [compareSignals, setCompareSignals] = useState({});
   const [compareLoading, setCompareLoading] = useState(false);
   const [parityLatest, setParityLatest] = useState(null);
+  const [releaseSignoff, setReleaseSignoff] = useState(null);
   const [scienceConfidence, setScienceConfidence] = useState([]);
   const [scienceMatrixMeta, setScienceMatrixMeta] = useState({ source_path: "", last_updated: "" });
 
@@ -1446,6 +1472,18 @@ function App() {
     }
   }
 
+  async function loadReleaseSignoff(rootOverride = outputRoot) {
+    const query = makeRunQuery(rootOverride);
+    try {
+      const payload = await requestJSON(`/api/release/signoff/latest${query}`);
+      setReleaseSignoff(payload);
+      return payload;
+    } catch {
+      setReleaseSignoff(null);
+      return null;
+    }
+  }
+
   async function loadScienceConfidence() {
     try {
       const payload = await requestJSON("/api/science/confidence");
@@ -1859,6 +1897,7 @@ function App() {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
     loadParityLatest().catch(() => {});
+    loadReleaseSignoff().catch(() => {});
     loadScienceConfidence().catch(() => {});
   }, []);
 
@@ -1871,6 +1910,7 @@ function App() {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
     loadParityLatest().catch(() => {});
+    loadReleaseSignoff().catch(() => {});
   }, [outputRoot]);
 
   useEffect(() => {
@@ -2171,11 +2211,12 @@ function App() {
       buildReleaseHealth({
         parityLatest,
         parityPrimary,
+        releaseSignoff,
         scienceConfidence,
         runSummary,
         selectedRun,
       }),
-    [parityLatest, parityPrimary, scienceConfidence, runSummary, selectedRun]
+    [parityLatest, parityPrimary, releaseSignoff, scienceConfidence, runSummary, selectedRun]
   );
 
   if (!schema || !wizard) {
@@ -3400,10 +3441,32 @@ function App() {
               <section className="quality-card">
                 <div className="row between">
                   <strong>Release Blockers</strong>
-                  <span className=${`chip ${releaseHealth.ready ? "chip-ok" : "chip-bad"}`}>
-                    ${releaseHealth.ready ? "go" : "no-go"}
-                  </span>
+                  <div className="row">
+                    <button
+                      className="btn-min"
+                      onClick=${() => {
+                        loadParityLatest().catch(() => {});
+                        loadReleaseSignoff().catch(() => {});
+                        loadScienceConfidence().catch(() => {});
+                      }}
+                    >
+                      Refresh
+                    </button>
+                    <span className=${`chip ${releaseHealth.ready ? "chip-ok" : "chip-bad"}`}>
+                      ${releaseHealth.ready ? "go" : "no-go"}
+                    </span>
+                  </div>
                 </div>
+                ${releaseSignoff && releaseSignoff.found
+                  ? html`
+                      <div className="muted">
+                        signoff: ${mini(releaseSignoff.summary_path || "")} |
+                        generated=${releaseSignoff.generated_utc || "n/a"} |
+                        strict=${releaseSignoff.strict_signoff ? "yes" : "no"} |
+                        passed=${releaseSignoff.signoff_passed ? "yes" : "no"}
+                      </div>
+                    `
+                  : null}
                 <div
                   className=${`status ${releaseHealth.ready ? "status-ok" : "status-err"}`}
                 >

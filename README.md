@@ -119,6 +119,7 @@ Run flow (no manual YAML editing required):
 3. Click `Run Now`.
 4. Inspect results tabs (`Time Histories`, `Spectral`, `Profile`, `Convergence`) and download artifacts.
 5. Use `Open Results Frame` in Results header to switch into a full-width output workspace.
+6. Review `Parity Health`, `Scientific Confidence`, and `Release Blockers` cards for quick go/no-go diagnostics.
 
 Damping routing:
 - Wizard `Damping` step writes directly into config analysis fields:

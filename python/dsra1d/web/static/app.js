@@ -409,6 +409,129 @@ function buildProfileHealthCards(view) {
   return [];
 }
 
+function normalizeFingerprint(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.startsWith("sha256:")) return text.slice(7).trim();
+  return text;
+}
+
+function isSha256(value) {
+  return /^[0-9a-f]{64}$/.test(String(value || "").trim().toLowerCase());
+}
+
+function buildReleaseHealth({
+  parityLatest,
+  parityPrimary,
+  scienceConfidence,
+  runSummary,
+  selectedRun,
+}) {
+  const blockers = [];
+  const warnings = [];
+  const checks = [];
+
+  if (!parityLatest || !parityLatest.found || !parityPrimary) {
+    blockers.push("Parity report is missing.");
+    checks.push({ label: "parity_report", ok: false, value: "missing" });
+  } else {
+    const parityOk =
+      parityPrimary.all_passed &&
+      parityPrimary.backend_ready &&
+      parityPrimary.backend_fingerprint_ok &&
+      Number(parityPrimary.skipped || 0) === 0;
+    checks.push({
+      label: "parity_gate",
+      ok: parityOk,
+      value: `${parityPrimary.ran}/${parityPrimary.total_cases} cov=${fmt(
+        Number(parityPrimary.execution_coverage || 0),
+        3
+      )}`,
+    });
+    if (!parityOk) {
+      const reasons = Array.isArray(parityPrimary.block_reasons)
+        ? parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0)
+        : [];
+      blockers.push(`Parity gate failed${reasons.length ? `: ${reasons.join(", ")}` : ""}.`);
+    }
+  }
+
+  const confidenceRows = Array.isArray(scienceConfidence) ? scienceConfidence : [];
+  const parityRow =
+    confidenceRows.find((r) => String(r?.suite || "").toLowerCase().includes("opensees-parity")) ||
+    null;
+  if (!parityRow) {
+    blockers.push("Scientific confidence row for opensees-parity is missing.");
+    checks.push({ label: "science_row", ok: false, value: "missing" });
+  } else {
+    checks.push({
+      label: "science_row",
+      ok: true,
+      value: `${parityRow.confidence_tier || "n/a"} | ${parityRow.last_verified_utc || "n/a"}`,
+    });
+    const matrixFp = normalizeFingerprint(parityRow.binary_fingerprint || "");
+    const reportFp = normalizeFingerprint(parityPrimary?.binary_fingerprint || "");
+    const matrixFpOk = isSha256(matrixFp);
+    checks.push({ label: "matrix_fingerprint", ok: matrixFpOk, value: mini(matrixFp || "n/a") });
+    if (!matrixFpOk) blockers.push("Scientific matrix fingerprint is not a valid sha256.");
+    if (matrixFpOk && reportFp && matrixFp !== reportFp) {
+      blockers.push("Scientific matrix fingerprint does not match parity report fingerprint.");
+      checks.push({
+        label: "fingerprint_match",
+        ok: false,
+        value: `${mini(matrixFp)} != ${mini(reportFp)}`,
+      });
+    } else if (matrixFpOk && reportFp) {
+      checks.push({ label: "fingerprint_match", ok: true, value: "match" });
+    }
+  }
+
+  if (!selectedRun || !runSummary) {
+    warnings.push("No selected run for runtime diagnostics.");
+    checks.push({ label: "runtime_diag", ok: true, value: "not evaluated" });
+  } else {
+    const runOk = String(runSummary.status || "").toLowerCase() === "ok";
+    checks.push({
+      label: "selected_run",
+      ok: runOk,
+      value: `${selectedRun.run_id} (${runSummary.status || "unknown"})`,
+    });
+    if (!runOk) blockers.push("Selected run status is not ok.");
+
+    const conv = runSummary.convergence || {};
+    const failedConverge = Number(conv.failed_converge_count || 0);
+    const analyzeFailed = Number(conv.analyze_failed_count || 0);
+    const divideByZero = Number(conv.divide_by_zero_count || 0);
+    const fallbackFailed = Number(conv.dynamic_fallback_failed || 0);
+    const warningCount = Number(conv.warning_count || 0);
+
+    if (Number.isFinite(divideByZero) && divideByZero > 0) {
+      blockers.push(`Selected run has divide_by_zero_count=${Math.round(divideByZero)}.`);
+    }
+    if (Number.isFinite(fallbackFailed) && fallbackFailed > 0) {
+      blockers.push(
+        `Selected run has dynamic_fallback_failed=${Math.round(fallbackFailed)}.`
+      );
+    }
+    if (Number.isFinite(analyzeFailed) && analyzeFailed > 0) {
+      blockers.push(`Selected run has analyze_failed_count=${Math.round(analyzeFailed)}.`);
+    }
+    if (Number.isFinite(failedConverge) && failedConverge > 0) {
+      blockers.push(`Selected run has failed_converge_count=${Math.round(failedConverge)}.`);
+    }
+    if (Number.isFinite(warningCount) && warningCount > 0) {
+      warnings.push(`Selected run warning_count=${Math.round(warningCount)}.`);
+    }
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    warnings,
+    checks,
+  };
+}
+
 function mini(text) {
   if (!text) return "";
   const asText = String(text);
@@ -2043,6 +2166,17 @@ function App() {
     const nonEmpty = parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0);
     return nonEmpty.join(" | ");
   }, [parityPrimary]);
+  const releaseHealth = useMemo(
+    () =>
+      buildReleaseHealth({
+        parityLatest,
+        parityPrimary,
+        scienceConfidence,
+        runSummary,
+        selectedRun,
+      }),
+    [parityLatest, parityPrimary, scienceConfidence, runSummary, selectedRun]
+  );
 
   if (!schema || !wizard) {
     return html`<div className="shell"><div className="panel">Loading...</div></div>`;
@@ -3261,6 +3395,57 @@ function App() {
                         )}
                       </div>
                     `}
+              </section>
+
+              <section className="quality-card">
+                <div className="row between">
+                  <strong>Release Blockers</strong>
+                  <span className=${`chip ${releaseHealth.ready ? "chip-ok" : "chip-bad"}`}>
+                    ${releaseHealth.ready ? "go" : "no-go"}
+                  </span>
+                </div>
+                <div
+                  className=${`status ${releaseHealth.ready ? "status-ok" : "status-err"}`}
+                >
+                  <strong>
+                    ${releaseHealth.ready
+                      ? "Release signoff conditions look healthy."
+                      : "Release is blocked by one or more critical checks."}
+                  </strong>
+                </div>
+                <div className="quality-list">
+                  ${(releaseHealth.checks || []).map(
+                    (row) => html`
+                      <div className="quality-list-row">
+                        <span><strong>${row.label}</strong></span>
+                        <span className=${`chip ${row.ok ? "chip-ok" : "chip-bad"}`}
+                          >${row.ok ? "ok" : "fail"}</span
+                        >
+                        <span className="muted">${row.value || "n/a"}</span>
+                      </div>
+                    `
+                  )}
+                </div>
+                ${releaseHealth.blockers.length
+                  ? html`
+                      <div className="quality-subtitle">Critical blockers</div>
+                      <div className="quality-list quality-list-compact">
+                        ${releaseHealth.blockers.map(
+                          (item) => html`<div className="quality-list-row quality-list-row-err">${item}</div>`
+                        )}
+                      </div>
+                    `
+                  : null}
+                ${releaseHealth.warnings.length
+                  ? html`
+                      <div className="quality-subtitle">Warnings</div>
+                      <div className="quality-list quality-list-compact">
+                        ${releaseHealth.warnings.map(
+                          (item) => html`<div className="quality-list-row quality-list-row-warn">${item}</div>`
+                        )}
+                      </div>
+                    `
+                  : null}
               </section>
             </div>
 

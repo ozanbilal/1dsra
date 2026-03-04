@@ -83,6 +83,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Results quality visibility:
   - added `Parity Health` card (coverage, fingerprint, blockers)
   - added `Scientific Confidence` card (suite tiers + verification timestamps)
+  - added `Release Blockers` card (go/no-go, parity/science/runtime checks, blocker and warning lists)
 - Run diagnostics:
   - new backend readiness endpoint `GET /api/backend/opensees/probe`
   - wizard now surfaces OpenSees availability and explicit run blockers when backend is set to `opensees`

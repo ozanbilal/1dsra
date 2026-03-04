@@ -759,6 +759,10 @@ pre {
   gap: 6px;
 }
 
+.quality-list-compact {
+  margin-top: 0.25rem;
+}
+
 .quality-list-row {
   display: flex;
   align-items: center;
@@ -768,6 +772,26 @@ pre {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.78);
   padding: 0.28rem 0.42rem;
+}
+
+.quality-list-row-err {
+  border-color: rgba(140, 36, 31, 0.34);
+  background: rgba(140, 36, 31, 0.08);
+}
+
+.quality-list-row-warn {
+  border-color: rgba(139, 79, 0, 0.32);
+  background: rgba(139, 79, 0, 0.08);
+}
+
+.quality-subtitle {
+  margin-top: 0.45rem;
+  margin-bottom: 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(45, 57, 68, 0.72);
 }
 
 .quality-metrics {

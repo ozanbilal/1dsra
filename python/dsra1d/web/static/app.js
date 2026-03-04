@@ -3141,6 +3141,117 @@ function App() {
               )}
             </div>
 
+            <div className="quality-grid">
+              <section className="quality-card">
+                <div className="row between">
+                  <strong>Parity Health</strong>
+                  <button
+                    className="btn-min"
+                    onClick=${() => loadParityLatest().catch(() => {})}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                ${!parityLatest || !parityLatest.found
+                  ? html`<div className="muted">No parity report found under current output root.</div>`
+                  : html`
+                      <div className="muted">Report: ${mini(parityLatest.report_path || "")}</div>
+                      <div className="muted">
+                        Suite bundle: ${parityLatest.suite || "unknown"} | generated:
+                        ${parityLatest.generated_utc || "n/a"}
+                      </div>
+                      ${parityPrimary
+                        ? html`
+                            <div className="metric-grid quality-metrics">
+                              <div className="metric-card">
+                                <span>Primary Suite</span><b>${parityPrimary.suite}</b>
+                              </div>
+                              <div className="metric-card">
+                                <span>Coverage</span
+                                ><b>${fmt(Number(parityPrimary.execution_coverage || 0), 3)}</b>
+                              </div>
+                              <div className="metric-card">
+                                <span>Runs</span
+                                ><b>${parityPrimary.ran}/${parityPrimary.total_cases}</b>
+                              </div>
+                              <div className="metric-card">
+                                <span>Fingerprint</span><b>${mini(parityPrimary.binary_fingerprint || "n/a")}</b>
+                              </div>
+                            </div>
+                            <div className=${`status ${
+                              parityPrimary.all_passed &&
+                              parityPrimary.backend_ready &&
+                              parityPrimary.backend_fingerprint_ok &&
+                              Number(parityPrimary.skipped || 0) === 0
+                                ? "status-ok"
+                                : "status-err"
+                            }`}>
+                              <strong>
+                                ${parityPrimary.all_passed &&
+                                parityPrimary.backend_ready &&
+                                parityPrimary.backend_fingerprint_ok &&
+                                Number(parityPrimary.skipped || 0) === 0
+                                  ? "Parity gate healthy"
+                                  : "Parity gate has blockers"}
+                              </strong>
+                              ${parityBlockText
+                                ? html`<div className="muted">Blockers: ${parityBlockText}</div>`
+                                : null}
+                            </div>
+                          `
+                        : null}
+                      ${paritySuites.length > 0
+                        ? html`
+                            <div className="quality-list">
+                              ${paritySuites.map(
+                                (row) => html`
+                                  <div className="quality-list-row">
+                                    <span><strong>${row.suite}</strong></span>
+                                    <span className=${`chip ${row.all_passed ? "chip-ok" : "chip-bad"}`}
+                                      >${row.all_passed ? "pass" : "fail"}</span
+                                    >
+                                    <span className="muted"
+                                      >cov=${fmt(Number(row.execution_coverage || 0), 3)} |
+                                      skipped=${row.skipped}</span
+                                    >
+                                  </div>
+                                `
+                              )}
+                            </div>
+                          `
+                        : null}
+                    `}
+              </section>
+
+              <section className="quality-card">
+                <div className="row between">
+                  <strong>Scientific Confidence</strong>
+                  <button className="btn-min" onClick=${() => loadScienceConfidence().catch(() => {})}>
+                    Refresh
+                  </button>
+                </div>
+                <div className="muted">
+                  last_updated=${scienceMatrixMeta.last_updated || "n/a"} |
+                  source=${mini(scienceMatrixMeta.source_path || "")}
+                </div>
+                ${scienceConfidence.length === 0
+                  ? html`<div className="muted">No confidence rows loaded.</div>`
+                  : html`
+                      <div className="quality-list">
+                        ${scienceConfidence.map(
+                          (row) => html`
+                            <div className="quality-list-row">
+                              <span><strong>${row.suite}</strong></span>
+                              <span className="chip chip-neutral">${row.confidence_tier || "n/a"}</span>
+                              <span className="muted">cases=${row.case_count} | verified=${row.last_verified_utc || "n/a"}</span>
+                            </div>
+                          `
+                        )}
+                      </div>
+                    `}
+              </section>
+            </div>
+
             <div className="compare-box">
               <div className="row between">
                 <strong>Multi-Motion Compare</strong>

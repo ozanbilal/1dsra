@@ -27,7 +27,8 @@ def test_web_backend_probe_endpoint() -> None:
     resp = client.get("/api/backend/opensees/probe", params={"executable": "OpenSees"})
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["requested"] == "OpenSees"
+    assert isinstance(payload.get("requested"), str)
+    assert payload["requested"]
     assert "available" in payload
     assert "version" in payload
 
@@ -253,6 +254,59 @@ def test_web_config_from_wizard_endpoint(tmp_path) -> None:
     cfg_path = Path(payload["config_path"])
     assert cfg_path.exists()
     _ = load_project_config(cfg_path)
+
+
+def test_web_config_from_wizard_invalid_opensees_material_returns_400(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/config/from-wizard",
+        json={
+            "analysis_step": {
+                "project_name": "wizard-invalid-case",
+                "boundary_condition": "elastic_halfspace",
+                "solver_backend": "opensees",
+                "pm4_validation_profile": "basic",
+            },
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "L1",
+                        "thickness_m": 5.0,
+                        "unit_weight_kN_m3": 18.0,
+                        "vs_m_s": 180.0,
+                        "material": "mkz",
+                        "material_params": {"gmax": 60000.0, "gamma_ref": 0.001},
+                        "material_optional_args": [],
+                    }
+                ]
+            },
+            "motion_step": {
+                "motion_path": "examples/motions/sample_motion.csv",
+                "units": "m/s2",
+                "baseline": "remove_mean",
+                "scale_mode": "none",
+            },
+            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
+            "control_step": {
+                "f_max": 25.0,
+                "timeout_s": 120,
+                "retries": 1,
+                "write_hdf5": True,
+                "write_sqlite": True,
+                "parquet_export": False,
+                "opensees_executable": "OpenSees",
+                "output_dir": str(tmp_path / "out"),
+                "config_output_dir": str(tmp_path),
+                "config_file_name": "wizard_case_invalid.yml",
+            },
+        },
+    )
+    assert resp.status_code == 400
+    detail = resp.json().get("detail", "")
+    assert "OpenSees backend currently supports pm4sand/pm4silt/elastic" in detail
 
 
 def test_web_motion_import_peer_at2_endpoint(tmp_path) -> None:

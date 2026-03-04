@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Literal, cast
@@ -11,7 +12,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dsra1d.config import (
     available_config_templates,
@@ -42,6 +43,7 @@ from dsra1d.units import accel_factor_to_si
 
 RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"]
 ResolvedBackend = Literal["opensees", "mock", "linear", "eql", "nonlinear"]
+OPENSEES_EXE_ENV = "DSRA1D_OPENSEES_EXE_OVERRIDE"
 
 
 class RunRequest(BaseModel):
@@ -300,6 +302,38 @@ def _safe_upload_stem(raw: str, fallback: str) -> str:
     base = Path(name).stem if name else Path(fallback).stem
     base = base.strip() or "uploaded_motion"
     return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in base)
+
+
+def _discover_opensees_executable() -> Path | None:
+    override = os.getenv(OPENSEES_EXE_ENV, "").strip()
+    if override:
+        resolved = resolve_opensees_executable(override)
+        if resolved is not None:
+            return resolved.resolve()
+
+    resolved_default = resolve_opensees_executable("OpenSees")
+    if resolved_default is not None:
+        return resolved_default.resolve()
+
+    home = Path.home()
+    candidate_roots = [home / "tools" / "opensees", _repo_root() / ".tools" / "opensees"]
+    for root in candidate_roots:
+        if not root.exists():
+            continue
+        candidates = sorted(root.glob("**/OpenSees.exe"))
+        if candidates:
+            return candidates[0].resolve()
+    return None
+
+
+def _effective_opensees_executable(raw_value: str | None) -> str:
+    raw = (raw_value or "").strip() or "OpenSees"
+    if raw != "OpenSees":
+        return raw
+    discovered = _discover_opensees_executable()
+    if discovered is not None:
+        return str(discovered)
+    return raw
 
 
 def _resolve_input_path(path_value: str, *, label: str) -> Path:
@@ -894,6 +928,8 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     if backend_raw not in {"config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"}:
         backend_raw = "opensees"
 
+    requested_opensees_executable = str(opensees_dict.get("executable", "OpenSees"))
+
     wizard_payload = {
         "analysis_step": {
             "project_name": str(payload.get("project_name", "wizard-project")),
@@ -925,7 +961,9 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
             "write_hdf5": bool(output_dict.get("write_hdf5", True)),
             "write_sqlite": bool(output_dict.get("write_sqlite", True)),
             "parquet_export": bool(output_dict.get("parquet_export", False)),
-            "opensees_executable": str(opensees_dict.get("executable", "OpenSees")),
+            "opensees_executable": _effective_opensees_executable(
+                requested_opensees_executable
+            ),
             "output_dir": "out/web",
             "config_output_dir": "",
             "config_file_name": "",
@@ -1065,7 +1103,7 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
             "parquet_export": req.control_step.parquet_export,
         },
         "opensees": {
-            "executable": req.control_step.opensees_executable,
+            "executable": _effective_opensees_executable(req.control_step.opensees_executable),
         },
     }
     return payload, warnings
@@ -1170,10 +1208,13 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/backend/opensees/probe", response_model=BackendProbeResponse)
-    def backend_probe_opensees(executable: str = Query(default="OpenSees")) -> BackendProbeResponse:
-        probe = probe_opensees_executable(executable)
+    def backend_probe_opensees(
+        executable: str = Query(default="OpenSees"),
+    ) -> BackendProbeResponse:
+        effective_executable = _effective_opensees_executable(executable)
+        probe = probe_opensees_executable(effective_executable)
         return BackendProbeResponse(
-            requested=executable,
+            requested=effective_executable,
             resolved=str(probe.resolved) if probe.resolved is not None else None,
             available=bool(probe.available),
             version=str(probe.version or ""),
@@ -1211,30 +1252,35 @@ def create_app() -> FastAPI:
 
     @app.post("/api/config/from-wizard", response_model=WizardConfigResponse)
     def create_config_from_wizard(payload: WizardConfigRequest) -> WizardConfigResponse:
-        cfg_payload, warnings = _wizard_to_config_payload(payload)
-        validated = ProjectConfig.model_validate(cfg_payload)
-        rendered = yaml.safe_dump(
-            validated.model_dump(mode="json", by_alias=True),
-            sort_keys=False,
-            allow_unicode=True,
-        )
-        out_root = (
-            _safe_real_path(payload.control_step.config_output_dir)
-            if payload.control_step.config_output_dir.strip()
-            else _default_config_root()
-        )
-        out_root.mkdir(parents=True, exist_ok=True)
-        file_name = payload.control_step.config_file_name.strip() or "wizard_generated.yml"
-        if not file_name.lower().endswith((".yml", ".yaml")):
-            file_name = f"{file_name}.yml"
-        out_path = out_root / file_name
-        out_path.write_text(rendered, encoding="utf-8")
-        return WizardConfigResponse(
-            config_path=str(out_path),
-            config_yaml=rendered,
-            warnings=warnings,
-            status="ok",
-        )
+        try:
+            cfg_payload, warnings = _wizard_to_config_payload(payload)
+            validated = ProjectConfig.model_validate(cfg_payload)
+            rendered = yaml.safe_dump(
+                validated.model_dump(mode="json", by_alias=True),
+                sort_keys=False,
+                allow_unicode=True,
+            )
+            out_root = (
+                _safe_real_path(payload.control_step.config_output_dir)
+                if payload.control_step.config_output_dir.strip()
+                else _default_config_root()
+            )
+            out_root.mkdir(parents=True, exist_ok=True)
+            file_name = payload.control_step.config_file_name.strip() or "wizard_generated.yml"
+            if not file_name.lower().endswith((".yml", ".yaml")):
+                file_name = f"{file_name}.yml"
+            out_path = out_root / file_name
+            out_path.write_text(rendered, encoding="utf-8")
+            return WizardConfigResponse(
+                config_path=str(out_path),
+                config_yaml=rendered,
+                warnings=warnings,
+                status="ok",
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/motion/import/peer-at2", response_model=MotionImportResponse)
     def motion_import_peer_at2(payload: MotionImportRequest) -> MotionImportResponse:
@@ -1703,6 +1749,7 @@ def create_app() -> FastAPI:
             cfg = load_project_config(config_path)
             if payload.opensees_executable:
                 cfg.opensees.executable = payload.opensees_executable
+            cfg.opensees.executable = _effective_opensees_executable(cfg.opensees.executable)
             backend, backend_note = _apply_runtime_backend(
                 payload.backend,
                 config_backend=cfg.analysis.solver_backend,

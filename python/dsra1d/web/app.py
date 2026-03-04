@@ -1134,8 +1134,9 @@ def _layer_loop_profile(
         params.setdefault("damping_max", 0.12)
         return MaterialType.GQH, params, False, "gqh"
 
-    # PM4/effective-stress layers are shown with an MKZ proxy until true stress-strain
-    # recorder channels are available from backend outputs.
+    # PM4/effective-stress layers use MKZ proxy defaults for derived metrics.
+    # When recorder channels are present in run artifacts, _build_hysteresis_response
+    # consumes recorded strain/stress directly and bypasses this proxy loop.
     gamma_ref = 0.0012 if material == MaterialType.PM4SAND else 0.0018
     if material == MaterialType.ELASTIC:
         gamma_ref = 0.0005
@@ -1174,6 +1175,76 @@ def _downsample_series(values: np.ndarray, max_points: int) -> list[float]:
         return [float(v) for v in values]
     step = max(1, values.size // max_points)
     return [float(v) for v in values[::step]]
+
+
+def _load_matrix_safe(path: Path) -> np.ndarray | None:
+    if not path.exists() or path.stat().st_size <= 0:
+        return None
+    try:
+        arr = np.loadtxt(path, ndmin=2)
+    except Exception:
+        return None
+    matrix = np.asarray(arr, dtype=np.float64)
+    if matrix.ndim != 2 or matrix.shape[0] < 8:
+        return None
+    return matrix
+
+
+def _looks_like_time_axis(values: np.ndarray) -> bool:
+    if values.size < 3:
+        return False
+    if not np.all(np.isfinite(values)):
+        return False
+    diffs = np.diff(values)
+    if diffs.size == 0:
+        return False
+    if not np.all(diffs >= -1.0e-12):
+        return False
+    return float(np.median(diffs)) > 0.0
+
+
+def _extract_recorder_component(matrix: np.ndarray) -> np.ndarray:
+    if matrix.shape[1] <= 1:
+        return matrix[:, 0]
+    start = 1 if _looks_like_time_axis(matrix[:, 0]) else 0
+    values = matrix[:, start:]
+    if values.size == 0:
+        values = matrix
+    return values[:, -1]
+
+
+def _load_layer_recorded_hysteresis(
+    run_dir: Path,
+    *,
+    layer_index_zero_based: int,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    if layer_index_zero_based < 0:
+        return None
+    # OpenSees material tags are 1-based; fallback checks include 0-based legacy naming.
+    tag_candidates = [layer_index_zero_based + 1, layer_index_zero_based]
+    seen: set[int] = set()
+    for tag in tag_candidates:
+        if tag in seen:
+            continue
+        seen.add(tag)
+        strain_path = run_dir / f"layer_{tag}_strain.out"
+        stress_path = run_dir / f"layer_{tag}_stress.out"
+        strain_raw = _load_matrix_safe(strain_path)
+        stress_raw = _load_matrix_safe(stress_path)
+        if strain_raw is None or stress_raw is None:
+            continue
+        strain = _extract_recorder_component(strain_raw)
+        stress = _extract_recorder_component(stress_raw)
+        n = int(min(strain.size, stress.size))
+        if n < 8:
+            continue
+        strain = np.asarray(strain[:n], dtype=np.float64)
+        stress = np.asarray(stress[:n], dtype=np.float64)
+        finite_mask = np.isfinite(strain) & np.isfinite(stress)
+        if int(np.count_nonzero(finite_mask)) < 8:
+            continue
+        return strain[finite_mask], stress[finite_mask]
+    return None
 
 
 def _build_hysteresis_response(
@@ -1228,6 +1299,7 @@ def _build_hysteresis_response(
 
     layers: list[HysteresisLayerResponse] = []
     proxy_used = False
+    recorded_layers = 0
     for item in layer_items:
         idx_obj = item.get("idx")
         name_obj = item.get("name")
@@ -1258,28 +1330,45 @@ def _build_hysteresis_response(
             vs_m_s=vs_m_s,
             unit_weight_kn_m3=unit_weight,
         )
-        proxy_used = proxy_used or is_proxy
 
-        gamma_ref = float(loop_params.get("gamma_ref", 0.001))
-        gamma_hint = eql_gamma_max_map.get(idx_obj)
-        if gamma_hint is not None and np.isfinite(gamma_hint) and gamma_hint > 0.0:
-            gamma_a = float(np.clip(gamma_hint, 1.0e-5, 2.0e-2))
-        else:
-            gamma_a = float(
-                np.clip(
-                    5.0 * gamma_ref * (1.0 + (1.2 * pga_g) + (0.6 * ru_max)),
-                    2.5e-4,
-                    2.0e-2,
-                )
-            )
-
-        loop = generate_masing_loop(
-            material=loop_material,
-            material_params=loop_params,
-            strain_amplitude=gamma_a,
-            n_points_per_branch=140,
+        recorded_loop = _load_layer_recorded_hysteresis(
+            run_dir,
+            layer_index_zero_based=idx_obj,
         )
-        tau_peak = float(np.max(np.abs(loop.stress))) if loop.stress.size > 0 else 0.0
+        gamma_ref = float(loop_params.get("gamma_ref", 0.001))
+        if recorded_loop is not None:
+            loop_strain, loop_stress = recorded_loop
+            gamma_a = float(np.clip(np.max(np.abs(loop_strain)), 1.0e-6, 2.0e-2))
+            loop_energy = float(abs(np.trapezoid(loop_stress, loop_strain)))
+            tau_peak = float(np.max(np.abs(loop_stress))) if loop_stress.size > 0 else 0.0
+            is_proxy = False
+            model_name = f"{material_obj.value}_recorded"
+            recorded_layers += 1
+        else:
+            proxy_used = proxy_used or is_proxy
+            gamma_hint = eql_gamma_max_map.get(idx_obj)
+            if gamma_hint is not None and np.isfinite(gamma_hint) and gamma_hint > 0.0:
+                gamma_a = float(np.clip(gamma_hint, 1.0e-5, 2.0e-2))
+            else:
+                gamma_a = float(
+                    np.clip(
+                        5.0 * gamma_ref * (1.0 + (1.2 * pga_g) + (0.6 * ru_max)),
+                        2.5e-4,
+                        2.0e-2,
+                    )
+                )
+
+            loop = generate_masing_loop(
+                material=loop_material,
+                material_params=loop_params,
+                strain_amplitude=gamma_a,
+                n_points_per_branch=140,
+            )
+            loop_strain = loop.strain
+            loop_stress = loop.stress
+            loop_energy = float(loop.energy_dissipation)
+            tau_peak = float(np.max(np.abs(loop_stress))) if loop_stress.size > 0 else 0.0
+
         tau_cap = loop_params.get("tau_max")
         if tau_cap is not None and tau_cap > 0.0:
             mobilized_ratio = float(np.clip(tau_peak / tau_cap, 0.0, 1.0))
@@ -1315,18 +1404,26 @@ def _build_hysteresis_response(
                 material=material_obj.value,
                 model=model_name,
                 is_proxy=is_proxy,
-                strain_amplitude=float(loop.strain_amplitude),
-                loop_energy=float(loop.energy_dissipation),
+                strain_amplitude=float(gamma_a),
+                loop_energy=loop_energy,
                 mobilized_strength_ratio=mobilized_ratio,
                 g_over_gmax=g_over_gmax,
                 damping_proxy=damping_proxy,
-                strain=_downsample_series(loop.strain, max_points=max_points),
-                stress=_downsample_series(loop.stress, max_points=max_points),
+                strain=_downsample_series(loop_strain, max_points=max_points),
+                stress=_downsample_series(loop_stress, max_points=max_points),
             )
         )
 
     if cfg is None:
         note_parts.append("Config snapshot not found; using sqlite layer fallback.")
+    if recorded_layers > 0:
+        if recorded_layers >= len(layers):
+            source = "opensees_recorders"
+        else:
+            source = "mixed_recorders_proxy"
+            note_parts.append(
+                f"Recorder stress-strain available for {recorded_layers}/{len(layers)} layers."
+            )
     if proxy_used:
         note_parts.append(
             "PM4/elastic layers shown as MKZ proxies until native recorder channels are added."

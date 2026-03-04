@@ -36,6 +36,8 @@ def test_render_tcl_contains_expected_blocks() -> None:
     assert "pattern UniformExcitation" in script
     assert "surface_acc.out" in script
     assert "pwp_ru.out" in script
+    assert "layer_%s_stress.out" in script
+    assert "layer_%s_strain.out" in script
     assert "-dof 3 disp" in script
     assert "updateParameter $pTag $hPerm" in script
     assert "foreach pTag $hPermParamTags" in script

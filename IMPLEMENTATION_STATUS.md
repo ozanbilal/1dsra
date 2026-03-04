@@ -60,6 +60,7 @@ Implemented:
   - gravity stage uses high temporary permeability and restores target permeability via `parameter/updateParameter`
   - PM4 dynamic-stage `FirstCall` initialization is applied per element/material tag
   - dynamic stage uses step-by-step fallback (`KrylovNewton` -> `ModifiedNewton` + substep retry)
+- OpenSees Tcl now emits per-layer representative stress/strain element recorders (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) for UI hysteresis channels
 - CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
 - Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
 

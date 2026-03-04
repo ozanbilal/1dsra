@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
+import numpy as np
 import pytest
 
 pytest.importorskip("fastapi")
@@ -786,6 +787,41 @@ def test_web_results_hysteresis_endpoint(tmp_path) -> None:
     assert "strain" in layer0 and "stress" in layer0
     assert len(layer0["strain"]) >= 10
     assert len(layer0["stress"]) == len(layer0["strain"])
+
+
+def test_web_results_hysteresis_prefers_recorded_layer_channels(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    run_dir = Path(result.output_dir)
+    t = np.linspace(0.0, 12.0, 240, dtype=np.float64)
+    strain = 8.0e-4 * np.sin(2.0 * np.pi * 0.8 * t)
+    stress = 42.0 * np.sin((2.0 * np.pi * 0.8 * t) + 0.28)
+    # Layer-1 recorder naming follows OpenSees material tag convention (1-based).
+    np.savetxt(
+        run_dir / "layer_1_strain.out",
+        np.column_stack([t, np.zeros_like(t), strain]),
+    )
+    np.savetxt(
+        run_dir / "layer_1_stress.out",
+        np.column_stack([t, np.zeros_like(t), stress]),
+    )
+
+    root = tmp_path / "web-runs"
+    client = TestClient(create_app())
+    resp = client.get(
+        f"/api/runs/{result.run_id}/results/hysteresis",
+        params={"output_root": str(root)},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["source"] in {"opensees_recorders", "mixed_recorders_proxy"}
+    first_layer = next(layer for layer in payload["layers"] if layer["layer_index"] == 0)
+    assert first_layer["is_proxy"] is False
+    assert "recorded" in str(first_layer["model"])
+    assert len(first_layer["strain"]) >= 20
+    assert len(first_layer["stress"]) >= 20
 
 
 def test_web_results_profile_summary_endpoint(tmp_path) -> None:

@@ -52,6 +52,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - new endpoint `GET /api/runs/{run_id}/results/hysteresis`
   - layer-wise stress-strain loop and mobilized-strength payload
   - `Stress-Strain` / `Mobilized Strength` tabs now render backend data
+  - OpenSees recorder artifacts (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) are now consumed when present; PM4 layers fall back to MKZ proxy only when recorder channels are missing
 - Wizard Soil Profile UX upgrades:
   - per-layer `material_params` and `material_optional_args` editors
   - layer utility controls: duplicate, reorder (up/down), CSV import/export

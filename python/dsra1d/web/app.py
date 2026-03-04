@@ -248,6 +248,45 @@ class ResultSummaryResponse(BaseModel):
     solver_notes: str
 
 
+class WizardSanityCheckItem(BaseModel):
+    name: str
+    status: Literal["ok", "warning", "blocker"]
+    message: str
+
+
+class WizardSanityResponse(BaseModel):
+    ok: bool
+    blockers: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    checks: list[WizardSanityCheckItem] = Field(default_factory=list)
+    derived: dict[str, object] = Field(default_factory=dict)
+
+
+class ResultProfileLayerRow(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    idx: int
+    name: str
+    material: str
+    thickness_m: float
+    unit_weight_kn_m3: float = Field(alias="unit_weight_kN_m3")
+    vs_m_s: float
+    z_top_m: float
+    z_bottom_m: float
+    n_sub: int
+    gamma_max: float | None = None
+
+
+class ResultProfileSummaryResponse(BaseModel):
+    run_id: str
+    layer_count: int
+    total_thickness_m: float
+    ru_max: float | None = None
+    delta_u_max: float | None = None
+    sigma_v_eff_min: float | None = None
+    layers: list[ResultProfileLayerRow] = Field(default_factory=list)
+
+
 class BackendProbeResponse(BaseModel):
     requested: str
     resolved: str | None = None
@@ -510,6 +549,92 @@ def _read_output_layers(sqlite_path: Path) -> list[str]:
             "SELECT DISTINCT layer_name FROM mesh_slices ORDER BY layer_name ASC"
         ).fetchall()
         return [str(r[0]) for r in rows if r and r[0] is not None]
+    finally:
+        conn.close()
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _read_profile_layer_summary(sqlite_path: Path) -> list[ResultProfileLayerRow]:
+    if not sqlite_path.exists():
+        return []
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        if not _table_exists(conn, "layers"):
+            return []
+        layer_rows = conn.execute(
+            "SELECT idx, name, thickness_m, unit_weight_kN_m3, vs_m_s, material "
+            "FROM layers ORDER BY idx ASC"
+        ).fetchall()
+
+        mesh_by_name: dict[str, tuple[float, float, int]] = {}
+        if _table_exists(conn, "mesh_slices"):
+            mesh_rows = conn.execute(
+                "SELECT layer_name, MIN(z_top), MAX(z_bot), SUM(n_sub) "
+                "FROM mesh_slices GROUP BY layer_name"
+            ).fetchall()
+            for name, z_top, z_bot, n_sub in mesh_rows:
+                key = str(name)
+                mesh_by_name[key] = (
+                    float(z_top),
+                    float(z_bot),
+                    max(1, int(float(n_sub))),
+                )
+
+        gamma_by_idx: dict[int, float] = {}
+        if _table_exists(conn, "eql_layers"):
+            eql_rows = conn.execute(
+                "SELECT layer_idx, gamma_max FROM eql_layers ORDER BY layer_idx ASC"
+            ).fetchall()
+            for idx, gamma in eql_rows:
+                try:
+                    gamma_by_idx[int(idx)] = float(gamma)
+                except (TypeError, ValueError):
+                    continue
+
+        layers: list[ResultProfileLayerRow] = []
+        cum_depth = 0.0
+        for idx, name, thickness, unit_weight, vs, material in layer_rows:
+            layer_idx = int(idx)
+            layer_name = str(name)
+            t_m = float(thickness)
+            default_top = float(cum_depth)
+            default_bot = float(cum_depth + t_m)
+            cum_depth = default_bot
+
+            z_top_m, z_bottom_m, n_sub = mesh_by_name.get(
+                layer_name,
+                (
+                    default_top,
+                    default_bot,
+                    1,
+                ),
+            )
+            gamma_max = gamma_by_idx.get(layer_idx)
+            if gamma_max is None:
+                gamma_max = gamma_by_idx.get(layer_idx + 1)
+
+            layers.append(
+                ResultProfileLayerRow(
+                    idx=layer_idx,
+                    name=layer_name,
+                    material=str(material),
+                    thickness_m=t_m,
+                    unit_weight_kn_m3=float(unit_weight),
+                    vs_m_s=float(vs),
+                    z_top_m=float(z_top_m),
+                    z_bottom_m=float(z_bottom_m),
+                    n_sub=max(1, int(n_sub)),
+                    gamma_max=float(gamma_max) if gamma_max is not None else None,
+                )
+            )
+        return layers
     finally:
         conn.close()
 
@@ -1275,6 +1400,176 @@ def _estimate_dt(time_axis: np.ndarray) -> float:
     return 1.0
 
 
+def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
+    checks: list[WizardSanityCheckItem] = []
+    blockers: list[str] = []
+    warnings: list[str] = []
+    derived: dict[str, object] = {
+        "requested_backend": payload.analysis_step.solver_backend,
+        "f_max_hz": float(payload.control_step.f_max),
+    }
+
+    cfg: ProjectConfig | None = None
+    try:
+        cfg_payload, cfg_warnings = _wizard_to_config_payload(payload)
+        cfg = ProjectConfig.model_validate(cfg_payload)
+        checks.append(
+            WizardSanityCheckItem(
+                name="config_validation",
+                status="ok",
+                message="Wizard configuration is valid.",
+            )
+        )
+        warnings.extend(cfg_warnings)
+    except (ValidationError, ValueError) as exc:
+        msg = f"Wizard config validation failed: {exc}"
+        checks.append(
+            WizardSanityCheckItem(name="config_validation", status="blocker", message=msg)
+        )
+        blockers.append(msg)
+
+    motion_path_text = payload.motion_step.motion_path.strip()
+    if not motion_path_text:
+        msg = "Motion path is empty."
+        checks.append(WizardSanityCheckItem(name="motion_path", status="blocker", message=msg))
+        blockers.append(msg)
+    else:
+        try:
+            motion_path = _resolve_input_path(motion_path_text, label="Motion file")
+            checks.append(
+                WizardSanityCheckItem(
+                    name="motion_path",
+                    status="ok",
+                    message=f"Motion file resolved: {motion_path}",
+                )
+            )
+            derived["motion_path"] = str(motion_path)
+        except (FileNotFoundError, ValueError) as exc:
+            msg = str(exc)
+            checks.append(
+                WizardSanityCheckItem(name="motion_path", status="blocker", message=msg)
+            )
+            blockers.append(msg)
+
+    output_root = _resolve_output_root(payload.control_step.output_dir)
+    try:
+        output_root.mkdir(parents=True, exist_ok=True)
+        checks.append(
+            WizardSanityCheckItem(
+                name="output_dir",
+                status="ok",
+                message=f"Output directory ready: {output_root}",
+            )
+        )
+        derived["output_root"] = str(output_root)
+    except OSError as exc:
+        msg = f"Output directory not writable: {output_root} ({exc})"
+        checks.append(WizardSanityCheckItem(name="output_dir", status="blocker", message=msg))
+        blockers.append(msg)
+
+    f_max = float(payload.control_step.f_max)
+    dt_recommended = (1.0 / (20.0 * f_max)) if f_max > 0.0 else None
+    dt_used = (
+        float(payload.control_step.dt)
+        if payload.control_step.dt is not None
+        else (float(dt_recommended) if dt_recommended is not None else None)
+    )
+    derived["dt_recommended_s"] = dt_recommended
+    derived["dt_used_s"] = dt_used
+    if dt_used is None:
+        msg = "Unable to derive time step from dt/f_max."
+        checks.append(WizardSanityCheckItem(name="time_step", status="blocker", message=msg))
+        blockers.append(msg)
+    elif dt_recommended is not None and dt_used > (1.25 * dt_recommended):
+        msg = (
+            f"dt={dt_used:.6g}s is coarse relative to recommended "
+            f"{dt_recommended:.6g}s (1/(20*f_max))."
+        )
+        checks.append(WizardSanityCheckItem(name="time_step", status="warning", message=msg))
+        warnings.append(msg)
+    else:
+        checks.append(
+            WizardSanityCheckItem(
+                name="time_step",
+                status="ok",
+                message=f"dt={dt_used:.6g}s (recommended≈{(dt_recommended or dt_used):.6g}s).",
+            )
+        )
+
+    requested_backend = payload.analysis_step.solver_backend
+    requested_executable = _effective_opensees_executable(payload.control_step.opensees_executable)
+    derived["opensees_requested"] = requested_executable
+    if requested_backend in {"opensees", "auto"}:
+        probe = probe_opensees_executable(requested_executable)
+        derived["opensees_resolved"] = (
+            str(probe.resolved) if probe.resolved is not None else None
+        )
+        derived["opensees_available"] = bool(probe.available)
+        if probe.available:
+            checks.append(
+                WizardSanityCheckItem(
+                    name="backend_probe",
+                    status="ok",
+                    message=f"OpenSees available: {probe.resolved}",
+                )
+            )
+        else:
+            msg = f"OpenSees executable not available ({requested_executable})."
+            if requested_backend == "opensees":
+                checks.append(
+                    WizardSanityCheckItem(name="backend_probe", status="blocker", message=msg)
+                )
+                blockers.append(msg)
+            else:
+                checks.append(
+                    WizardSanityCheckItem(name="backend_probe", status="warning", message=msg)
+                )
+                warnings.append(f"{msg} Auto backend may fall back to mock.")
+
+    layer_materials = [layer.material.value for layer in payload.profile_step.layers]
+    if requested_backend == "opensees":
+        unsupported = sorted({m for m in layer_materials if m in {"mkz", "gqh"}})
+        if unsupported:
+            msg = (
+                "OpenSees backend currently supports pm4sand/pm4silt/elastic in v1; "
+                f"found unsupported materials: {', '.join(unsupported)}."
+            )
+            checks.append(
+                WizardSanityCheckItem(
+                    name="backend_material_compatibility",
+                    status="blocker",
+                    message=msg,
+                )
+            )
+            blockers.append(msg)
+        else:
+            checks.append(
+                WizardSanityCheckItem(
+                    name="backend_material_compatibility",
+                    status="ok",
+                    message="Layer materials are compatible with OpenSees v1 backend.",
+                )
+            )
+    else:
+        checks.append(
+            WizardSanityCheckItem(
+                name="backend_material_compatibility",
+                status="ok",
+                message=f"Backend '{requested_backend}' does not require PM4-only material gate.",
+            )
+        )
+
+    if cfg is not None:
+        derived["config_backend"] = cfg.analysis.solver_backend
+    return WizardSanityResponse(
+        ok=len(blockers) == 0,
+        blockers=blockers,
+        warnings=warnings,
+        checks=checks,
+        derived=derived,
+    )
+
+
 def _apply_runtime_backend(
     requested: RunBackendMode,
     *,
@@ -1290,11 +1585,16 @@ def _apply_runtime_backend(
         return cast(ResolvedBackend, raw)
 
     if requested == "config":
+        if config_backend == "auto":
+            resolved = resolve_opensees_executable(executable)
+            if resolved is None:
+                return "mock", "mock (config:auto fallback: OpenSees missing)"
+            return "opensees", f"opensees ({resolved})"
         normalized = normalize(config_backend)
         return normalized, normalized
 
     if requested == "auto":
-        if config_backend == "opensees":
+        if config_backend in {"auto", "opensees"}:
             resolved = resolve_opensees_executable(executable)
             if resolved is None:
                 return "mock", "mock (auto-fallback: OpenSees missing)"
@@ -1400,6 +1700,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/wizard/sanity-check", response_model=WizardSanityResponse)
+    def wizard_sanity_check(payload: WizardConfigRequest) -> WizardSanityResponse:
+        return _wizard_sanity_report(payload)
 
     @app.post("/api/motion/import/peer-at2", response_model=MotionImportResponse)
     def motion_import_peer_at2(payload: MotionImportRequest) -> MotionImportResponse:
@@ -1787,6 +2091,29 @@ def create_app() -> FastAPI:
             run_dir=run_dir,
             sqlite_path=sqlite_path,
             max_points=max_points,
+        )
+
+    @app.get(
+        "/api/runs/{run_id}/results/profile-summary",
+        response_model=ResultProfileSummaryResponse,
+    )
+    def run_results_profile_summary(
+        run_id: str,
+        output_root: str = Query(default=""),
+    ) -> ResultProfileSummaryResponse:
+        run_dir = _resolve_run_dir(run_id, output_root)
+        sqlite_path = run_dir / "results.sqlite"
+        layer_rows = _read_profile_layer_summary(sqlite_path)
+        metrics = _read_metrics(sqlite_path)
+        total_thickness_m = float(sum(max(0.0, layer.thickness_m) for layer in layer_rows))
+        return ResultProfileSummaryResponse(
+            run_id=run_id,
+            layer_count=len(layer_rows),
+            total_thickness_m=total_thickness_m,
+            ru_max=metrics.get("ru_max"),
+            delta_u_max=metrics.get("delta_u_max"),
+            sigma_v_eff_min=metrics.get("sigma_v_eff_min"),
+            layers=layer_rows,
         )
 
     @app.get("/api/runs/{run_id}/surface-acc.csv")

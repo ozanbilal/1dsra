@@ -368,6 +368,14 @@ button:hover {
   min-width: 1260px;
 }
 
+.profile-summary-wrap {
+  max-height: 320px;
+}
+
+.profile-summary-table {
+  min-width: 1080px;
+}
+
 .layer-table th,
 .layer-table td {
   border-bottom: 1px solid rgba(45, 57, 68, 0.15);

@@ -109,6 +109,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - missing `eql_summary` SQLite table now falls back gracefully without breaking `/api/runs`
 - Web run-detail fallback:
   - frontend now retries run-detail/signals/hysteresis requests with the selected run's own output-root parent when the current root misses the run id (reduces `Run not found` UX errors across mixed output roots)
+- Wizard/run readiness tooling:
+  - new endpoint `POST /api/wizard/sanity-check` (config validation, motion path resolution, dt/f_max consistency, backend probe, material/backend compatibility)
+  - Step-5 UI now includes `Run Sanity Check` with blocker/warning breakdown cards
+- Profile results enrichment:
+  - new endpoint `GET /api/runs/{run_id}/results/profile-summary`
+  - Profile tab now renders layer-wise summary table (`z_top`, `z_bottom`, `n_sub`, `gamma_max`, material/VS/weight) plus global effective-stress KPIs
+- Runtime backend normalization:
+  - fixed `backend=config|auto` handling when config backend is `auto` (resolves to OpenSees when available, otherwise deterministic mock fallback)
 
 ## [0.1.0] - 2026-03-01
 

@@ -641,6 +641,7 @@ function App() {
   const [runSignal, setRunSignal] = useState(null);
   const [runSummary, setRunSummary] = useState(null);
   const [runHysteresis, setRunHysteresis] = useState(null);
+  const [runProfileSummary, setRunProfileSummary] = useState(null);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState("");
   const [activeResultTab, setActiveResultTab] = useState("Time Histories");
   const [runsPanelOpen, setRunsPanelOpen] = useState(false);
@@ -655,6 +656,8 @@ function App() {
   const [motionPreview, setMotionPreview] = useState(null);
   const [processedMotionPath, setProcessedMotionPath] = useState("");
   const [processedMetricsPath, setProcessedMetricsPath] = useState("");
+  const [sanityReport, setSanityReport] = useState(null);
+  const [sanityLoading, setSanityLoading] = useState(false);
   const layerImportRef = useRef(null);
   const motionCsvUploadRef = useRef(null);
   const motionAt2UploadRef = useRef(null);
@@ -1077,6 +1080,7 @@ function App() {
         setRunSignal(null);
         setRunSummary(null);
         setRunHysteresis(null);
+        setRunProfileSummary(null);
         return payload;
       }
       const selectedExists = payload.some((run) => run.run_id === selectedRunId);
@@ -1108,12 +1112,13 @@ function App() {
     if (!runId) return;
     const fetchWithRoot = async (rootCandidate) => {
       const query = makeRunQuery(rootCandidate);
-      const [signals, summary, hysteresis] = await Promise.all([
+      const [signals, summary, hysteresis, profileSummary] = await Promise.all([
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/summary${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/hysteresis${query}`),
+        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/profile-summary${query}`),
       ]);
-      return { signals, summary, hysteresis, rootCandidate };
+      return { signals, summary, hysteresis, profileSummary, rootCandidate };
     };
 
     try {
@@ -1121,6 +1126,7 @@ function App() {
       setRunSignal(first.signals);
       setRunSummary(first.summary);
       setRunHysteresis(first.hysteresis);
+      setRunProfileSummary(first.profileSummary);
       const firstLayer = first.hysteresis?.layers?.[0];
       setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
     } catch (err) {
@@ -1131,6 +1137,7 @@ function App() {
           setRunSignal(second.signals);
           setRunSummary(second.summary);
           setRunHysteresis(second.hysteresis);
+          setRunProfileSummary(second.profileSummary);
           const firstLayer = second.hysteresis?.layers?.[0];
           setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
           return;
@@ -1141,6 +1148,7 @@ function App() {
       setRunSignal(null);
       setRunSummary(null);
       setRunHysteresis(null);
+      setRunProfileSummary(null);
       setStatusKind("err");
       setStatus(`Run detail failed: ${String(err)}`);
     }
@@ -1164,6 +1172,39 @@ function App() {
     } catch (err) {
       setStatusKind("err");
       setStatus(`Config generation failed: ${String(err)}`);
+    }
+  }
+
+  async function runSanityCheck() {
+    if (!wizard) return;
+    setSanityLoading(true);
+    setStatusKind("info");
+    setStatus("Running wizard sanity checks...");
+    try {
+      const payload = await requestJSON("/api/wizard/sanity-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(wizard),
+      });
+      setSanityReport(payload);
+      if (payload.ok) {
+        const warnCount = Array.isArray(payload.warnings) ? payload.warnings.length : 0;
+        setStatusKind(warnCount > 0 ? "warn" : "ok");
+        setStatus(
+          warnCount > 0
+            ? `Sanity check passed with ${warnCount} warning(s).`
+            : "Sanity check passed."
+        );
+      } else {
+        const blockerCount = Array.isArray(payload.blockers) ? payload.blockers.length : 0;
+        setStatusKind("err");
+        setStatus(`Sanity check found ${blockerCount} blocker(s).`);
+      }
+    } catch (err) {
+      setStatusKind("err");
+      setStatus(`Sanity check failed: ${String(err)}`);
+    } finally {
+      setSanityLoading(false);
     }
   }
 
@@ -2559,10 +2600,43 @@ function App() {
                   title=${canRunNow
                     ? "Run analysis with generated config and motion"
                     : runBlockingIssues.join(" | ")}
-                >
+                  >
                   Run Now
                 </button>
+                <button
+                  className="btn-min"
+                  onClick=${runSanityCheck}
+                  disabled=${sanityLoading}
+                  title="Check motion path, backend readiness, dt/f_max, and config validity."
+                >
+                  ${sanityLoading ? "Checking..." : "Run Sanity Check"}
+                </button>
               </div>
+
+              ${sanityReport
+                ? html`
+                    <div className=${`status status-${sanityReport.ok ? "ok" : "err"}`}>
+                      <strong>Sanity Summary:</strong> ${sanityReport.ok ? "Ready" : "Blocked"}
+                      <br />
+                      blockers: ${(sanityReport.blockers || []).length} | warnings:
+                      ${(sanityReport.warnings || []).length}
+                    </div>
+                    <details className="json-details">
+                      <summary>Sanity checks</summary>
+                      <div className="metric-grid">
+                        ${(sanityReport.checks || []).map(
+                          (item) => html`
+                            <div className="metric-card" key=${`sanity-${item.name}`}>
+                              <span>${item.name}</span>
+                              <b>${String(item.status || "unknown").toUpperCase()}</b>
+                              <div className="muted">${item.message}</div>
+                            </div>
+                          `
+                        )}
+                      </div>
+                    </details>
+                  `
+                : null}
             </div>
           `}
 
@@ -2968,6 +3042,68 @@ function App() {
                               </div>
                             `
                           )}
+                        </div>
+                      `
+                    : null}
+                  ${runProfileSummary && Array.isArray(runProfileSummary.layers)
+                    ? html`
+                        <div className="metric-grid">
+                          <div className="metric-card">
+                            <span>Layer Count</span>
+                            <b>${runProfileSummary.layer_count ?? runProfileSummary.layers.length}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>Total Thickness (m)</span>
+                            <b>${fmt(runProfileSummary.total_thickness_m, 3)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>ru_max</span>
+                            <b>${fmt(runProfileSummary.ru_max, 4)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>delta_u_max</span>
+                            <b>${fmt(runProfileSummary.delta_u_max, 4)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>sigma_v_eff_min</span>
+                            <b>${fmt(runProfileSummary.sigma_v_eff_min, 4)}</b>
+                          </div>
+                        </div>
+                        <div className="layer-table-wrap profile-summary-wrap">
+                          <table className="layer-table profile-summary-table">
+                            <thead>
+                              <tr>
+                                <th>Idx</th>
+                                <th>Name</th>
+                                <th>Material</th>
+                                <th>z_top (m)</th>
+                                <th>z_bottom (m)</th>
+                                <th>Thickness (m)</th>
+                                <th>Vs (m/s)</th>
+                                <th>Unit W. (kN/m^3)</th>
+                                <th>n_sub</th>
+                                <th>gamma_max</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${runProfileSummary.layers.map(
+                                (layer) => html`
+                                  <tr key=${`profile-layer-${layer.idx}-${layer.name}`}>
+                                    <td>${layer.idx}</td>
+                                    <td>${layer.name}</td>
+                                    <td>${layer.material}</td>
+                                    <td>${fmt(layer.z_top_m, 3)}</td>
+                                    <td>${fmt(layer.z_bottom_m, 3)}</td>
+                                    <td>${fmt(layer.thickness_m, 3)}</td>
+                                    <td>${fmt(layer.vs_m_s, 2)}</td>
+                                    <td>${fmt(layer.unit_weight_kN_m3 ?? layer.unit_weight_kn_m3, 2)}</td>
+                                    <td>${layer.n_sub}</td>
+                                    <td>${fmt(layer.gamma_max, 6)}</td>
+                                  </tr>
+                                `
+                              )}
+                            </tbody>
+                          </table>
                         </div>
                       `
                     : null}

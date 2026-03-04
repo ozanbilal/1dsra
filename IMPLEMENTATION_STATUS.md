@@ -213,6 +213,10 @@ Missing:
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`) for pre-detail triage
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
+- New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
+- Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
+- New profile summary API (`GET /api/runs/{run_id}/results/profile-summary`) and Profile tab layer table (depth bounds, sublayer count, `gamma_max` when available)
+- Runtime backend resolver now handles `backend=config|auto` with `config.solver_backend=auto` deterministically (OpenSees if available, else mock fallback)
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)

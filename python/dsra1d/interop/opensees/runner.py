@@ -4,6 +4,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +63,77 @@ def resolve_opensees_executable(executable: str) -> Path | None:
     return Path(resolved) if resolved is not None else None
 
 
+def _decode_timeout_stream(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="ignore")
+    return value
+
+
+def _first_non_empty_line(*values: str) -> str:
+    for value in values:
+        if not value:
+            continue
+        for line in value.splitlines():
+            text = line.strip()
+            if text:
+                return text
+    return "unknown"
+
+
+def _run_probe_command(
+    cmd: list[str],
+    *,
+    timeout_s: int,
+) -> tuple[bool, str, str, str]:
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            timeout=timeout_s,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        version_line = _first_non_empty_line(stdout, stderr)
+        return proc.returncode == 0, version_line, stdout, stderr
+    except subprocess.TimeoutExpired as exc:
+        stdout = _decode_timeout_stream(exc.stdout)
+        stderr = _decode_timeout_stream(exc.stderr)
+        version_line = _first_non_empty_line(stdout, stderr)
+        timeout_msg = (
+            f"Command timed out after {timeout_s} seconds: {' '.join(str(x) for x in cmd)}"
+        )
+        if stderr:
+            stderr = f"{stderr}\n{timeout_msg}".strip()
+        else:
+            stderr = timeout_msg
+        # If a recognizable banner/version line appears before timeout, treat as available.
+        banner = f"{stdout}\n{stderr}".lower()
+        available = "opensees" in banner and version_line != "unknown"
+        return available, version_line, stdout, stderr
+
+
+def _probe_with_tcl_script(
+    resolved: Path,
+    *,
+    extra_args: list[str] | None,
+    timeout_s: int,
+) -> tuple[bool, str, str, str, list[str]]:
+    with tempfile.TemporaryDirectory(prefix="dsra1d_probe_") as tmpdir:
+        script = Path(tmpdir) / "probe_version.tcl"
+        script.write_text("puts [version]\nexit\n", encoding="utf-8")
+        cmd = [str(resolved)]
+        if extra_args:
+            cmd.extend(extra_args)
+        cmd.append(str(script))
+        available, version_line, stdout, stderr = _run_probe_command(cmd, timeout_s=timeout_s)
+        return available, version_line, stdout, stderr, cmd
+
+
 def probe_opensees_executable(
     executable: str,
     extra_args: list[str] | None = None,
@@ -79,44 +151,60 @@ def probe_opensees_executable(
             binary_sha256="",
         )
 
-    cmd = [str(resolved)]
+    version_cmd = [str(resolved)]
     if extra_args:
-        cmd.extend(extra_args)
-    cmd.append("-version")
+        version_cmd.extend(extra_args)
+    version_cmd.append("-version")
     try:
-        proc = subprocess.run(
-            cmd,
-            check=False,
-            timeout=timeout_s,
-            capture_output=True,
-            text=True,
+        available, version_line, stdout, stderr = _run_probe_command(
+            version_cmd,
+            timeout_s=timeout_s,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+    except FileNotFoundError as exc:
         return OpenSeesProbeResult(
             available=False,
             resolved=resolved,
             version="unknown",
             stdout="",
             stderr=str(exc),
-            command=cmd,
+            command=version_cmd,
             binary_sha256="",
         )
 
-    stdout = proc.stdout.strip()
-    stderr = proc.stderr.strip()
-    version_line = "unknown"
-    if stdout:
-        version_line = stdout.splitlines()[0].strip()
-    elif stderr:
-        version_line = stderr.splitlines()[0].strip()
+    command = version_cmd
+    if not available:
+        try:
+            fb_available, fb_version, fb_stdout, fb_stderr, fb_cmd = _probe_with_tcl_script(
+                resolved,
+                extra_args=extra_args,
+                timeout_s=max(timeout_s, 8),
+            )
+        except FileNotFoundError as exc:
+            fb_available = False
+            fb_version = "unknown"
+            fb_stdout = ""
+            fb_stderr = str(exc)
+            fb_cmd = version_cmd
+        if fb_available:
+            available = True
+            version_line = fb_version
+            stdout = fb_stdout
+            stderr = fb_stderr
+            command = fb_cmd
+        elif version_line == "unknown":
+            version_line = fb_version if fb_version != "unknown" else version_line
+            if fb_stdout and not stdout:
+                stdout = fb_stdout
+            if fb_stderr:
+                stderr = f"{stderr}\n{fb_stderr}".strip() if stderr else fb_stderr
 
     return OpenSeesProbeResult(
-        available=(proc.returncode == 0),
+        available=bool(available),
         resolved=resolved,
         version=version_line,
-        stdout=proc.stdout,
-        stderr=proc.stderr,
-        command=cmd,
+        stdout=stdout,
+        stderr=stderr,
+        command=command,
         binary_sha256=_sha256_file(resolved),
     )
 

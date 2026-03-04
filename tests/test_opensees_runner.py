@@ -1,6 +1,8 @@
+import subprocess
 import sys
 from pathlib import Path
 
+import dsra1d.interop.opensees.runner as runner_mod
 from dsra1d.interop.opensees.runner import (
     OpenSeesProbeResult,
     probe_opensees_executable,
@@ -56,6 +58,24 @@ def test_probe_opensees_executable_with_extra_args(tmp_path: Path) -> None:
     assert probe.command[-2] == str(shim)
     assert probe.command[-1] == "-version"
     assert len(probe.binary_sha256) == 64
+
+
+def test_probe_opensees_executable_timeout_falls_back_to_tcl(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        calls.append([str(x) for x in cmd])
+        if cmd[-1] == "-version":
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="OpenSees 3.8.0\n", stderr="")
+
+    monkeypatch.setattr(runner_mod.subprocess, "run", _fake_run)
+    probe = probe_opensees_executable(sys.executable, timeout_s=1)
+    assert probe.available is True
+    assert probe.version.startswith("OpenSees")
+    assert len(calls) >= 2
+    assert calls[0][-1] == "-version"
+    assert calls[1][-1].endswith(".tcl")
 
 
 def test_validate_backend_probe_requirements_ok() -> None:

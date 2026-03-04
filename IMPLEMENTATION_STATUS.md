@@ -240,7 +240,7 @@ Missing:
 - Web API now includes backend readiness probe endpoint (`/api/backend/opensees/probe`) used by wizard run diagnostics
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
 - Web API now includes parity/science visibility endpoints (`/api/parity/latest`, `/api/science/confidence`)
-- Web API now includes release signoff visibility endpoint (`/api/release/signoff/latest`) with normalized go/no-go fields (`release_ready`, coverage/runs, fingerprint match, blocker categories)
+- Web API now includes release signoff visibility endpoint (`/api/release/signoff/latest`) with normalized go/no-go fields (`release_ready`, coverage/runs, fingerprint match, blocker categories, severity score/label)
 - React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
 - Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors
 - Web API now exposes layer-wise hysteresis/mobilized payload (`/api/runs/{run_id}/results/hysteresis`) using stored config snapshots with sqlite fallback

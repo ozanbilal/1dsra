@@ -311,6 +311,8 @@ class ReleaseSignoffLatestResponse(BaseModel):
     observed_backend_sha256: str = ""
     policy_backend_sha256: str = ""
     fingerprint_match: bool = False
+    severity_score: int = 0
+    severity_label: str = "unknown"
     blocker_categories: list[str] = Field(default_factory=list)
     condition_failures: list[str] = Field(default_factory=list)
     conditions: dict[str, bool] = Field(default_factory=dict)
@@ -2340,6 +2342,8 @@ def create_app() -> FastAPI:
         if backend_missing_cases and "backend_missing_cases" not in blocker_categories:
             blocker_categories.append("backend_missing_cases")
 
+        unique_blocker_categories = list(dict.fromkeys(blocker_categories))
+
         release_ready = (
             strict_signoff
             and signoff_passed
@@ -2353,6 +2357,38 @@ def create_app() -> FastAPI:
             and benchmark_backend_fingerprint_ok
             and fingerprint_match
         )
+
+        category_weights = {
+            "suite_mismatch": 25,
+            "campaign_policy_failed": 22,
+            "verify_report_missing": 18,
+            "verify_policy_failed": 18,
+            "insufficient_runs": 20,
+            "coverage_below_threshold": 20,
+            "skipped_cases_present": 14,
+            "backend_fingerprint_invalid": 20,
+            "fingerprint_mismatch": 30,
+            "strict_signoff_disabled": 30,
+            "signoff_not_passed": 24,
+            "backend_cases_skipped": 18,
+            "backend_missing_cases": 18,
+        }
+        severity_score = sum(
+            int(category_weights.get(category, 10)) for category in unique_blocker_categories
+        )
+        if benchmark_execution_coverage < 1.0:
+            severity_score += int((1.0 - benchmark_execution_coverage) * 20.0)
+        if not release_ready:
+            severity_score = max(severity_score, 20)
+        severity_score = max(0, min(100, severity_score))
+        if release_ready:
+            severity_label = "ok"
+        elif severity_score >= 70:
+            severity_label = "critical"
+        elif severity_score >= 40:
+            severity_label = "high"
+        else:
+            severity_label = "warning"
 
         return ReleaseSignoffLatestResponse(
             found=True,
@@ -2376,7 +2412,9 @@ def create_app() -> FastAPI:
             observed_backend_sha256=observed_backend_sha256,
             policy_backend_sha256=policy_backend_sha256,
             fingerprint_match=fingerprint_match,
-            blocker_categories=blocker_categories,
+            severity_score=severity_score,
+            severity_label=severity_label,
+            blocker_categories=unique_blocker_categories,
             condition_failures=failures,
             conditions=conditions,
         )

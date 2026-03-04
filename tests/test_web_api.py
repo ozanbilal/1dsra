@@ -840,6 +840,8 @@ def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
     assert payload["benchmark_total_cases"] == 0
     assert payload["benchmark_execution_coverage"] == 0.0
     assert payload["fingerprint_match"] is False
+    assert payload["severity_score"] >= 20
+    assert payload["severity_label"] in {"warning", "high", "critical"}
     assert "campaign_policy_passed" in payload["condition_failures"]
     assert "campaign_policy_failed" in payload["blocker_categories"]
     assert "fingerprint_mismatch" in payload["blocker_categories"]
@@ -859,6 +861,8 @@ def test_web_release_signoff_latest_endpoint_handles_missing_summary(tmp_path) -
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["found"] is False
+    assert payload["severity_score"] == 0
+    assert payload["severity_label"] == "unknown"
 
 
 def test_web_science_confidence_endpoint_returns_rows() -> None:

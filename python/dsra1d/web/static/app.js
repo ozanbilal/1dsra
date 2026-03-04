@@ -478,6 +478,14 @@ function buildReleaseHealth({
       value: releaseReady ? "true" : "false",
     });
     checks.push({
+      label: "signoff_severity",
+      ok: releaseReady || Number(releaseSignoff.severity_score || 0) < 40,
+      value: `${releaseSignoff.severity_label || "unknown"} (${fmt(
+        Number(releaseSignoff.severity_score || 0),
+        0
+      )})`,
+    });
+    checks.push({
       label: "signoff_coverage",
       ok: coverage >= 1.0,
       value: `${releaseSignoff.benchmark_ran || 0}/${releaseSignoff.benchmark_total_cases || 0} cov=${fmt(
@@ -3486,7 +3494,11 @@ function App() {
                         signoff: ${mini(releaseSignoff.summary_path || "")} |
                         generated=${releaseSignoff.generated_utc || "n/a"} |
                         strict=${releaseSignoff.strict_signoff ? "yes" : "no"} |
-                        passed=${releaseSignoff.signoff_passed ? "yes" : "no"}
+                        passed=${releaseSignoff.signoff_passed ? "yes" : "no"} |
+                        severity=${releaseSignoff.severity_label || "unknown"} (${fmt(
+                          Number(releaseSignoff.severity_score || 0),
+                          0
+                        )})
                       </div>
                     `
                   : null}

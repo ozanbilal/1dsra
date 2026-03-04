@@ -387,7 +387,12 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append("        set t 0.0")
     lines.append("        set pwp 0.0")
     lines.append("        scan $v \"%f %f\" t pwp")
-    lines.append("        set ru [expr {$pwp / $sigmaVRef}]")
+    lines.append(
+        "        # OpenSees geomechanics sign convention may report compression as negative."
+    )
+    lines.append("        set ru [expr {-$pwp / $sigmaVRef}]")
+    lines.append("        if {$ru < 0.0} { set ru 0.0 }")
+    lines.append("        if {$ru > 1.5} { set ru 1.5 }")
     lines.append("        puts $fout \"$t $ru\"")
     lines.append("    }")
     lines.append("    close $fin")

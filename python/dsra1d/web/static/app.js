@@ -404,6 +404,15 @@ function mini(text) {
   return `${asText.slice(0, 52)}...`;
 }
 
+function parentPath(pathValue) {
+  const raw = String(pathValue || "").trim();
+  if (!raw) return "";
+  const normalized = raw.replace(/[\\/]+$/, "");
+  const idx = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  if (idx <= 0) return "";
+  return normalized.slice(0, idx);
+}
+
 async function requestJSON(url, options = undefined) {
   const resp = await fetch(url, options);
   if (!resp.ok) {
@@ -665,7 +674,11 @@ function App() {
     return root ? `?output_root=${encodeURIComponent(root)}` : "";
   }
 
-  const runQuery = makeRunQuery();
+  function runRootForId(runId, fallbackRoot = outputRoot) {
+    const row = runs.find((run) => run.run_id === runId);
+    const fromRow = parentPath(row?.output_dir);
+    return fromRow || fallbackRoot;
+  }
 
   function updateWizard(stepKey, patch) {
     setWizard((prev) => {
@@ -1093,19 +1106,38 @@ function App() {
 
   async function loadRunDetail(runId, rootOverride = outputRoot) {
     if (!runId) return;
-    const query = makeRunQuery(rootOverride);
-    try {
+    const fetchWithRoot = async (rootCandidate) => {
+      const query = makeRunQuery(rootCandidate);
       const [signals, summary, hysteresis] = await Promise.all([
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/summary${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/hysteresis${query}`),
       ]);
-      setRunSignal(signals);
-      setRunSummary(summary);
-      setRunHysteresis(hysteresis);
-      const firstLayer = hysteresis?.layers?.[0];
+      return { signals, summary, hysteresis, rootCandidate };
+    };
+
+    try {
+      const first = await fetchWithRoot(rootOverride);
+      setRunSignal(first.signals);
+      setRunSummary(first.summary);
+      setRunHysteresis(first.hysteresis);
+      const firstLayer = first.hysteresis?.layers?.[0];
       setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
     } catch (err) {
+      const fallbackRoot = runRootForId(runId, rootOverride);
+      if (fallbackRoot && fallbackRoot !== rootOverride) {
+        try {
+          const second = await fetchWithRoot(fallbackRoot);
+          setRunSignal(second.signals);
+          setRunSummary(second.summary);
+          setRunHysteresis(second.hysteresis);
+          const firstLayer = second.hysteresis?.layers?.[0];
+          setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
+          return;
+        } catch {
+          // keep original error below
+        }
+      }
       setRunSignal(null);
       setRunSummary(null);
       setRunHysteresis(null);
@@ -1447,6 +1479,10 @@ function App() {
     () => runs.find((r) => r.run_id === selectedRunId) || null,
     [runs, selectedRunId]
   );
+  const selectedRunRoot = useMemo(
+    () => parentPath(selectedRun?.output_dir) || outputRoot,
+    [selectedRun, outputRoot]
+  );
 
   const metrics = useMemo(() => {
     const pga = metricFromSignal(runSignal, "surface_acc_m_s2", "max_abs") ?? selectedRun?.pga;
@@ -1502,7 +1538,7 @@ function App() {
       };
     }
     const id = encodeURIComponent(selectedRunId);
-    const suffix = runQuery || "";
+    const suffix = makeRunQuery(selectedRunRoot) || "";
     const withQuery = (path) => (suffix ? `${path}${suffix}` : path);
     return {
       surface: withQuery(`/api/runs/${id}/surface-acc.csv`),
@@ -1511,7 +1547,7 @@ function App() {
       sqlite: withQuery(`/api/runs/${id}/download/results.sqlite`),
       meta: withQuery(`/api/runs/${id}/download/run_meta.json`),
     };
-  }, [selectedRunId, runQuery]);
+  }, [selectedRunId, selectedRunRoot]);
 
   const compareSeries = useMemo(() => {
     const loaded = compareRunIds

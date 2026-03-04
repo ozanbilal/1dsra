@@ -530,7 +530,8 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
     try:
         try:
             row = conn.execute(
-                "SELECT iterations, converged, max_change_last, max_change_max FROM eql_summary LIMIT 1"
+                "SELECT iterations, converged, max_change_last, max_change_max "
+                "FROM eql_summary LIMIT 1"
             ).fetchone()
         except sqlite3.Error:
             row = None

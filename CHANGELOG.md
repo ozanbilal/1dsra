@@ -107,6 +107,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `/api/runs` and `/api/runs/tree` now include convergence/solver health summary fields (`convergence_mode`, `convergence_severity`, `converged`, solver warning/error counters)
   - run cards and run-tree entries now show health severity chips for faster triage before opening run details
   - missing `eql_summary` SQLite table now falls back gracefully without breaking `/api/runs`
+- Web run-detail fallback:
+  - frontend now retries run-detail/signals/hysteresis requests with the selected run's own output-root parent when the current root misses the run id (reduces `Run not found` UX errors across mixed output roots)
 
 ## [0.1.0] - 2026-03-01
 

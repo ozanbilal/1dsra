@@ -9,6 +9,7 @@ from dsra1d.config import load_project_config
 from dsra1d.interop.opensees.runner import OpenSeesExecutionError, OpenSeesRunOutput
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis, run_batch
+from dsra1d.types import Motion
 
 
 def test_run_analysis_mock(tmp_path: Path) -> None:
@@ -162,6 +163,76 @@ def test_run_analysis_opensees_ok_with_warning_diagnostics(tmp_path, monkeypatch
     assert isinstance(diag, dict)
     assert int(diag.get("failed_converge_count", 0)) >= 1
     assert int(diag.get("analyze_failed_count", 0)) >= 1
+
+
+def test_run_analysis_opensees_uses_adaptive_timeout_budget(tmp_path, monkeypatch) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "opensees"
+    cfg.analysis.retries = 0
+    cfg.analysis.timeout_s = 180
+    cfg.opensees.executable = "OpenSees"
+    motion = Motion(
+        dt=0.01,
+        acc=np.zeros(20000, dtype=np.float64),
+        unit="m/s2",
+        source=Path("synthetic_long_motion.csv"),
+    )
+    seen_timeout: dict[str, int] = {}
+
+    def _fake_run_opensees(executable, tcl_file, cwd, timeout_s, extra_args=None):
+        _ = (executable, extra_args)
+        seen_timeout["value"] = int(timeout_s)
+        t = np.arange(motion.acc.size, dtype=np.float64) * float(motion.dt)
+        np.savetxt(Path(cwd) / "surface_acc.out", np.column_stack([t, motion.acc]))
+        np.savetxt(
+            Path(cwd) / "pwp_ru.out",
+            np.column_stack([t, np.zeros_like(t)]),
+        )
+        return OpenSeesRunOutput(
+            returncode=0,
+            stdout="OpenSees run complete",
+            stderr="",
+            command=["OpenSees", str(tcl_file)],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_opensees", _fake_run_opensees)
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-timeout-adaptive")
+    assert result.status == "ok"
+    assert seen_timeout["value"] > 180
+    run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
+    assert int(run_meta.get("timeout_s_configured", 0)) == 180
+    assert int(run_meta.get("timeout_s_effective", 0)) == seen_timeout["value"]
+
+
+def test_run_analysis_opensees_timeout_with_outputs_recovers(tmp_path, monkeypatch) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "opensees"
+    cfg.analysis.retries = 0
+    cfg.opensees.executable = "OpenSees"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    def _fake_run_opensees(executable, tcl_file, cwd, timeout_s, extra_args=None):
+        _ = (executable, timeout_s, extra_args)
+        t = np.arange(motion.acc.size, dtype=np.float64) * float(motion.dt)
+        np.savetxt(Path(cwd) / "surface_acc.out", np.column_stack([t, motion.acc]))
+        np.savetxt(
+            Path(cwd) / "pwp_ru.out",
+            np.column_stack([t, np.zeros_like(t)]),
+        )
+        raise OpenSeesExecutionError(
+            "OpenSees timed out after 180s for script model.tcl.",
+            command=["OpenSees", str(tcl_file)],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_opensees", _fake_run_opensees)
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-timeout-recovered")
+    assert result.status == "ok"
+    assert "output files were recovered" in result.message
+    run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
+    recovered = run_meta.get("opensees_timeout_recovered", {})
+    assert isinstance(recovered, dict)
+    assert recovered.get("recovered") is True
 
 
 def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:

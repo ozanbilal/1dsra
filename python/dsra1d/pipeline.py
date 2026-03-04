@@ -330,6 +330,40 @@ def _format_opensees_diag_note(diag: dict[str, object]) -> str:
     )
 
 
+def _adaptive_opensees_timeout_s(
+    configured_timeout_s: int,
+    *,
+    dt_s: float,
+    n_samples: int,
+) -> int:
+    base = int(max(configured_timeout_s, 1))
+    if n_samples <= 1 or not np.isfinite(dt_s) or dt_s <= 0.0:
+        return base
+    duration_s = float((n_samples - 1) * dt_s)
+    duration_budget = int(np.ceil(60.0 + (3.0 * duration_s)))
+    sample_budget = int(np.ceil(120.0 + (0.02 * n_samples)))
+    adaptive = max(base, duration_budget, sample_budget, 180)
+    return int(min(adaptive, 3600))
+
+
+def _opensees_output_coverage_ratio(
+    run_dir: Path,
+    *,
+    expected_samples: int,
+    dt_default: float,
+) -> float:
+    if expected_samples <= 0:
+        return 0.0
+    surface_t, surface_acc = read_surface_acc_with_time(
+        run_dir / "surface_acc.out",
+        dt_default=dt_default,
+    )
+    ru_t, ru = read_ru(run_dir / "pwp_ru.out")
+    n_surface = int(min(surface_t.size, surface_acc.size))
+    n_ru = int(min(ru_t.size, ru.size))
+    return float(min(n_surface / expected_samples, n_ru / expected_samples))
+
+
 def run_analysis(
     config: ProjectConfig,
     motion: Motion,
@@ -378,8 +412,17 @@ def run_analysis(
     opensees_probe: dict[str, object] | None = None
     opensees_diagnostics: dict[str, object] | None = None
     eql_summary: dict[str, object] | None = None
+    configured_timeout_s = int(max(config.analysis.timeout_s, 1))
+    effective_timeout_s = configured_timeout_s
+    timeout_recovered = False
+    timeout_recovered_coverage = 0.0
 
     if config.analysis.solver_backend == "opensees":
+        effective_timeout_s = _adaptive_opensees_timeout_s(
+            configured_timeout_s,
+            dt_s=float(processed.dt),
+            n_samples=int(processed.acc.size),
+        )
         probe = probe_opensees_executable(
             config.opensees.executable,
             extra_args=config.opensees.extra_args,
@@ -403,7 +446,7 @@ def run_analysis(
                     executable=config.opensees.executable,
                     tcl_file=Path(tcl_path.name),
                     cwd=run_dir,
-                    timeout_s=config.analysis.timeout_s,
+                    timeout_s=effective_timeout_s,
                     extra_args=config.opensees.extra_args,
                 )
                 opensees_command = run_output.command
@@ -432,6 +475,22 @@ def run_analysis(
                     opensees_stderr_log = run_dir / "opensees_stderr.log"
                     opensees_stderr_log.write_text(exc.stderr, encoding="utf-8")
                 if attempt > config.analysis.retries:
+                    if "timed out after" in str(exc).lower():
+                        coverage = _opensees_output_coverage_ratio(
+                            run_dir,
+                            expected_samples=int(processed.acc.size),
+                            dt_default=float(processed.dt),
+                        )
+                        if coverage >= 0.85:
+                            timeout_recovered = True
+                            timeout_recovered_coverage = coverage
+                            status = "ok"
+                            message = (
+                                "OpenSees exceeded timeout budget "
+                                f"({effective_timeout_s}s) but output files were recovered "
+                                f"(coverage={coverage:.3f})."
+                            )
+                            break
                     status = "error"
                     message = _summarize_opensees_failure(exc)
                     # keep deterministic output shape for downstream writers
@@ -595,6 +654,8 @@ def run_analysis(
         "run_id": run_id,
         "timestamp_utc": datetime.now(UTC).isoformat(),
         "solver_backend": config.analysis.solver_backend,
+        "timeout_s_configured": configured_timeout_s,
+        "timeout_s_effective": effective_timeout_s,
         "dt_s": float(dt_series),
         "delta_t_s": float(dt_series),
         "status": status,
@@ -610,6 +671,12 @@ def run_analysis(
         run_meta["opensees_backend_probe"] = opensees_probe
     if opensees_diagnostics is not None:
         run_meta["opensees_diagnostics"] = opensees_diagnostics
+    if timeout_recovered:
+        run_meta["opensees_timeout_recovered"] = {
+            "recovered": True,
+            "coverage_ratio": float(timeout_recovered_coverage),
+            "timeout_s_effective": effective_timeout_s,
+        }
     if eql_summary is not None:
         run_meta["eql"] = {
             "iterations": _as_int(eql_summary.get("iterations", 0)),

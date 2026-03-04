@@ -272,8 +272,12 @@ def run_opensees(
             command=cmd,
         ) from exc
     except subprocess.TimeoutExpired as exc:
+        stdout = _decode_timeout_stream(exc.stdout)
+        stderr = _decode_timeout_stream(exc.stderr)
         raise OpenSeesExecutionError(
             f"OpenSees timed out after {timeout_s}s for script {tcl_file.name}.",
+            stdout=stdout,
+            stderr=stderr,
             command=cmd,
         ) from exc
 

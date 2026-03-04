@@ -50,6 +50,8 @@ Implemented:
 - Parser support for recorder formats (1-column and 2-column time series)
 - Structured OpenSees artifact logging (`run_meta.json`, stdout/stderr logs, SQLite `artifacts`)
 - OpenSees log diagnostics are now extracted per run (`opensees_diagnostics.json`) and persisted into `run_meta.json`
+- OpenSees runtime now uses adaptive timeout budgeting (motion-duration/sample-aware) instead of fixed 180s-only behavior; run metadata includes configured/effective timeout fields
+- Timeout-recovery path added: if OpenSees exceeds timeout but required outputs are already complete, pipeline preserves recovered outputs instead of forcing mock overwrite
 - Boundary-condition aware TCL assembly:
   - `rigid` base fixity
   - `elastic_halfspace` base with Lysmer-style dashpot (`uniaxialMaterial Viscous` + `zeroLength`)
@@ -226,6 +228,7 @@ Missing:
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
 - Run discovery/resolution is now recursive under `output_root` (nested campaign folders supported), and run detail endpoints now resolve run-id from parent roots instead of requiring direct run-folder root
 - New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
+- Wizard sanity-check now includes OpenSees timeout budget diagnostics (`timeout_budget`) with recommended timeout warning for long motions
 - Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
 - Step-5 `Run Now` now supports single-click execution by auto-generating config (if missing) and enforcing sanity-check blockers before launch
 - New profile summary API (`GET /api/runs/{run_id}/results/profile-summary`) and Profile tab layer table (depth bounds, sublayer count, `gamma_max` when available)

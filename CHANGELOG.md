@@ -108,6 +108,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - run-level log diagnostics are now extracted (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`)
   - diagnostics are persisted in `run_meta.json` and `opensees_diagnostics.json`
   - run summary/convergence views now show OpenSees log diagnostics for non-EQL runs
+- OpenSees timeout resilience:
+  - adaptive timeout budget is now derived from motion duration/sample count (stored as configured/effective timeout in `run_meta.json`)
+  - timeout recovery path keeps OpenSees outputs when recorder files are sufficiently complete, instead of unconditional mock overwrite
+  - wizard sanity-check now surfaces `timeout_budget` warnings for low timeout settings on long motions
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

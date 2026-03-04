@@ -421,6 +421,72 @@ def test_web_wizard_sanity_check_endpoint(tmp_path) -> None:
     assert "derived" in payload
 
 
+def test_web_wizard_sanity_check_warns_for_low_timeout_budget(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    motion_path = tmp_path / "long_motion.csv"
+    t = np.arange(0.0, 200.0, 0.01, dtype=np.float64)
+    acc = 0.5 * np.sin(2.0 * np.pi * 1.0 * t)
+    np.savetxt(motion_path, np.column_stack([t, acc]), delimiter=",")
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/wizard/sanity-check",
+        json={
+            "analysis_step": {
+                "project_name": "wizard-timeout-case",
+                "boundary_condition": "elastic_halfspace",
+                "solver_backend": "opensees",
+                "pm4_validation_profile": "basic",
+            },
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "L1",
+                        "thickness_m": 5.0,
+                        "unit_weight_kN_m3": 18.0,
+                        "vs_m_s": 180.0,
+                        "material": "pm4sand",
+                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material_optional_args": [],
+                    }
+                ]
+            },
+            "motion_step": {
+                "motion_path": str(motion_path),
+                "units": "m/s2",
+                "baseline": "remove_mean",
+                "scale_mode": "none",
+                "dt_override": 0.01,
+            },
+            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
+            "control_step": {
+                "f_max": 25.0,
+                "timeout_s": 120,
+                "retries": 1,
+                "write_hdf5": True,
+                "write_sqlite": True,
+                "parquet_export": False,
+                "opensees_executable": "OpenSees",
+                "output_dir": str(tmp_path / "out"),
+                "config_output_dir": str(tmp_path),
+                "config_file_name": "wizard_timeout.yml",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    warnings = payload.get("warnings", [])
+    assert any("timeout_s=" in str(w) and "Recommended >=" in str(w) for w in warnings)
+    checks = payload.get("checks", [])
+    timeout_checks = [c for c in checks if c.get("name") == "timeout_budget"]
+    assert timeout_checks
+    assert timeout_checks[0].get("status") in {"warning", "ok"}
+    derived = payload.get("derived", {})
+    assert float(derived.get("timeout_recommended_s", 0.0)) >= 120.0
+
+
 def test_web_config_from_wizard_invalid_opensees_material_returns_400(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

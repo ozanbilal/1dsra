@@ -1814,6 +1814,22 @@ def _estimate_dt(time_axis: np.ndarray) -> float:
     return 1.0
 
 
+def _recommended_opensees_timeout_s(
+    configured_timeout_s: int,
+    *,
+    dt_s: float,
+    n_samples: int,
+) -> int:
+    base = int(max(configured_timeout_s, 1))
+    if n_samples <= 1 or not np.isfinite(dt_s) or dt_s <= 0.0:
+        return base
+    duration_s = float((n_samples - 1) * dt_s)
+    duration_budget = int(np.ceil(60.0 + (3.0 * duration_s)))
+    sample_budget = int(np.ceil(120.0 + (0.02 * n_samples)))
+    adaptive = max(base, duration_budget, sample_budget, 180)
+    return int(min(adaptive, 3600))
+
+
 def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
     checks: list[WizardSanityCheckItem] = []
     blockers: list[str] = []
@@ -1822,6 +1838,7 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
         "requested_backend": payload.analysis_step.solver_backend,
         "f_max_hz": float(payload.control_step.f_max),
     }
+    motion_path_resolved: Path | None = None
 
     cfg: ProjectConfig | None = None
     try:
@@ -1857,6 +1874,7 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
                     message=f"Motion file resolved: {motion_path}",
                 )
             )
+            motion_path_resolved = motion_path
             derived["motion_path"] = str(motion_path)
         except (FileNotFoundError, ValueError) as exc:
             msg = str(exc)
@@ -1939,6 +1957,51 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
                     WizardSanityCheckItem(name="backend_probe", status="warning", message=msg)
                 )
                 warnings.append(f"{msg} Auto backend may fall back to mock.")
+
+    if requested_backend in {"opensees", "auto"} and motion_path_resolved is not None:
+        if dt_used is not None:
+            time_axis, acc_axis = load_motion_series(
+                motion_path_resolved,
+                dt_override=payload.motion_step.dt_override,
+                fallback_dt=float(dt_used),
+            )
+            dt_motion = _estimate_dt(np.asarray(time_axis, dtype=np.float64))
+            n_samples = int(np.asarray(acc_axis, dtype=np.float64).size)
+            duration_s = float(max(n_samples - 1, 0) * dt_motion)
+            timeout_cfg_s = int(max(payload.control_step.timeout_s, 1))
+            timeout_rec_s = _recommended_opensees_timeout_s(
+                timeout_cfg_s,
+                dt_s=dt_motion,
+                n_samples=n_samples,
+            )
+            derived["timeout_configured_s"] = timeout_cfg_s
+            derived["timeout_recommended_s"] = timeout_rec_s
+            derived["motion_duration_s"] = duration_s
+            if timeout_cfg_s < timeout_rec_s:
+                msg = (
+                    f"timeout_s={timeout_cfg_s}s may be too low for this motion "
+                    f"(duration≈{duration_s:.1f}s). Recommended >= {timeout_rec_s}s "
+                    "for OpenSees."
+                )
+                checks.append(
+                    WizardSanityCheckItem(
+                        name="timeout_budget",
+                        status="warning",
+                        message=msg,
+                    )
+                )
+                warnings.append(msg)
+            else:
+                checks.append(
+                    WizardSanityCheckItem(
+                        name="timeout_budget",
+                        status="ok",
+                        message=(
+                            f"timeout_s={timeout_cfg_s}s, recommended≈{timeout_rec_s}s "
+                            f"(duration≈{duration_s:.1f}s)."
+                        ),
+                    )
+                )
 
     layer_materials = [layer.material.value for layer in payload.profile_step.layers]
     if requested_backend == "opensees":

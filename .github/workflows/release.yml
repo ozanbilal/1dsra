@@ -6,7 +6,7 @@ on:
       - "v*"
 
 jobs:
-  opensees-parity-release:
+  release-signoff:
     runs-on: [self-hosted, linux, x64, opensees]
     timeout-minutes: 90
     env:
@@ -27,6 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      - name: Validate Release Signoff Inputs
+        run: |
+          if [ -z "${DSRA1D_CI_OPENSEES_SHA256}" ]; then
+            echo "DSRA1D_CI_OPENSEES_SHA256 is required for release signoff." >&2
+            exit 1
+          fi
+
       - name: OpenSees Release Backend Probe
         run: |
           export DSRA1D_OPENSEES_EXE_OVERRIDE="${DSRA1D_CI_OPENSEES_EXE:-OpenSees}"
@@ -42,7 +49,7 @@ jobs:
             --check-backend \
             "${args[@]}"
 
-      - name: OpenSees Release Parity Campaign Gate
+      - name: Release Signoff Campaign Gate
         run: |
           export DSRA1D_OPENSEES_EXE_OVERRIDE="${DSRA1D_CI_OPENSEES_EXE:-OpenSees}"
           args=()
@@ -53,18 +60,37 @@ jobs:
             args+=(--require-backend-sha256 "${DSRA1D_CI_OPENSEES_SHA256}")
           fi
           1dsra campaign \
-            --suite opensees-parity \
-            --out out/release-opensees-parity \
+            --suite release-signoff \
+            --out out/release-signoff \
             --require-opensees \
             --min-execution-coverage 1.0 \
             --fail-on-skip \
-            --require-runs 6 \
-            --verify-require-runs 6 \
+            --require-runs 18 \
+            --verify-require-runs 18 \
             --require-explicit-checks \
             "${args[@]}"
 
+      - name: Strict Signoff Summary
+        run: |
+          1dsra summarize \
+            --input out/release-signoff \
+            --strict-signoff
+
+      - name: Validate Release Signoff Checklist (Machine Checks)
+        run: |
+          python scripts/check_release_signoff.py \
+            --campaign-dir out/release-signoff \
+            --matrix SCIENTIFIC_CONFIDENCE_MATRIX.md \
+            --require-fingerprint
+
+      - name: Upload Release Signoff Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-signoff-output
+          path: out/release-signoff/**
+
   build-and-release:
-    needs: opensees-parity-release
+    needs: release-signoff
     runs-on: ubuntu-latest
 
     steps:
@@ -92,18 +118,6 @@ jobs:
           python -m ruff check .
           python -m mypy python
           python -m pytest
-
-      - name: Core ES Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-es --out out/release-core-es --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
-
-      - name: Core HYST Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-hyst --out out/release-core-hyst --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
-
-      - name: Core Linear Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-linear --out out/release-core-linear --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
-
-      - name: Core EQL Campaign Gate
-        run: python -m dsra1d.cli.main campaign --suite core-eql --out out/release-core-eql --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
 
       - name: Build Distributions
         run: python -m build

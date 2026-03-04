@@ -241,3 +241,18 @@ def test_benchmark_core_eql_passes(tmp_path: Path) -> None:
         assert checks["sigma_v_eff_min"]["passed"] is True
         assert checks["transfer_abs_max"]["passed"] is True
         assert checks["transfer_peak_freq_hz"]["passed"] is True
+
+
+def test_benchmark_release_signoff_aggregates_component_suites(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark_mod, "resolve_opensees_executable", lambda _exe: None)
+    report = run_benchmark_suite("release-signoff", tmp_path)
+    assert report["suite"] == "release-signoff"
+    assert isinstance(report.get("component_suites"), list)
+    assert isinstance(report.get("subreports"), dict)
+    assert "opensees-parity" in report.get("subreports", {})
+    assert int(report["total_cases"]) >= 18
+    assert int(report["ran"]) >= 12
+    assert float(report["execution_coverage"]) <= 1.0

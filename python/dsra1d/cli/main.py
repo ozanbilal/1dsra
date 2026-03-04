@@ -85,6 +85,42 @@ def _load_release_signoff_policy() -> dict[str, object]:
     return merged
 
 
+def _as_int(value: object, fallback: int) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if isfinite(value):
+            return int(value)
+        return fallback
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _as_float(value: object, fallback: float) -> float:
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        f = float(value)
+        return f if isfinite(f) else fallback
+    if isinstance(value, str):
+        try:
+            f = float(value)
+        except ValueError:
+            return fallback
+        return f if isfinite(f) else fallback
+    return fallback
+
+
+def _as_mapping(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
 def _resolve_release_signoff_flags(
     *,
     suite: str,
@@ -107,8 +143,8 @@ def _resolve_release_signoff_flags(
         )
 
     policy = _load_release_signoff_policy()
-    policy_require_runs = int(policy.get("require_runs", 18))
-    policy_min_cov = float(policy.get("min_execution_coverage", 1.0))
+    policy_require_runs = _as_int(policy.get("require_runs", 18), 18)
+    policy_min_cov = _as_float(policy.get("min_execution_coverage", 1.0), 1.0)
     policy_fail_on_skip = bool(policy.get("fail_on_skip", True))
     policy_require_explicit = bool(policy.get("require_explicit_checks", True))
     policy_require_opensees = bool(policy.get("require_opensees", True))
@@ -1072,57 +1108,49 @@ def summarize(
         policy = _load_release_signoff_policy()
         benchmark_block = summary.get("benchmark")
         policy_block = summary.get("policy")
-        benchmark_obj = benchmark_block if isinstance(benchmark_block, dict) else {}
-        policy_obj = policy_block if isinstance(policy_block, dict) else {}
-        campaign_policy_obj = (
-            policy_obj.get("campaign") if isinstance(policy_obj.get("campaign"), dict) else {}
-        )
-        bench_policy_obj = (
-            policy_obj.get("benchmark") if isinstance(policy_obj.get("benchmark"), dict) else {}
-        )
-        verify_policy_obj = (
-            policy_obj.get("verify_batch")
-            if isinstance(policy_obj.get("verify_batch"), dict)
-            else {}
-        )
-        report_probe = (
-            benchmark_data.get("backend_probe")
-            if isinstance(benchmark_data.get("backend_probe"), dict)
-            else {}
-        )
+        benchmark_obj = _as_mapping(benchmark_block)
+        policy_obj = _as_mapping(policy_block)
+        campaign_policy_obj = _as_mapping(policy_obj.get("campaign"))
+        bench_policy_obj = _as_mapping(policy_obj.get("benchmark"))
+        verify_policy_obj = _as_mapping(policy_obj.get("verify_batch"))
+        report_probe = _as_mapping(benchmark_data.get("backend_probe"))
         report_probe_sha = str(report_probe.get("binary_sha256", "")).strip().lower()
         policy_sha = str(policy.get("opensees_fingerprint", "")).strip().lower()
 
-        ran = int(benchmark_obj.get("ran", 0) or 0)
-        skipped = int(benchmark_obj.get("skipped", 0) or 0)
-        coverage = float(benchmark_obj.get("execution_coverage", 0.0) or 0.0)
+        ran = _as_int(benchmark_obj.get("ran", 0), 0)
+        skipped = _as_int(benchmark_obj.get("skipped", 0), 0)
+        coverage = _as_float(benchmark_obj.get("execution_coverage", 0.0), 0.0)
         backend_fingerprint_ok = bool(benchmark_obj.get("backend_fingerprint_ok", False))
         campaign_passed = bool(campaign_policy_obj.get("passed", False))
         verify_present = verify_data is not None
         verify_passed = bool(verify_policy_obj.get("passed", False)) if verify_present else False
         suite_name = str(summary.get("suite", ""))
+        policy_require_runs = _as_int(policy.get("require_runs", 18), 18)
+        policy_min_cov = _as_float(policy.get("min_execution_coverage", 1.0), 1.0)
+        policy_fail_on_skip = bool(policy.get("fail_on_skip", True))
+        policy_require_explicit = bool(policy.get("require_explicit_checks", True))
+        policy_path = str(policy.get("policy_path", _release_signoff_policy_path()))
 
         conditions = {
             "suite_release_signoff": suite_name == "release-signoff",
             "campaign_policy_passed": campaign_passed,
             "verify_report_present": verify_present,
             "verify_policy_passed": verify_passed,
-            "require_runs_ok": ran >= int(policy.get("require_runs", 18)),
-            "min_execution_coverage_ok": coverage
-            >= float(policy.get("min_execution_coverage", 1.0)),
-            "fail_on_skip_ok": (not bool(policy.get("fail_on_skip", True))) or (skipped == 0),
+            "require_runs_ok": ran >= policy_require_runs,
+            "min_execution_coverage_ok": coverage >= policy_min_cov,
+            "fail_on_skip_ok": (not policy_fail_on_skip) or (skipped == 0),
             "backend_fingerprint_ok": backend_fingerprint_ok,
             "fingerprint_match": (not policy_sha) or (report_probe_sha == policy_sha),
         }
         signoff_passed = all(bool(v) for v in conditions.values())
         summary["signoff"] = {
             "strict_signoff": True,
-            "policy_path": str(policy.get("policy_path", _release_signoff_policy_path())),
+            "policy_path": policy_path,
             "policy": {
-                "require_runs": int(policy.get("require_runs", 18)),
-                "min_execution_coverage": float(policy.get("min_execution_coverage", 1.0)),
-                "fail_on_skip": bool(policy.get("fail_on_skip", True)),
-                "require_explicit_checks": bool(policy.get("require_explicit_checks", True)),
+                "require_runs": policy_require_runs,
+                "min_execution_coverage": policy_min_cov,
+                "fail_on_skip": policy_fail_on_skip,
+                "require_explicit_checks": policy_require_explicit,
                 "opensees_fingerprint": policy_sha,
             },
             "observed": {

@@ -559,21 +559,23 @@ def _json_mapping(path: Path) -> dict[str, object]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _as_int(value: object, default: int = 0) -> int:
+def _as_int(value: object, fallback: int = 0, *, minimum: int | None = None) -> int:
+    parsed = fallback
     if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
+        parsed = int(value)
+    elif isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float):
         if np.isfinite(value):
-            return int(value)
-        return default
-    if isinstance(value, str):
+            parsed = int(value)
+    elif isinstance(value, str):
         try:
-            return int(float(value))
+            parsed = int(float(value))
         except ValueError:
-            return default
-    return default
+            parsed = fallback
+    if minimum is not None and parsed < minimum:
+        return minimum
+    return parsed
 
 
 def _as_float(value: object, default: float = 0.0) -> float:
@@ -1269,13 +1271,6 @@ def _as_non_negative_float(value: object, fallback: float) -> float:
     if not np.isfinite(v) or v < 0.0:
         return fallback
     return v
-
-
-def _as_int(value: object, fallback: int, *, minimum: int = 0) -> int:
-    if not isinstance(value, (int, float)):
-        return fallback
-    v = round(float(value))
-    return max(v, minimum)
 
 
 def _numeric_dict(raw: object) -> dict[str, float]:

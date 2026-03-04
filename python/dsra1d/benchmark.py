@@ -29,6 +29,23 @@ CORE_RELEASE_SIGNOFF_SUITES: tuple[str, ...] = (
 )
 
 
+def _as_int(value: object, fallback: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if np.isfinite(value):
+            return int(value)
+        return fallback
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return fallback
+    return fallback
+
+
 def _parse_opensees_extra_args_override(raw: str) -> list[str]:
     value = raw.strip()
     if not value:
@@ -459,11 +476,11 @@ def _build_release_signoff_report(
             case["suite"] = suite_name
             cases.append(case)
 
-        skipped += int(sub.get("skipped", 0) or 0)
-        ran += int(sub.get("ran", 0) or 0)
-        total_cases += int(sub.get("total_cases", 0) or 0)
-        skipped_backend += int(sub.get("skipped_backend", 0) or 0)
-        checks_explicit_runs += int(sub.get("checks_explicit_runs", 0) or 0)
+        skipped += _as_int(sub.get("skipped", 0), 0)
+        ran += _as_int(sub.get("ran", 0), 0)
+        total_cases += _as_int(sub.get("total_cases", 0), 0)
+        skipped_backend += _as_int(sub.get("skipped_backend", 0), 0)
+        checks_explicit_runs += _as_int(sub.get("checks_explicit_runs", 0), 0)
         all_passed = all_passed and bool(sub.get("all_passed", False))
 
         missing_raw = sub.get("backend_missing_cases", [])

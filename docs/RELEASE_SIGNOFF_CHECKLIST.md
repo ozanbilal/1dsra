@@ -7,7 +7,8 @@ This checklist is the operational gate for `v*` tags.
 - `1dsra campaign --suite release-signoff` passed
 - `campaign_summary.json` contains `policy.campaign.passed=true`
 - `campaign_summary.json` contains `signoff.passed=true` when generated with `--strict-signoff`
-- Backend fingerprint check passed (when policy fingerprint is configured)
+- Backend fingerprint check passed (required in release path)
+- `python scripts/check_release_signoff.py --campaign-dir <dir> --require-fingerprint` passed
 - Changelog/tag checks passed
 
 ## Human-reviewed (must be confirmed)

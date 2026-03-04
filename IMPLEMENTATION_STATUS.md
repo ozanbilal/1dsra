@@ -131,9 +131,9 @@ Implemented:
 - Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
 - Manual parity workflow now also accepts executable extra-args override (`opensees_extra_args`)
 - Manual parity workflow now supports backend fingerprint requirements and defaults to 6-run parity target
-- CI now includes optional OpenSees parity gate job when `DSRA1D_CI_OPENSEES_EXE` is configured
-- CI now includes dedicated-runner parity gate (`self-hosted, linux, x64, opensees`) with explicit-check and 6-run requirements
-- CI includes optional OpenSeesPy parity gate (`DSRA1D_CI_OPENSEESPY=1`)
+- New aggregated benchmark suite: `release-signoff` (`core-es` + `core-hyst` + `core-linear` + `core-eql` + `opensees-parity`)
+- CI dedicated runner parity gate is now non-optional (`self-hosted, linux, x64, opensees`) and executes `release-signoff`
+- CI dedicated runner now enforces `summarize --strict-signoff` for machine-readable signoff verdicts
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
 - Parity suite now distinguishes missing executable vs failed backend probe (`missing_opensees` / `probe_failed`)
 - Parity reports now persist backend fingerprint diagnostics (`binary_sha256`, requirements verdict/errors)
@@ -160,12 +160,13 @@ Not completed:
 - Strict published reference matching (DEEPSOIL/OpenSees parity matrix)
 
 ### Phase 6 - v1.0 Hardening and Release
-Status: **In progress (early)**
+Status: **In progress (mid)**
 
 Missing:
-- Release process execution policy (tagging rules/checklist) still needs final sign-off
+- Final dedicated runner provisioning + operational reliability monitoring (self-hosted agent health/SLA)
+- Organization-level sign-off for release gates (CI/release now enforce `release-signoff` + `strict-signoff`)
+- Production fingerprint lifecycle process (rotate/update `DSRA1D_CI_OPENSEES_SHA256` and matrix evidence)
 - Artifact publishing policy finalization (GitHub release workflow + release tag/version + changelog guards are now added)
-- Organization-level sign-off for release gates (CI/release now enforce `core-es` + `core-hyst` + `core-linear` + `core-eql` campaign gates)
 - Dedicated OpenSees parity release gate runner provisioning (`self-hosted, linux, x64, opensees`) and secret/variable bootstrap
 - User manual completeness and migration notes
 
@@ -188,7 +189,9 @@ Missing:
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
 - CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)
-- CI includes optional OpenSees parity gate when `DSRA1D_CI_OPENSEES_EXE` is configured
+- `release-signoff` suite now aggregates all critical suites into one parity-first gate
+- CI dedicated OpenSees parity gate is mandatory (`self-hosted, linux, x64, opensees`)
+- Release workflow now enforces strict signoff + machine-check checklist (`check_release_signoff.py`)
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
@@ -215,6 +218,7 @@ Missing:
 - Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
+- Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
 - `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`) for pre-detail triage
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
 - New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
@@ -233,6 +237,7 @@ Missing:
 - Multi-run compare now includes reference-based diagnostics (`PSA ratio`, transfer/surface `Δ`, `ΔPGA`/PGA ratio)
 - Web API now includes backend readiness probe endpoint (`/api/backend/opensees/probe`) used by wizard run diagnostics
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
+- Web API now includes parity/science visibility endpoints (`/api/parity/latest`, `/api/science/confidence`)
 - React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
 - Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors
 - Web API now exposes layer-wise hysteresis/mobilized payload (`/api/runs/{run_id}/results/hysteresis`) using stored config snapshots with sqlite fallback

@@ -49,6 +49,7 @@ StrataWave benchmark --suite core-hyst --out out/benchmarks_hyst
 StrataWave benchmark --suite core-linear --out out/benchmarks_linear
 StrataWave benchmark --suite core-eql --out out/benchmarks_eql
 StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity
+StrataWave benchmark --suite release-signoff --out out/benchmarks_release_signoff --require-opensees --fail-on-skip --require-runs 18 --require-explicit-checks
 StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
 StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
 StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
@@ -61,6 +62,8 @@ StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --requir
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
 StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
+StrataWave campaign --suite release-signoff --out out/release_signoff --require-opensees --fail-on-skip --require-runs 18 --verify-require-runs 18 --require-explicit-checks
+StrataWave summarize --input out/release_signoff --strict-signoff
 StrataWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min,transfer_abs_max,transfer_peak_freq_hz,solver_warning_count,solver_failed_converge_count,solver_analyze_failed_count,solver_divide_by_zero_count,solver_dynamic_fallback_failed --rel-tol 0.05
 StrataWave campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
@@ -157,6 +160,8 @@ Included API endpoints:
 - `POST /api/motion/upload/peer-at2`
 - `POST /api/motion/process`
 - `POST /api/run` (run analysis from config + motion paths)
+- `GET /api/parity/latest?output_root=<path>`
+- `GET /api/science/confidence`
 
 ## OpenSees Integration
 Set the OpenSees executable in config:
@@ -241,9 +246,9 @@ Apache-2.0
 - Implementation status: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
 - Scientific confidence matrix: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
-- CI/release workflows enforce `core-es`, `core-hyst`, `core-linear`, and `core-eql` campaign gates (`benchmark + verify + summary`)
-- CI/release campaign gates enforce full execution coverage (`--min-execution-coverage 1.0`)
-- Release workflow includes mandatory dedicated OpenSees parity gate (`self-hosted, linux, x64, opensees`) before package publish.
+- CI workflow enforces matrix quality gates (`ruff`, `mypy`, `pytest`) and native suite campaign gates (`core-es`, `core-hyst`, `core-linear`, `core-eql`).
+- Dedicated OpenSees runner gate is mandatory in CI/release (`self-hosted, linux, x64, opensees`) and uses `release-signoff`.
+- Release workflow enforces strict signoff (`1dsra summarize --strict-signoff`) and machine checks (`scripts/check_release_signoff.py`).
 - Version bump helper: `python scripts/release_bump.py --version 0.1.0`
 - Release tag guard: `python scripts/check_release_tag.py --tag v0.1.0`
 - Changelog guard: `python scripts/check_changelog.py --tag v0.1.0`
@@ -274,16 +279,19 @@ Use explicit-checks policy to enforce locked parity envelopes:
 - `--require-explicit-checks` (fails if executed cases do not have explicit `checks` in golden metrics)
 Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
-CI can run parity automatically when repository variable `DSRA1D_CI_OPENSEES_EXE` is set
-to a valid executable path/name on the runner.
-Dedicated self-hosted parity job in CI is opt-in via:
-- `DSRA1D_CI_DEDICATED_OPENSEES=1`
-Optional OpenSeesPy parity gate can be enabled with repository variable:
-- `DSRA1D_CI_OPENSEESPY=1`
-and uses `scripts/opensees_pyshim.py`.
+Dedicated parity gate runs on `self-hosted, linux, x64, opensees` runners and is
+non-optional in CI/release paths.
+Set repository variable `DSRA1D_CI_OPENSEES_EXE` (or ensure `OpenSees` is on PATH)
+for deterministic executable resolution on the dedicated runner.
+Release path also requires fingerprint variable:
+- `DSRA1D_CI_OPENSEES_SHA256`
 Use execution coverage policy for campaign/benchmark suites:
 - `--min-execution-coverage <0..1>` (fails if executed case ratio is below target)
 Use `campaign` to execute benchmark + verify-batch + summarize in one command.
+Use `release-signoff` suite to execute all critical suites in one parity-first gate:
+- `core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`
+Use strict signoff for release verdict generation:
+- `1dsra summarize --input <campaign_dir> --strict-signoff`
 Use `lock-golden` to freeze benchmark actual metrics into explicit golden `checks` envelopes.
 Campaign summary now includes backend coverage indicators:
 - `backend_ready`

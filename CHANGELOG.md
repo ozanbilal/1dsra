@@ -20,6 +20,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - version-regex and sha256 requirements in validate/benchmark/campaign
   - parity reporting includes backend fingerprint diagnostics
 - Dedicated release/CI parity gates hardened for 6-case OpenSees parity workflow.
+- Release signoff hardening:
+  - new aggregated `release-signoff` benchmark suite (`core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`)
+  - `summarize --input <campaign_dir> --strict-signoff` flow with machine-readable go/no-go verdict
+  - release workflow now runs machine checks via `scripts/check_release_signoff.py`
+  - CI dedicated OpenSees parity runner moved to non-optional release-signoff gate
 - FastAPI + React migration starter:
   - `StrataWave web` command (uvicorn-backed)
   - API endpoints for run listing, signal fetch, run execution, and `surface_acc.csv` download
@@ -36,6 +41,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `GET /api/runs/{run_id}/pwp-effective.csv`
   - `signals` payload includes `dt_s`, `delta_t_s`, and `delta_t`
   - config-template endpoints: `GET /api/config/templates`, `POST /api/config/template`
+  - parity/science visibility endpoints: `GET /api/parity/latest`, `GET /api/science/confidence`
 - React Web Studio model-builder panel:
   - create template-based YAML config files from UI
   - auto-fill generated config path into run form
@@ -72,6 +78,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - React Results Frame mode:
   - one-click `Open Results Frame` focus view for de-cluttered result inspection
   - dedicated run selector and artifact downloads in focused mode
+- Results quality visibility:
+  - added `Parity Health` card (coverage, fingerprint, blockers)
+  - added `Scientific Confidence` card (suite tiers + verification timestamps)
 - Run diagnostics:
   - new backend readiness endpoint `GET /api/backend/opensees/probe`
   - wizard now surfaces OpenSees availability and explicit run blockers when backend is set to `opensees`

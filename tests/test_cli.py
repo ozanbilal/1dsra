@@ -932,6 +932,120 @@ def test_cli_summarize_writes_outputs(tmp_path: Path) -> None:
     assert summary_md.exists()
 
 
+def test_cli_summarize_strict_signoff_passes_with_input_dir(tmp_path: Path) -> None:
+    campaign_dir = tmp_path / "campaign_release"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_report = {
+        "suite": "release-signoff",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 18,
+        "total_cases": 18,
+        "skipped_backend": 0,
+        "backend_ready": True,
+        "backend_fingerprint_ok": True,
+        "execution_coverage": 1.0,
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 18,
+            "require_opensees": True,
+            "min_execution_coverage": 1.0,
+            "require_backend_sha256": "",
+        },
+        "cases": [],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 18,
+        "passed_runs": 18,
+        "failed_runs": 0,
+        "policy": {
+            "require_runs": 18,
+            "conditions": {"verify_ok": True, "no_failed_runs": True, "require_runs_ok": True},
+            "passed": True,
+        },
+        "reports": {},
+    }
+    (campaign_dir / "benchmark_release-signoff.json").write_text(
+        json.dumps(benchmark_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "verify_batch_report.json").write_text(
+        json.dumps(verify_batch_report, indent=2),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--input",
+            str(campaign_dir),
+            "--strict-signoff",
+        ],
+    )
+    assert result.exit_code == 0
+    summary_json = campaign_dir / "campaign_summary.json"
+    assert summary_json.exists()
+    summary = json.loads(summary_json.read_text(encoding="utf-8"))
+    signoff = summary.get("signoff")
+    assert isinstance(signoff, dict)
+    assert signoff.get("passed") is True
+
+
+def test_cli_summarize_strict_signoff_fails_when_campaign_not_release_signoff(
+    tmp_path: Path,
+) -> None:
+    campaign_dir = tmp_path / "campaign_bad"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_report = {
+        "suite": "core-es",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 3,
+        "total_cases": 3,
+        "execution_coverage": 1.0,
+        "backend_fingerprint_ok": True,
+        "policy": {
+            "fail_on_skip": False,
+            "require_runs": 3,
+            "require_opensees": False,
+            "min_execution_coverage": 0.0,
+        },
+        "cases": [],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 3,
+        "passed_runs": 3,
+        "failed_runs": 0,
+        "policy": {
+            "require_runs": 3,
+            "conditions": {"verify_ok": True, "no_failed_runs": True, "require_runs_ok": True},
+            "passed": True,
+        },
+        "reports": {},
+    }
+    (campaign_dir / "benchmark_core-es.json").write_text(
+        json.dumps(benchmark_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "verify_batch_report.json").write_text(
+        json.dumps(verify_batch_report, indent=2),
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--input",
+            str(campaign_dir),
+            "--strict-signoff",
+        ],
+    )
+    assert result.exit_code == 13
+
+
 def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:
     out_dir = tmp_path / "campaign"
     result = runner.invoke(

@@ -48,7 +48,6 @@ jobs:
         run: python -m dsra1d.cli.main campaign --suite core-eql --out out/ci_bench_core_eql --require-runs 3 --verify-require-runs 3 --min-execution-coverage 1.0
 
   opensees-parity-dedicated:
-    if: ${{ vars.DSRA1D_CI_DEDICATED_OPENSEES == '1' }}
     needs: test
     runs-on: [self-hosted, linux, x64, opensees]
     timeout-minutes: 90
@@ -85,7 +84,7 @@ jobs:
             --check-backend \
             "${args[@]}"
 
-      - name: OpenSees Parity Campaign Gate (Dedicated Runner)
+      - name: Release Signoff Campaign Gate (Dedicated Runner)
         run: |
           export DSRA1D_OPENSEES_EXE_OVERRIDE="${DSRA1D_CI_OPENSEES_EXE:-OpenSees}"
           args=()
@@ -96,107 +95,24 @@ jobs:
             args+=(--require-backend-sha256 "${DSRA1D_CI_OPENSEES_SHA256}")
           fi
           1dsra campaign \
-            --suite opensees-parity \
-            --out out/ci_bench_opensees_parity_dedicated \
+            --suite release-signoff \
+            --out out/ci_release-signoff \
             --require-opensees \
             --min-execution-coverage 1.0 \
             --fail-on-skip \
-            --require-runs 6 \
-            --verify-require-runs 6 \
+            --require-runs 18 \
+            --verify-require-runs 18 \
             --require-explicit-checks \
             "${args[@]}"
+
+      - name: Strict Signoff Verdict (Dedicated Runner)
+        run: |
+          1dsra summarize \
+            --input out/ci_release-signoff \
+            --strict-signoff
 
       - name: Upload Dedicated Parity Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ci-opensees-parity-dedicated-output
-          path: out/ci_bench_opensees_parity_dedicated/**
-
-  opensees-parity-openseespy:
-    if: ${{ vars.DSRA1D_CI_OPENSEESPY == '1' }}
-    needs: test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
-          pip install openseespy
-
-      - name: OpenSeesPy Backend Probe
-        env:
-          DSRA1D_OPENSEES_EXE_OVERRIDE: python
-          DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE: scripts/opensees_pyshim.py
-        run: |
-          1dsra validate --config benchmarks/opensees-parity/cases/parity01.yml --check-backend
-
-      - name: OpenSeesPy Parity Campaign Gate
-        env:
-          DSRA1D_OPENSEES_EXE_OVERRIDE: python
-          DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE: scripts/opensees_pyshim.py
-        run: |
-          1dsra campaign \
-            --suite opensees-parity \
-            --out out/ci_bench_opensees_parity_pyshim \
-            --require-opensees \
-            --min-execution-coverage 1.0 \
-            --fail-on-skip \
-            --require-runs 3 \
-            --verify-require-runs 3
-
-      - name: Upload OpenSeesPy Parity Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-opensees-parity-openseespy-output
-          path: out/ci_bench_opensees_parity_pyshim/**
-
-  opensees-parity:
-    if: ${{ vars.DSRA1D_CI_OPENSEES_EXE != '' }}
-    needs: test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
-
-      - name: OpenSees Backend Probe
-        env:
-          DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ vars.DSRA1D_CI_OPENSEES_EXE }}
-        run: |
-          1dsra validate --config benchmarks/opensees-parity/cases/parity01.yml --check-backend
-
-      - name: OpenSees Parity Campaign Gate
-        env:
-          DSRA1D_OPENSEES_EXE_OVERRIDE: ${{ vars.DSRA1D_CI_OPENSEES_EXE }}
-        run: |
-          1dsra campaign \
-            --suite opensees-parity \
-            --out out/ci_bench_opensees_parity \
-            --require-opensees \
-            --min-execution-coverage 1.0 \
-            --fail-on-skip \
-            --require-runs 3 \
-            --verify-require-runs 3
-
-      - name: Upload OpenSees Parity Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-opensees-parity-output
-          path: out/ci_bench_opensees_parity/**
+          name: ci-release-signoff-output
+          path: out/ci_release-signoff/**

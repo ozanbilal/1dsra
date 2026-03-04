@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -752,3 +753,67 @@ def test_web_results_profile_summary_endpoint(tmp_path) -> None:
     assert "name" in first
     assert "z_top_m" in first
     assert "z_bottom_m" in first
+
+
+def test_web_parity_latest_endpoint_reads_latest_report(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "campaign"
+    root.mkdir(parents=True, exist_ok=True)
+    benchmark = {
+        "suite": "opensees-parity",
+        "generated_utc": "2026-03-04T12:00:00Z",
+        "all_passed": False,
+        "ran": 5,
+        "total_cases": 6,
+        "skipped": 1,
+        "skipped_backend": 1,
+        "execution_coverage": 5.0 / 6.0,
+        "backend_ready": False,
+        "backend_fingerprint_ok": False,
+        "backend_probe": {"binary_sha256": "abc123"},
+        "cases": [
+            {
+                "name": "parity01",
+                "status": "skipped",
+                "skip_kind": "probe_failed",
+                "reason": "OpenSees backend probe failed",
+            }
+        ],
+    }
+    (root / "benchmark_opensees-parity.json").write_text(
+        json.dumps(benchmark, indent=2),
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app())
+    resp = client.get("/api/parity/latest", params={"output_root": str(root)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["found"] is True
+    assert payload["suite"] == "opensees-parity"
+    assert isinstance(payload["suites"], list)
+    assert len(payload["suites"]) >= 1
+    row = payload["suites"][0]
+    assert row["suite"] == "opensees-parity"
+    assert "execution_coverage" in row
+    assert "block_reasons" in row
+
+
+def test_web_science_confidence_endpoint_returns_rows() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.get("/api/science/confidence")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "source_path" in payload
+    assert "rows" in payload
+    assert isinstance(payload["rows"], list)
+    assert len(payload["rows"]) >= 1
+    first = payload["rows"][0]
+    assert "suite" in first
+    assert "reference_basis" in first
+    assert "confidence_tier" in first

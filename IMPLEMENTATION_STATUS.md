@@ -223,6 +223,7 @@ Missing:
 - Results workspace now includes API-backed `Release Blockers` panel (go/no-go + blocker/warning list from parity/science/signoff/runtime diagnostics)
 - `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`, `dynamic_fallback_failed`) for pre-detail triage
 - Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
+- Run discovery/resolution is now recursive under `output_root` (nested campaign folders supported), and run detail endpoints now resolve run-id from parent roots instead of requiring direct run-folder root
 - New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
 - Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
 - Step-5 `Run Now` now supports single-click execution by auto-generating config (if missing) and enforcing sanity-check blockers before launch

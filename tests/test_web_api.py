@@ -707,6 +707,61 @@ def test_web_results_summary_fallback_without_output_root() -> None:
         shutil.rmtree(fallback_root, ignore_errors=True)
 
 
+def test_web_runs_endpoint_scans_nested_output_root(tmp_path) -> None:
+    from dsra1d.config import load_project_config
+    from dsra1d.motion import load_motion
+    from dsra1d.pipeline import run_analysis
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    nested_root = tmp_path / "workspace" / "campaign" / "runs"
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "mock"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(
+        Path("examples/motions/sample_motion.csv"),
+        dt=dt,
+        unit=cfg.motion.units,
+    )
+    result = run_analysis(cfg, motion, output_dir=nested_root)
+
+    client = TestClient(create_app())
+    # Point to parent directory; API should recursively discover nested run dirs.
+    resp = client.get("/api/runs", params={"output_root": str(tmp_path / "workspace")})
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert any(row.get("run_id") == result.run_id for row in rows)
+
+
+def test_web_run_detail_resolves_from_parent_output_root(tmp_path) -> None:
+    from dsra1d.config import load_project_config
+    from dsra1d.motion import load_motion
+    from dsra1d.pipeline import run_analysis
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    nested_root = tmp_path / "workspace" / "campaign" / "runs"
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "mock"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(
+        Path("examples/motions/sample_motion.csv"),
+        dt=dt,
+        unit=cfg.motion.units,
+    )
+    result = run_analysis(cfg, motion, output_dir=nested_root)
+
+    client = TestClient(create_app())
+    # Query with parent output_root instead of direct run directory root.
+    resp = client.get(
+        f"/api/runs/{result.run_id}/signals",
+        params={"output_root": str(tmp_path / "workspace")},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["run_id"] == result.run_id
+
+
 def test_web_results_hysteresis_endpoint(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

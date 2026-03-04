@@ -482,19 +482,12 @@ def _resolve_output_root(raw: str) -> Path:
 
 
 def _collect_runs(output_root: Path) -> list[Path]:
-    if not output_root.exists() or not output_root.is_dir():
-        return []
-    runs: list[Path] = []
-    for p in sorted(output_root.iterdir()):
-        if not p.is_dir():
-            continue
-        if (
-            (p / "results.h5").exists()
-            and (p / "results.sqlite").exists()
-            and (p / "run_meta.json").exists()
-        ):
-            runs.append(p)
-    return runs
+    run_dirs = _scan_run_dirs(output_root)
+    # Deterministic run IDs can appear in multiple roots; keep the newest per ID.
+    unique_by_id: dict[str, Path] = {}
+    for run_dir in run_dirs:
+        unique_by_id.setdefault(run_dir.name, run_dir)
+    return list(unique_by_id.values())
 
 
 def _looks_like_run_dir(path: Path) -> bool:
@@ -507,26 +500,59 @@ def _looks_like_run_dir(path: Path) -> bool:
     )
 
 
-def _resolve_run_dir(run_id: str, output_root: str) -> Path:
-    if output_root.strip():
-        preferred = _safe_real_path(output_root) / run_id
-    else:
-        preferred = _default_output_root() / run_id
-    if _looks_like_run_dir(preferred):
-        return preferred
+def _path_mtime(path: Path) -> float:
+    try:
+        return float(path.stat().st_mtime)
+    except OSError:
+        return 0.0
 
-    out_root = _repo_root() / "out"
+
+def _scan_run_dirs(output_root: Path) -> list[Path]:
+    if not output_root.exists() or not output_root.is_dir():
+        return []
+    seen: dict[Path, Path] = {}
+    try:
+        for meta_path in output_root.rglob("run_meta.json"):
+            run_dir = meta_path.parent.resolve()
+            if _looks_like_run_dir(run_dir):
+                seen[run_dir] = run_dir
+    except OSError:
+        return []
+    return sorted(seen.values(), key=_path_mtime, reverse=True)
+
+
+def _resolve_run_search_roots(output_root_raw: str) -> list[Path]:
+    roots: list[Path] = []
+    if output_root_raw.strip():
+        roots.append(_safe_real_path(output_root_raw))
+    roots.append(_default_output_root())
+    roots.append((_repo_root() / "out").resolve())
+    dedup: dict[Path, Path] = {}
+    for root in roots:
+        dedup[root.resolve()] = root.resolve()
+    return list(dedup.values())
+
+
+def _resolve_run_dir(run_id: str, output_root: str) -> Path:
+    run_id_text = run_id.strip()
+    if not run_id_text:
+        raise HTTPException(status_code=404, detail="Run not found: <empty run id>")
+
+    roots = _resolve_run_search_roots(output_root)
+    for root in roots:
+        direct = (root / run_id_text).resolve()
+        if _looks_like_run_dir(direct):
+            return direct
+
     candidates: list[Path] = []
-    if out_root.exists():
-        for candidate in out_root.rglob(run_id):
-            if _looks_like_run_dir(candidate):
-                candidates.append(candidate.resolve())
+    for root in roots:
+        for run_dir in _scan_run_dirs(root):
+            if run_dir.name == run_id_text:
+                candidates.append(run_dir)
     if candidates:
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates.sort(key=_path_mtime, reverse=True)
         return candidates[0]
 
-    if preferred.exists() and preferred.is_dir():
-        return preferred
     raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
 

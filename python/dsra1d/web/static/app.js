@@ -281,6 +281,37 @@ function convergenceSeverityClass(severity) {
   return "diag-neutral";
 }
 
+function runSeverityKey(severity) {
+  const key = String(severity || "").toLowerCase();
+  if (key === "ok" || key === "pass") return "ok";
+  if (key === "warning" || key === "warn") return "warning";
+  if (key === "critical" || key === "error" || key === "bad") return "critical";
+  return "neutral";
+}
+
+function runSeverityChipClass(severity) {
+  const key = runSeverityKey(severity);
+  if (key === "ok") return "chip-ok";
+  if (key === "warning") return "chip-warn";
+  if (key === "critical") return "chip-bad";
+  return "chip-neutral";
+}
+
+function runSeverityLabel(run) {
+  const mode = String(run?.convergence_mode || "none");
+  const key = runSeverityKey(run?.convergence_severity);
+  if (mode === "none") return "health:n/a";
+  return `health:${key}`;
+}
+
+function runWarningHint(run) {
+  if (!run || typeof run !== "object") return "";
+  const warnings = Number(run.solver_warning_count);
+  if (Number.isFinite(warnings) && warnings > 0) return `warnings:${Math.round(warnings)}`;
+  if (run.convergence_mode === "eql" && run.converged === false) return "eql:not-converged";
+  return "";
+}
+
 function buildConvergenceView(summary) {
   const raw = summary?.convergence;
   if (!raw || raw.available === false) {
@@ -2590,7 +2621,14 @@ function App() {
                                                 }`}
                                                 onClick=${() => setSelectedRunId(run.run_id)}
                                               >
-                                                ${run.run_id} (${run.status})
+                                                <span>${run.run_id} (${run.status})</span>
+                                                <span
+                                                  className=${`chip ${runSeverityChipClass(
+                                                    run.convergence_severity
+                                                  )}`}
+                                                >
+                                                  ${runSeverityLabel(run)}
+                                                </span>
                                               </button>
                                             `
                                           )}
@@ -2620,8 +2658,14 @@ function App() {
                                 >${run.status}</span
                               >
                               <span className="chip chip-ok">${run.solver_backend}</span>
+                              <span className=${`chip ${runSeverityChipClass(run.convergence_severity)}`}>
+                                ${runSeverityLabel(run)}
+                              </span>
                             </div>
                             <div className="muted">PGA: ${fmt(run.pga)}</div>
+                            ${runWarningHint(run)
+                              ? html`<div className="muted">${runWarningHint(run)}</div>`
+                              : null}
                           </button>
                         `
                       )}

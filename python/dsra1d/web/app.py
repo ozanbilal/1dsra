@@ -76,6 +76,13 @@ class RunSummary(BaseModel):
     ru_max: float | None = None
     delta_u_max: float | None = None
     sigma_v_eff_min: float | None = None
+    convergence_mode: str = "none"
+    convergence_severity: str = "neutral"
+    converged: bool | None = None
+    solver_warning_count: int | None = None
+    solver_failed_converge_count: int | None = None
+    solver_analyze_failed_count: int | None = None
+    solver_divide_by_zero_count: int | None = None
 
 
 class ConfigTemplateRequest(BaseModel):
@@ -521,9 +528,12 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
         return {"available": False}
     conn = sqlite3.connect(sqlite_path)
     try:
-        row = conn.execute(
-            "SELECT iterations, converged, max_change_last, max_change_max FROM eql_summary LIMIT 1"
-        ).fetchone()
+        try:
+            row = conn.execute(
+                "SELECT iterations, converged, max_change_last, max_change_max FROM eql_summary LIMIT 1"
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
         if row is None:
             if run_dir is not None:
                 meta_raw = _read_run_meta_raw(run_dir)
@@ -543,6 +553,61 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
         }
     finally:
         conn.close()
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            if np.isfinite(float(value)):
+                return int(float(value))
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:
+    conv = _read_convergence(sqlite_path, run_dir=run_dir)
+    if not bool(conv.get("available", False)):
+        return {
+            "convergence_mode": "none",
+            "convergence_severity": "neutral",
+            "converged": None,
+            "solver_warning_count": None,
+            "solver_failed_converge_count": None,
+            "solver_analyze_failed_count": None,
+            "solver_divide_by_zero_count": None,
+        }
+
+    if "iterations" in conv or "max_change_last" in conv:
+        converged = bool(conv.get("converged", False))
+        return {
+            "convergence_mode": "eql",
+            "convergence_severity": "ok" if converged else "warning",
+            "converged": converged,
+            "solver_warning_count": None,
+            "solver_failed_converge_count": None,
+            "solver_analyze_failed_count": None,
+            "solver_divide_by_zero_count": None,
+        }
+
+    severity = str(conv.get("severity", "unknown")).strip().lower() or "unknown"
+    return {
+        "convergence_mode": "solver",
+        "convergence_severity": severity,
+        "converged": None,
+        "solver_warning_count": _optional_int(conv.get("warning_count")),
+        "solver_failed_converge_count": _optional_int(conv.get("failed_converge_count")),
+        "solver_analyze_failed_count": _optional_int(conv.get("analyze_failed_count")),
+        "solver_divide_by_zero_count": _optional_int(conv.get("divide_by_zero_count")),
+    }
 
 
 def _read_layer_rows(sqlite_path: Path) -> list[dict[str, object]]:
@@ -1527,6 +1592,7 @@ def create_app() -> FastAPI:
             meta = _read_run_meta(run_dir)
             sqlite_path = run_dir / "results.sqlite"
             metrics = _read_metrics(sqlite_path)
+            health = _run_health_summary(sqlite_path, run_dir=run_dir)
             input_motion = meta.get("input_motion", "")
             items.append(
                 RunSummary(
@@ -1543,6 +1609,19 @@ def create_app() -> FastAPI:
                     ru_max=metrics.get("ru_max"),
                     delta_u_max=metrics.get("delta_u_max"),
                     sigma_v_eff_min=metrics.get("sigma_v_eff_min"),
+                    convergence_mode=str(health["convergence_mode"]),
+                    convergence_severity=str(health["convergence_severity"]),
+                    converged=cast(bool | None, health["converged"]),
+                    solver_warning_count=cast(int | None, health["solver_warning_count"]),
+                    solver_failed_converge_count=cast(
+                        int | None, health["solver_failed_converge_count"]
+                    ),
+                    solver_analyze_failed_count=cast(
+                        int | None, health["solver_analyze_failed_count"]
+                    ),
+                    solver_divide_by_zero_count=cast(
+                        int | None, health["solver_divide_by_zero_count"]
+                    ),
                 )
             )
         return items
@@ -1553,6 +1632,7 @@ def create_app() -> FastAPI:
         grouped: dict[str, dict[str, list[dict[str, str]]]] = {}
         for run_dir in reversed(_collect_runs(root)):
             meta = _read_run_meta(run_dir)
+            health = _run_health_summary(run_dir / "results.sqlite", run_dir=run_dir)
             project_name = _read_project_name(run_dir / "results.sqlite") or "unknown-project"
             input_motion = meta.get("input_motion", "")
             motion_name = Path(input_motion).name if input_motion else "unknown-motion"
@@ -1562,6 +1642,8 @@ def create_app() -> FastAPI:
                     "output_dir": str(run_dir),
                     "status": meta.get("status", "unknown"),
                     "solver_backend": meta.get("solver_backend", "unknown"),
+                    "convergence_mode": str(health["convergence_mode"]),
+                    "convergence_severity": str(health["convergence_severity"]),
                 }
             )
         return {"tree": grouped}

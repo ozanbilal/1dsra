@@ -210,6 +210,8 @@ Missing:
 - Results `Convergence` tab now includes OpenSees log-derived diagnostics for non-EQL runs (warning/divergence counters and severity)
 - Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
+- Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
+- `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`) for pre-detail triage
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)

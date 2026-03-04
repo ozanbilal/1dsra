@@ -103,6 +103,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `Convergence` tab now shows structured solver/EQL diagnostics cards with severity badges
   - raw convergence payload moved under collapsible details section
   - `Profile` tab now includes a compact solver-health summary (severity badge + key diagnostics)
+- Runs list/tree health telemetry:
+  - `/api/runs` and `/api/runs/tree` now include convergence/solver health summary fields (`convergence_mode`, `convergence_severity`, `converged`, solver warning/error counters)
+  - run cards and run-tree entries now show health severity chips for faster triage before opening run details
+  - missing `eql_summary` SQLite table now falls back gracefully without breaking `/api/runs`
 
 ## [0.1.0] - 2026-03-01
 

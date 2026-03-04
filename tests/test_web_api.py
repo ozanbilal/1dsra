@@ -59,6 +59,26 @@ def test_web_runs_endpoint_returns_list() -> None:
     assert isinstance(payload, list)
 
 
+def test_web_runs_endpoint_includes_health_summary(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    client = TestClient(create_app())
+    resp = client.get("/api/runs", params={"output_root": str(tmp_path / "web-runs")})
+    assert resp.status_code == 200
+    payload = resp.json()
+    row = next((r for r in payload if r.get("run_id") == result.run_id), None)
+    assert row is not None
+    assert "convergence_mode" in row
+    assert "convergence_severity" in row
+    assert "converged" in row
+    assert "solver_warning_count" in row
+    assert "solver_failed_converge_count" in row
+    assert "solver_analyze_failed_count" in row
+    assert "solver_divide_by_zero_count" in row
+
+
 def test_web_static_assets_served() -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
@@ -513,6 +533,11 @@ def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
     tree_payload = tree_resp.json()
     assert "tree" in tree_payload
     assert len(tree_payload["tree"]) >= 1
+    project_runs = next(iter(tree_payload["tree"].values()))
+    first_motion_runs = next(iter(project_runs.values()))
+    first_run = first_motion_runs[0]
+    assert "convergence_mode" in first_run
+    assert "convergence_severity" in first_run
 
     summary_resp = client.get(
         f"/api/runs/{result.run_id}/results/summary",

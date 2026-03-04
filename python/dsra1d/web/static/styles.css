@@ -763,6 +763,55 @@ pre {
   padding: 0.52rem;
 }
 
+.convergence-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.diag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 0.15rem 0.52rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 57, 68, 0.22);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.diag-ok {
+  color: var(--teal);
+  background: rgba(15, 110, 106, 0.13);
+}
+
+.diag-warning {
+  color: var(--warn);
+  background: rgba(139, 79, 0, 0.12);
+}
+
+.diag-critical {
+  color: var(--err);
+  background: rgba(140, 36, 31, 0.14);
+}
+
+.diag-neutral {
+  color: var(--stone);
+  background: rgba(45, 57, 68, 0.1);
+}
+
+.json-details {
+  border: 1px dashed rgba(45, 57, 68, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 0.35rem 0.45rem;
+}
+
+.json-details summary {
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
 @media (max-width: 1080px) {
   .layout {
     grid-template-columns: 1fr;

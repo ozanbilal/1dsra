@@ -268,6 +268,85 @@ function fmt(value, digits = 4) {
   return Number(value).toFixed(digits);
 }
 
+function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function convergenceSeverityClass(severity) {
+  const key = String(severity || "").toLowerCase();
+  if (key === "critical") return "diag-critical";
+  if (key === "warning" || key === "warn") return "diag-warning";
+  if (key === "ok" || key === "pass") return "diag-ok";
+  return "diag-neutral";
+}
+
+function buildConvergenceView(summary) {
+  const raw = summary?.convergence;
+  if (!raw || raw.available === false) {
+    return {
+      mode: "none",
+      available: false,
+      severity: "neutral",
+      title: "No convergence diagnostics",
+      subtitle: "No EQL or solver diagnostics available for this run.",
+      cards: [],
+      raw: raw || { available: false },
+    };
+  }
+
+  if (raw.iterations !== undefined || raw.max_change_last !== undefined) {
+    const converged = Boolean(raw.converged);
+    return {
+      mode: "eql",
+      available: true,
+      severity: converged ? "ok" : "warning",
+      title: converged ? "EQL converged" : "EQL not converged",
+      subtitle: "Equivalent-linear iteration diagnostics",
+      cards: [
+        { label: "Mode", value: "EQL" },
+        { label: "Converged", value: converged ? "yes" : "no" },
+        { label: "Iterations", value: String(raw.iterations ?? "n/a") },
+        { label: "max_change_last", value: fmt(raw.max_change_last, 6) },
+        { label: "max_change_max", value: fmt(raw.max_change_max, 6) },
+      ],
+      raw,
+    };
+  }
+
+  const warningCount = toFiniteNumber(raw.warning_count);
+  const failedConverge = toFiniteNumber(raw.failed_converge_count);
+  const analyzeFailed = toFiniteNumber(raw.analyze_failed_count);
+  const divideByZero = toFiniteNumber(raw.divide_by_zero_count);
+  const initCount = toFiniteNumber(raw.pm4_initialize_count);
+  const fallbackFailed = toFiniteNumber(raw.dynamic_fallback_failed);
+  const severity = String(raw.severity || "unknown").toLowerCase();
+
+  return {
+    mode: "solver",
+    available: true,
+    severity,
+    title:
+      severity === "ok"
+        ? "Solver diagnostics clean"
+        : severity === "critical"
+          ? "Solver diagnostics critical"
+          : "Solver diagnostics warning",
+    subtitle: "OpenSees log-derived quality diagnostics",
+    cards: [
+      { label: "Source", value: String(raw.source || "opensees_logs") },
+      { label: "Severity", value: severity || "unknown" },
+      { label: "warning_count", value: fmt(warningCount ?? NaN, 0) },
+      { label: "failed_converge_count", value: fmt(failedConverge ?? NaN, 0) },
+      { label: "analyze_failed_count", value: fmt(analyzeFailed ?? NaN, 0) },
+      { label: "divide_by_zero_count", value: fmt(divideByZero ?? NaN, 0) },
+      { label: "pm4_initialize_count", value: fmt(initCount ?? NaN, 0) },
+      { label: "dynamic_fallback_failed", value: fmt(fallbackFailed ?? NaN, 0) },
+    ],
+    raw,
+  };
+}
+
 function mini(text) {
   if (!text) return "";
   const asText = String(text);
@@ -1334,6 +1413,8 @@ function App() {
       sigmaRef: runSignal?.sigma_v_ref ?? null,
     };
   }, [runSignal, selectedRun]);
+
+  const convergenceView = useMemo(() => buildConvergenceView(runSummary), [runSummary]);
 
   const hysteresisView = useMemo(() => {
     const layers = Array.isArray(runHysteresis?.layers) ? runHysteresis.layers : [];
@@ -2773,9 +2854,33 @@ function App() {
 
             ${selectedRunId && activeResultTab === "Convergence" && runSummary
               ? html`
-                  <pre className="json-box">
-${JSON.stringify(runSummary.convergence || { available: false }, null, 2)}
-                  </pre>
+                  <div className="convergence-shell">
+                    <div className=${`status ${convergenceSeverityClass(convergenceView.severity)}`}>
+                      <div className="row between">
+                        <strong>${convergenceView.title}</strong>
+                        <span className=${`diag-chip ${convergenceSeverityClass(convergenceView.severity)}`}>
+                          ${String(convergenceView.severity || "neutral").toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="muted">${convergenceView.subtitle}</div>
+                    </div>
+                    <div className="metric-grid">
+                      ${(convergenceView.cards || []).map(
+                        (item) => html`
+                          <div key=${`conv-${item.label}`} className="metric-card">
+                            <span>${item.label}</span>
+                            <b>${item.value}</b>
+                          </div>
+                        `
+                      )}
+                    </div>
+                    <details className="json-details">
+                      <summary>Raw payload</summary>
+                      <pre className="json-box">
+${JSON.stringify(convergenceView.raw || { available: false }, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
                 `
               : null}
 

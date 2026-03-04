@@ -327,7 +327,10 @@ def _discover_opensees_executable() -> Path | None:
 
 
 def _effective_opensees_executable(raw_value: str | None) -> str:
-    raw = (raw_value or "").strip() or "OpenSees"
+    raw = (raw_value or "").strip()
+    if len(raw) >= 2 and ((raw[0] == raw[-1] == '"') or (raw[0] == raw[-1] == "'")):
+        raw = raw[1:-1].strip()
+    raw = raw.strip("\"'") or "OpenSees"
     if raw != "OpenSees":
         return raw
     discovered = _discover_opensees_executable()
@@ -376,6 +379,39 @@ def _collect_runs(output_root: Path) -> list[Path]:
         ):
             runs.append(p)
     return runs
+
+
+def _looks_like_run_dir(path: Path) -> bool:
+    if not path.exists() or not path.is_dir():
+        return False
+    return (
+        (path / "run_meta.json").exists()
+        and (path / "results.h5").exists()
+        and (path / "results.sqlite").exists()
+    )
+
+
+def _resolve_run_dir(run_id: str, output_root: str) -> Path:
+    if output_root.strip():
+        preferred = _safe_real_path(output_root) / run_id
+    else:
+        preferred = _default_output_root() / run_id
+    if _looks_like_run_dir(preferred):
+        return preferred
+
+    out_root = _repo_root() / "out"
+    candidates: list[Path] = []
+    if out_root.exists():
+        for candidate in out_root.rglob(run_id):
+            if _looks_like_run_dir(candidate):
+                candidates.append(candidate.resolve())
+    if candidates:
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates[0]
+
+    if preferred.exists() and preferred.is_dir():
+        return preferred
+    raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
 
 def _read_metrics(sqlite_path: Path) -> dict[str, float]:
@@ -1520,10 +1556,7 @@ def create_app() -> FastAPI:
         max_points: int = Query(default=4000, ge=200, le=40000),
         max_spectral_points: int = Query(default=2400, ge=100, le=40000),
     ) -> dict[str, object]:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         rs = load_result(run_dir)
         time = rs.time
         acc = rs.acc_surface
@@ -1625,10 +1658,7 @@ def create_app() -> FastAPI:
         run_id: str,
         output_root: str = Query(default=""),
     ) -> ResultSummaryResponse:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         meta = _read_run_meta(run_dir)
         sqlite_path = run_dir / "results.sqlite"
         return ResultSummaryResponse(
@@ -1650,10 +1680,7 @@ def create_app() -> FastAPI:
         output_root: str = Query(default=""),
         max_points: int = Query(default=700, ge=120, le=5000),
     ) -> ResultHysteresisResponse:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         sqlite_path = run_dir / "results.sqlite"
         return _build_hysteresis_response(
             run_id=run_id,
@@ -1667,10 +1694,7 @@ def create_app() -> FastAPI:
         run_id: str,
         output_root: str = Query(default=""),
     ) -> PlainTextResponse:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         rs = load_result(run_dir)
         n = int(min(rs.time.size, rs.acc_surface.size))
         if n <= 1:
@@ -1688,10 +1712,7 @@ def create_app() -> FastAPI:
         run_id: str,
         output_root: str = Query(default=""),
     ) -> PlainTextResponse:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         rs = load_result(run_dir)
         n = int(rs.ru.size)
         if n <= 0:
@@ -1720,10 +1741,7 @@ def create_app() -> FastAPI:
         artifact: str,
         output_root: str = Query(default=""),
     ) -> FileResponse:
-        root = _safe_real_path(output_root) if output_root else _default_output_root()
-        run_dir = root / run_id
-        if not run_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
         allowed = {
             "results.h5": "results.h5",
             "results.sqlite": "results.sqlite",

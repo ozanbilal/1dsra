@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -31,6 +33,19 @@ def test_web_backend_probe_endpoint() -> None:
     assert payload["requested"]
     assert "available" in payload
     assert "version" in payload
+
+
+def test_web_backend_probe_trims_wrapping_quotes() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    exe = shutil.which("python")
+    assert exe is not None
+    client = TestClient(create_app())
+    resp = client.get("/api/backend/opensees/probe", params={"executable": f'"{exe}"'})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["requested"] == exe
 
 
 def test_web_runs_endpoint_returns_list() -> None:
@@ -508,6 +523,34 @@ def test_web_runs_tree_and_results_summary_endpoint(tmp_path) -> None:
     assert summary["run_id"] == result.run_id
     assert "metrics" in summary
     assert "convergence" in summary
+
+
+def test_web_results_summary_fallback_without_output_root() -> None:
+    from dsra1d.config import load_project_config
+    from dsra1d.motion import load_motion
+    from dsra1d.pipeline import run_analysis
+    from dsra1d.web.app import _repo_root, create_app
+    from fastapi.testclient import TestClient
+
+    fallback_root = _repo_root() / "out" / f"test_web_fallback_{uuid4().hex[:8]}"
+    try:
+        cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+        cfg.analysis.solver_backend = "mock"
+        dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+        motion = load_motion(
+            Path("examples/motions/sample_motion.csv"),
+            dt=dt,
+            unit=cfg.motion.units,
+        )
+        result = run_analysis(cfg, motion, output_dir=fallback_root)
+
+        client = TestClient(create_app())
+        resp = client.get(f"/api/runs/{result.run_id}/results/summary")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["run_id"] == result.run_id
+    finally:
+        shutil.rmtree(fallback_root, ignore_errors=True)
 
 
 def test_web_results_hysteresis_endpoint(tmp_path) -> None:

@@ -257,8 +257,34 @@ def _write_pwp_effective_csv(
             du = float(delta_u[i]) if i < delta_u.size else float("nan")
             sve = float(sigma_v_eff[i]) if i < sigma_v_eff.size else float("nan")
             f.write(
-                f"{float(ru_time[i]):.8f},{float(ru[i]):.10e},{du:.10e},{sve:.10e},{float(dt_s):.8e}\n"
+            f"{float(ru_time[i]):.8f},{float(ru[i]):.10e},{du:.10e},{sve:.10e},{float(dt_s):.8e}\n"
             )
+
+
+def _summarize_opensees_failure(exc: OpenSeesExecutionError) -> str:
+    raw = str(exc)
+    stderr = (exc.stderr or "").strip()
+    text = f"{raw}\n{stderr}"
+    if "couldn't read file" in text:
+        return (
+            "OpenSees could not read generated Tcl/motion files. "
+            "Check run directory permissions and path encoding."
+        )
+    if "Vector::operator/(double fact)" in text and (
+        "PM4Sand" in text or "PM4Silt" in text
+    ):
+        return (
+            "OpenSees PM4 model diverged at an early step (divide-by-zero). "
+            "This usually indicates PM4 calibration/initial stress or staging mismatch. "
+            "For stable runs now, use native nonlinear/eql backend, or simplify to elastic "
+            "OpenSees until PM4 calibration is completed."
+        )
+    if "failed to converge" in text or "analyze failed" in text:
+        return (
+            "OpenSees analysis did not converge. "
+            "Try smaller dt, more robust algorithm/test settings, and verify material parameters."
+        )
+    return raw
 
 
 def run_analysis(
@@ -353,7 +379,7 @@ def run_analysis(
                     opensees_stderr_log.write_text(exc.stderr, encoding="utf-8")
                 if attempt > config.analysis.retries:
                     status = "error"
-                    message = str(exc)
+                    message = _summarize_opensees_failure(exc)
                     # keep deterministic output shape for downstream writers
                     _write_mock_outputs(
                         run_dir=run_dir,

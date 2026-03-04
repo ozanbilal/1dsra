@@ -120,6 +120,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - fixed `backend=config|auto` handling when config backend is `auto` (resolves to OpenSees when available, otherwise deterministic mock fallback)
 - CI/mypy compatibility:
   - fixed Python 3.12 strict-typing regression in web profile-summary response model (`ResultProfileLayerRow`) caused by alias/constructor mismatch
+- Chart readability:
+  - all SVG charts now include axis lines, tick marks, numeric tick labels, and horizontal grid lines (single-series and multi-series views)
 
 ## [0.1.0] - 2026-03-01
 

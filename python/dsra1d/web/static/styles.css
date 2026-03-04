@@ -777,6 +777,27 @@ pre {
   height: 180px;
 }
 
+.chart-grid-line {
+  stroke: rgba(45, 57, 68, 0.16);
+  stroke-width: 1;
+}
+
+.chart-axis-line {
+  stroke: rgba(45, 57, 68, 0.48);
+  stroke-width: 1.2;
+}
+
+.chart-axis-tick {
+  stroke: rgba(45, 57, 68, 0.48);
+  stroke-width: 1;
+}
+
+.chart-axis-text {
+  fill: rgba(23, 23, 25, 0.8);
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
 .json-box {
   border: 1px solid rgba(45, 57, 68, 0.2);
   border-radius: 10px;

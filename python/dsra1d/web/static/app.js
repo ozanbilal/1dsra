@@ -452,48 +452,225 @@ async function fileToBase64(file) {
   return bytesToBase64(new Uint8Array(buffer));
 }
 
-function linePoints(xs, ys) {
-  if (!Array.isArray(xs) || !Array.isArray(ys)) return "";
-  const n = Math.min(xs.length, ys.length);
-  if (n < 2) return "";
-  const x = xs.slice(0, n);
-  const y = ys.slice(0, n);
-  let xMin = Math.min(...x);
-  let xMax = Math.max(...x);
-  let yMin = Math.min(...y);
-  let yMax = Math.max(...y);
+const CHART_FRAME = {
+  width: 1000,
+  height: 280,
+  padLeft: 58,
+  padRight: 18,
+  padTop: 14,
+  padBottom: 36,
+};
+
+function formatAxisTick(value) {
+  if (!Number.isFinite(value)) return "";
+  const av = Math.abs(value);
+  if (av >= 1e4 || (av > 0 && av < 1e-3)) return value.toExponential(2);
+  return Number(value.toFixed(4)).toString();
+}
+
+function finitePoints(xValues, yValues) {
+  if (!Array.isArray(xValues) || !Array.isArray(yValues)) return [];
+  const n = Math.min(xValues.length, yValues.length);
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const x = Number(xValues[i]);
+    const y = Number(yValues[i]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out.push({ x, y });
+  }
+  return out;
+}
+
+function niceStep(range, targetTicks = 5) {
+  if (!Number.isFinite(range) || range <= 0) return 1;
+  const rough = range / Math.max(targetTicks, 2);
+  const power = Math.pow(10, Math.floor(Math.log10(rough)));
+  const ratio = rough / power;
+  if (ratio <= 1.5) return 1 * power;
+  if (ratio <= 3) return 2 * power;
+  if (ratio <= 7) return 5 * power;
+  return 10 * power;
+}
+
+function buildTicks(minVal, maxVal, targetTicks = 5) {
+  const lo = Number(minVal);
+  const hi = Number(maxVal);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [];
+  if (Math.abs(hi - lo) < 1e-12) return [lo];
+  const step = niceStep(hi - lo, targetTicks);
+  const start = Math.floor(lo / step) * step;
+  const end = Math.ceil(hi / step) * step;
+  const ticks = [];
+  for (let v = start; v <= end + step * 0.5; v += step) {
+    if (v < lo - step * 0.5 || v > hi + step * 0.5) continue;
+    ticks.push(Number(v.toPrecision(12)));
+  }
+  if (ticks.length === 0) return [lo, hi];
+  if (ticks.length === 1 && Math.abs(hi - lo) > 1e-12) return [lo, hi];
+  return ticks;
+}
+
+function buildChartGeometry(series) {
+  const normalized = (Array.isArray(series) ? series : [])
+    .map((s, idx) => ({
+      key: s?.key || `series-${idx}`,
+      name: s?.name || `Series ${idx + 1}`,
+      color: s?.color || pickOverlayColor(idx),
+      points: finitePoints(s?.x || [], s?.y || []),
+    }))
+    .filter((s) => s.points.length >= 2);
+  if (normalized.length === 0) return null;
+
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  normalized.forEach((s) => {
+    s.points.forEach((p) => {
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y;
+      if (p.y > yMax) yMax = p.y;
+    });
+  });
+  if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+    return null;
+  }
   if (Math.abs(xMax - xMin) < 1e-12) xMax = xMin + 1.0;
   if (Math.abs(yMax - yMin) < 1e-12) yMax = yMin + 1.0;
-  const width = 1000;
-  const height = 280;
-  const pad = 24;
-  const pts = [];
-  for (let i = 0; i < n; i += 1) {
-    const px = pad + ((x[i] - xMin) / (xMax - xMin)) * (width - 2 * pad);
-    const py = height - pad - ((y[i] - yMin) / (yMax - yMin)) * (height - 2 * pad);
-    pts.push(`${px.toFixed(2)},${py.toFixed(2)}`);
-  }
-  return pts.join(" ");
+
+  const yPad = 0.06 * (yMax - yMin);
+  yMin -= yPad;
+  yMax += yPad;
+
+  const { width, height, padLeft, padRight, padTop, padBottom } = CHART_FRAME;
+  const innerW = width - padLeft - padRight;
+  const innerH = height - padTop - padBottom;
+  const xToPx = (x) => padLeft + ((x - xMin) / (xMax - xMin)) * innerW;
+  const yToPx = (y) => height - padBottom - ((y - yMin) / (yMax - yMin)) * innerH;
+
+  const paths = normalized.map((s) => {
+    const pts = s.points.map((p) => `${xToPx(p.x).toFixed(2)},${yToPx(p.y).toFixed(2)}`).join(" ");
+    return { key: s.key, name: s.name, color: s.color, points: pts };
+  });
+
+  const xTicks = buildTicks(xMin, xMax, 6).map((v) => ({
+    value: v,
+    px: xToPx(v),
+    label: formatAxisTick(v),
+  }));
+  const yTicks = buildTicks(yMin, yMax, 5).map((v) => ({
+    value: v,
+    py: yToPx(v),
+    label: formatAxisTick(v),
+  }));
+
+  return {
+    width,
+    height,
+    padLeft,
+    padRight,
+    padTop,
+    padBottom,
+    paths,
+    xTicks,
+    yTicks,
+  };
 }
 
 function ChartCard({ title, subtitle, x, y, color = "var(--copper)" }) {
-  const points = useMemo(() => linePoints(x, y), [x, y]);
+  const geometry = useMemo(
+    () =>
+      buildChartGeometry([
+        {
+          key: "single",
+          name: title || "Series",
+          color,
+          x,
+          y,
+        },
+      ]),
+    [title, x, y, color]
+  );
   return html`
     <section className="chart-card">
       <div className="chart-head">
         <h4>${title}</h4>
         ${subtitle ? html`<span className="muted">${subtitle}</span>` : null}
       </div>
-      ${points
+      ${geometry
         ? html`
-            <svg viewBox="0 0 1000 280" role="img" aria-label=${title}>
+            <svg viewBox=${`0 0 ${geometry.width} ${geometry.height}`} role="img" aria-label=${title}>
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft}
+                    y1=${tick.py}
+                    x2=${geometry.width - geometry.padRight}
+                    y2=${tick.py}
+                    className="chart-grid-line"
+                  ></line>
+                `
+              )}
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.height - geometry.padBottom}
+                x2=${geometry.width - geometry.padRight}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.padTop}
+                x2=${geometry.padLeft}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              ${geometry.xTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${tick.px}
+                    y1=${geometry.height - geometry.padBottom}
+                    x2=${tick.px}
+                    y2=${geometry.height - geometry.padBottom + 4}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${tick.px}
+                    y=${geometry.height - geometry.padBottom + 16}
+                    textAnchor="middle"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft - 4}
+                    y1=${tick.py}
+                    x2=${geometry.padLeft}
+                    y2=${tick.py}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${geometry.padLeft - 8}
+                    y=${tick.py + 3}
+                    textAnchor="end"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
               <polyline
                 fill="none"
                 stroke=${color}
                 strokeWidth="2"
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                points=${points}
+                points=${geometry.paths[0].points}
               ></polyline>
             </svg>
           `
@@ -518,61 +695,8 @@ function pickOverlayColor(index) {
 }
 
 function MultiSeriesChartCard({ title, subtitle, series }) {
-  const normalized = Array.isArray(series)
-    ? series.filter(
-        (s) =>
-          s &&
-          Array.isArray(s.x) &&
-          Array.isArray(s.y) &&
-          Math.min(s.x.length, s.y.length) >= 2
-      )
-    : [];
-  const geometry = useMemo(() => {
-    if (normalized.length === 0) return null;
-    const width = 1000;
-    const height = 280;
-    const pad = 24;
-    let xMin = Infinity;
-    let xMax = -Infinity;
-    let yMin = Infinity;
-    let yMax = -Infinity;
-    normalized.forEach((s) => {
-      const n = Math.min(s.x.length, s.y.length);
-      for (let i = 0; i < n; i += 1) {
-        const xv = Number(s.x[i]);
-        const yv = Number(s.y[i]);
-        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
-        if (xv < xMin) xMin = xv;
-        if (xv > xMax) xMax = xv;
-        if (yv < yMin) yMin = yv;
-        if (yv > yMax) yMax = yv;
-      }
-    });
-    if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) {
-      return null;
-    }
-    if (Math.abs(xMax - xMin) < 1e-12) xMax = xMin + 1.0;
-    if (Math.abs(yMax - yMin) < 1e-12) yMax = yMin + 1.0;
-    const paths = normalized.map((s, idx) => {
-      const n = Math.min(s.x.length, s.y.length);
-      const pts = [];
-      for (let i = 0; i < n; i += 1) {
-        const xv = Number(s.x[i]);
-        const yv = Number(s.y[i]);
-        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
-        const px = pad + ((xv - xMin) / (xMax - xMin)) * (width - 2 * pad);
-        const py = height - pad - ((yv - yMin) / (yMax - yMin)) * (height - 2 * pad);
-        pts.push(`${px.toFixed(2)},${py.toFixed(2)}`);
-      }
-      return {
-        key: s.key || `series-${idx}`,
-        name: s.name || `Series ${idx + 1}`,
-        color: s.color || pickOverlayColor(idx),
-        points: pts.join(" "),
-      };
-    });
-    return { paths };
-  }, [normalized]);
+  const normalized = Array.isArray(series) ? series : [];
+  const geometry = useMemo(() => buildChartGeometry(normalized), [normalized]);
 
   return html`
     <section className="chart-card">
@@ -582,7 +706,70 @@ function MultiSeriesChartCard({ title, subtitle, series }) {
       </div>
       ${geometry
         ? html`
-            <svg viewBox="0 0 1000 280" role="img" aria-label=${title}>
+            <svg viewBox=${`0 0 ${geometry.width} ${geometry.height}`} role="img" aria-label=${title}>
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft}
+                    y1=${tick.py}
+                    x2=${geometry.width - geometry.padRight}
+                    y2=${tick.py}
+                    className="chart-grid-line"
+                  ></line>
+                `
+              )}
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.height - geometry.padBottom}
+                x2=${geometry.width - geometry.padRight}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.padTop}
+                x2=${geometry.padLeft}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              ${geometry.xTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${tick.px}
+                    y1=${geometry.height - geometry.padBottom}
+                    x2=${tick.px}
+                    y2=${geometry.height - geometry.padBottom + 4}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${tick.px}
+                    y=${geometry.height - geometry.padBottom + 16}
+                    textAnchor="middle"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft - 4}
+                    y1=${tick.py}
+                    x2=${geometry.padLeft}
+                    y2=${tick.py}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${geometry.padLeft - 8}
+                    y=${tick.py + 3}
+                    textAnchor="end"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
               ${geometry.paths.map(
                 (line) => html`
                   <polyline

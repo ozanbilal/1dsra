@@ -496,7 +496,7 @@ function App() {
   const [generatedConfigYaml, setGeneratedConfigYaml] = useState("");
   const [configWarnings, setConfigWarnings] = useState([]);
 
-  const [outputRoot, setOutputRoot] = useState("");
+  const [outputRoot, setOutputRoot] = useState("out/web");
   const [runs, setRuns] = useState([]);
   const [runsTree, setRunsTree] = useState({});
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -531,7 +531,12 @@ function App() {
     maxSubLayersPerMain: 24,
   });
 
-  const runQuery = outputRoot ? `?output_root=${encodeURIComponent(outputRoot)}` : "";
+  function makeRunQuery(rootOverride = outputRoot) {
+    const root = String(rootOverride || "").trim();
+    return root ? `?output_root=${encodeURIComponent(root)}` : "";
+  }
+
+  const runQuery = makeRunQuery();
 
   function updateWizard(stepKey, patch) {
     setWizard((prev) => {
@@ -920,36 +925,51 @@ function App() {
     }
   }
 
-  async function loadRuns() {
+  async function loadRuns(rootOverride = outputRoot) {
+    const query = makeRunQuery(rootOverride);
     try {
-      const payload = await requestJSON(`/api/runs${runQuery}`);
+      const payload = await requestJSON(`/api/runs${query}`);
       setRuns(payload);
-      if (!selectedRunId && payload.length > 0) {
+      if (payload.length === 0) {
+        setSelectedRunId("");
+        setRunSignal(null);
+        setRunSummary(null);
+        setRunHysteresis(null);
+        return payload;
+      }
+      const selectedExists = payload.some((run) => run.run_id === selectedRunId);
+      if (!selectedExists) {
         setSelectedRunId(payload[0].run_id);
       }
+      return payload;
     } catch (err) {
       setStatusKind("err");
       setStatus(`Run list failed: ${String(err)}`);
+      return [];
     }
   }
 
-  async function loadRunsTree() {
+  async function loadRunsTree(rootOverride = outputRoot) {
+    const query = makeRunQuery(rootOverride);
     try {
-      const payload = await requestJSON(`/api/runs/tree${runQuery}`);
+      const payload = await requestJSON(`/api/runs/tree${query}`);
       setRunsTree(payload.tree || {});
+      return payload.tree || {};
     } catch (err) {
       setStatusKind("err");
       setStatus(`Run tree failed: ${String(err)}`);
+      return {};
     }
   }
 
-  async function loadRunDetail(runId) {
+  async function loadRunDetail(runId, rootOverride = outputRoot) {
     if (!runId) return;
+    const query = makeRunQuery(rootOverride);
     try {
       const [signals, summary, hysteresis] = await Promise.all([
-        requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${runQuery}`),
-        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/summary${runQuery}`),
-        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/hysteresis${runQuery}`),
+        requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${query}`),
+        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/summary${query}`),
+        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/hysteresis${query}`),
       ]);
       setRunSignal(signals);
       setRunSummary(summary);
@@ -957,6 +977,8 @@ function App() {
       const firstLayer = hysteresis?.layers?.[0];
       setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
     } catch (err) {
+      setRunSignal(null);
+      setRunSummary(null);
       setRunHysteresis(null);
       setStatusKind("err");
       setStatus(`Run detail failed: ${String(err)}`);
@@ -1000,20 +1022,25 @@ function App() {
     setStatusKind("info");
     setStatus("Running analysis...");
     try {
+      const targetOutputRoot = wizard.control_step?.output_dir || outputRoot || "out/web";
+      if (targetOutputRoot !== outputRoot) {
+        setOutputRoot(targetOutputRoot);
+      }
       const payload = await requestJSON("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config_path: generatedConfigPath,
           motion_path: motionPath,
-          output_root: wizard.control_step?.output_dir || "out/ui",
+          output_root: targetOutputRoot,
           backend: wizard.analysis_step?.solver_backend || "config",
           opensees_executable: wizard.control_step?.opensees_executable || null,
         }),
       });
-      await loadRuns();
-      await loadRunsTree();
+      await loadRuns(targetOutputRoot);
+      await loadRunsTree(targetOutputRoot);
       setSelectedRunId(payload.run_id);
+      await loadRunDetail(payload.run_id, targetOutputRoot);
       setStatusKind(payload.status === "ok" ? "ok" : "warn");
       setStatus(`Run done: ${payload.run_id} | ${payload.message}`);
     } catch (err) {
@@ -1183,9 +1210,10 @@ function App() {
     setStatusKind("info");
     setStatus(`Loading compare signals for ${compareRunIds.length} run(s)...`);
     try {
+      const query = makeRunQuery();
       const entries = await Promise.all(
         compareRunIds.map(async (runId) => {
-          const signals = await requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${runQuery}`);
+          const signals = await requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${query}`);
           const runMeta = runs.find((r) => r.run_id === runId);
           return [
             runId,

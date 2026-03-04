@@ -49,6 +49,7 @@ Implemented:
 - Retries and fallback behavior
 - Parser support for recorder formats (1-column and 2-column time series)
 - Structured OpenSees artifact logging (`run_meta.json`, stdout/stderr logs, SQLite `artifacts`)
+- OpenSees log diagnostics are now extracted per run (`opensees_diagnostics.json`) and persisted into `run_meta.json`
 - Boundary-condition aware TCL assembly:
   - `rigid` base fixity
   - `elastic_halfspace` base with Lysmer-style dashpot (`uniaxialMaterial Viscous` + `zeroLength`)
@@ -204,6 +205,7 @@ Missing:
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
 - FastAPI + React migration starter is now available (`StrataWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
+- Results `Convergence` tab now includes OpenSees log-derived diagnostics for non-EQL runs (warning/divergence counters and severity)
 - Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
 - Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
 - Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)

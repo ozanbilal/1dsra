@@ -87,6 +87,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - added gravity permeability staging (high temporary permeability -> target `h_perm/v_perm`)
   - converted configured hydraulic conductivity (`m/s`) to quadUP permeability coefficients in Tcl
   - strengthened gravity/dynamic fallback solve sequence (`KrylovNewton` + substep retry)
+- OpenSees quality diagnostics:
+  - run-level log diagnostics are now extracted (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`)
+  - diagnostics are persisted in `run_meta.json` and `opensees_diagnostics.json`
+  - run summary/convergence views now show OpenSees log diagnostics for non-EQL runs
 
 ## [0.1.0] - 2026-03-01
 

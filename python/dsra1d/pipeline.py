@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -287,6 +288,48 @@ def _summarize_opensees_failure(exc: OpenSeesExecutionError) -> str:
     return raw
 
 
+def _count_pattern(text: str, pattern: str) -> int:
+    return len(re.findall(pattern, text, flags=re.IGNORECASE))
+
+
+def _opensees_log_diagnostics(stdout: str, stderr: str) -> dict[str, object]:
+    log = f"{stdout}\n{stderr}"
+    warning_count = _count_pattern(log, r"\bWARNING\b")
+    failed_converge_count = _count_pattern(log, r"failed to converge")
+    analyze_failed_count = _count_pattern(log, r"analyze failed")
+    divide_by_zero_count = _count_pattern(log, r"divide-by-zero")
+    init_count = _count_pattern(log, r"\binitialize\b")
+    dynamic_fallback_failed = (
+        "dynamic analysis failed after fallback attempt" in log.lower()
+    )
+    severity = "ok"
+    if divide_by_zero_count > 0:
+        severity = "critical"
+    elif failed_converge_count > 0 or analyze_failed_count > 0:
+        severity = "warning"
+    return {
+        "source": "opensees_logs",
+        "severity": severity,
+        "warning_count": int(warning_count),
+        "failed_converge_count": int(failed_converge_count),
+        "analyze_failed_count": int(analyze_failed_count),
+        "divide_by_zero_count": int(divide_by_zero_count),
+        "pm4_initialize_count": int(init_count),
+        "dynamic_fallback_failed": bool(dynamic_fallback_failed),
+    }
+
+
+def _format_opensees_diag_note(diag: dict[str, object]) -> str:
+    failed_conv = _as_int(diag.get("failed_converge_count", 0))
+    analyze_failed = _as_int(diag.get("analyze_failed_count", 0))
+    warning_count = _as_int(diag.get("warning_count", 0))
+    return (
+        "completed with solver warnings "
+        f"(failed_to_converge={failed_conv}, "
+        f"analyze_failed={analyze_failed}, warnings={warning_count})"
+    )
+
+
 def run_analysis(
     config: ProjectConfig,
     motion: Motion,
@@ -333,6 +376,7 @@ def run_analysis(
     opensees_stdout_log: Path | None = None
     opensees_stderr_log: Path | None = None
     opensees_probe: dict[str, object] | None = None
+    opensees_diagnostics: dict[str, object] | None = None
     eql_summary: dict[str, object] | None = None
 
     if config.analysis.solver_backend == "opensees":
@@ -367,6 +411,16 @@ def run_analysis(
                 opensees_stderr_log = run_dir / "opensees_stderr.log"
                 opensees_stdout_log.write_text(run_output.stdout, encoding="utf-8")
                 opensees_stderr_log.write_text(run_output.stderr, encoding="utf-8")
+                opensees_diagnostics = _opensees_log_diagnostics(
+                    run_output.stdout,
+                    run_output.stderr,
+                )
+                diagnostics_path = run_dir / "opensees_diagnostics.json"
+                diagnostics_path.write_text(
+                    json.dumps(opensees_diagnostics, indent=2),
+                    encoding="utf-8",
+                )
+                artifacts.append(("opensees_diagnostics", str(diagnostics_path)))
                 _validate_opensees_run_outputs(run_dir)
                 break
             except OpenSeesExecutionError as exc:
@@ -473,6 +527,12 @@ def run_analysis(
         artifacts.append(("opensees_stdout", str(opensees_stdout_log)))
     if opensees_stderr_log and opensees_stderr_log.exists():
         artifacts.append(("opensees_stderr", str(opensees_stderr_log)))
+    if (
+        status == "ok"
+        and opensees_diagnostics is not None
+        and str(opensees_diagnostics.get("severity", "ok")) != "ok"
+    ):
+        message = _format_opensees_diag_note(opensees_diagnostics)
 
     h5_path = run_dir / "results.h5"
     sqlite_path = run_dir / "results.sqlite"
@@ -548,6 +608,8 @@ def run_analysis(
     }
     if opensees_probe is not None:
         run_meta["opensees_backend_probe"] = opensees_probe
+    if opensees_diagnostics is not None:
+        run_meta["opensees_diagnostics"] = opensees_diagnostics
     if eql_summary is not None:
         run_meta["eql"] = {
             "iterations": _as_int(eql_summary.get("iterations", 0)),

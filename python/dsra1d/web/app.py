@@ -507,8 +507,17 @@ def _read_output_layers(sqlite_path: Path) -> list[str]:
         conn.close()
 
 
-def _read_convergence(sqlite_path: Path) -> dict[str, object]:
+def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[str, object]:
     if not sqlite_path.exists():
+        if run_dir is None:
+            return {"available": False}
+        meta_raw = _read_run_meta_raw(run_dir)
+        diag_raw = meta_raw.get("opensees_diagnostics")
+        if isinstance(diag_raw, dict):
+            diag = dict(diag_raw)
+            diag["available"] = True
+            diag.setdefault("source", "opensees_logs")
+            return diag
         return {"available": False}
     conn = sqlite3.connect(sqlite_path)
     try:
@@ -516,6 +525,14 @@ def _read_convergence(sqlite_path: Path) -> dict[str, object]:
             "SELECT iterations, converged, max_change_last, max_change_max FROM eql_summary LIMIT 1"
         ).fetchone()
         if row is None:
+            if run_dir is not None:
+                meta_raw = _read_run_meta_raw(run_dir)
+                diag_raw = meta_raw.get("opensees_diagnostics")
+                if isinstance(diag_raw, dict):
+                    diag = dict(diag_raw)
+                    diag["available"] = True
+                    diag.setdefault("source", "opensees_logs")
+                    return diag
             return {"available": False}
         return {
             "available": True,
@@ -1668,7 +1685,7 @@ def create_app() -> FastAPI:
             project_name=_read_project_name(sqlite_path),
             input_motion=meta.get("input_motion", ""),
             metrics=_read_metrics(sqlite_path),
-            convergence=_read_convergence(sqlite_path),
+            convergence=_read_convergence(sqlite_path, run_dir=run_dir),
             output_layers=_read_output_layers(sqlite_path),
             artifacts=_read_artifacts(sqlite_path),
             solver_notes=meta.get("message", ""),

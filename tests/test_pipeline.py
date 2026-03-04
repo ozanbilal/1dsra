@@ -4,6 +4,7 @@ from pathlib import Path
 
 import dsra1d.pipeline as pipeline_mod
 import h5py
+import numpy as np
 from dsra1d.config import load_project_config
 from dsra1d.interop.opensees.runner import OpenSeesExecutionError, OpenSeesRunOutput
 from dsra1d.motion import load_motion
@@ -124,6 +125,43 @@ def test_run_analysis_opensees_pm4_divergence_has_actionable_message(tmp_path, m
     result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-diverged")
     assert result.status == "error"
     assert "PM4 model diverged" in result.message
+
+
+def test_run_analysis_opensees_ok_with_warning_diagnostics(tmp_path, monkeypatch) -> None:
+    cfg = load_project_config(Path("examples/configs/effective_stress.yml"))
+    cfg.analysis.solver_backend = "opensees"
+    cfg.analysis.retries = 0
+    cfg.opensees.executable = "OpenSees"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    def _fake_run_opensees(executable, tcl_file, cwd, timeout_s, extra_args=None):
+        _ = (executable, tcl_file, timeout_s, extra_args)
+        t = np.arange(motion.acc.size, dtype=np.float64) * float(motion.dt)
+        np.savetxt(Path(cwd) / "surface_acc.out", np.column_stack([t, motion.acc]))
+        np.savetxt(
+            Path(cwd) / "pwp_ru.out",
+            np.column_stack([t, np.zeros_like(t)]),
+        )
+        return OpenSeesRunOutput(
+            returncode=0,
+            stdout="OpenSees run complete",
+            stderr=(
+                "WARNING: CTestNormDispIncr::test() - failed to converge\n"
+                "OpenSees > analyze failed, returned: -3 error flag\n"
+            ),
+            command=["OpenSees", str(tcl_file)],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_opensees", _fake_run_opensees)
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "opensees-warn")
+    assert result.status == "ok"
+    assert "completed with solver warnings" in result.message
+    run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
+    diag = run_meta.get("opensees_diagnostics")
+    assert isinstance(diag, dict)
+    assert int(diag.get("failed_converge_count", 0)) >= 1
+    assert int(diag.get("analyze_failed_count", 0)) >= 1
 
 
 def test_run_id_is_stable_and_config_sensitive(tmp_path: Path) -> None:

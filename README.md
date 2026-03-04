@@ -209,6 +209,7 @@ and writes `quickstart_summary.json`.
 Each run writes structured metadata/artifacts:
 - `run_meta.json` with backend, status, command metadata
 - `opensees_stdout.log` / `opensees_stderr.log` (if available)
+- `opensees_diagnostics.json` with extracted solver diagnostics (`warning_count`, `failed_converge_count`, `analyze_failed_count`, `divide_by_zero_count`)
 - SQLite `artifacts` table entries for generated files
 - `surface_acc.csv` with `time_s,acc_m_s2,delta_t_s`
 - `pwp_effective.csv` with `time_s,ru,delta_u,sigma_v_eff,delta_t_s`

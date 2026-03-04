@@ -1,11 +1,15 @@
 # StrataWave Implementation Status
 
-Last updated: 2026-03-04
+Last updated: 2026-03-05
 
 ## 1. Summary
 
 This file tracks implementation progress against the original v1.0 plan.
 Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
+
+Recent updates (2026-03-05):
+- Web convergence/profile health surfaces timeout recovery diagnostics (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage).
+- OpenSees backend probe hardened against double-timeout false negatives (`-version` + Tcl fallback timeout now defers final decision to runtime execution).
 
 ## 2. Phase-by-Phase Status
 

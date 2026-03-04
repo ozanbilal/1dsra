@@ -294,13 +294,24 @@ class ReleaseSignoffLatestResponse(BaseModel):
     summary_path: str = ""
     generated_utc: str = ""
     suite: str = ""
+    release_ready: bool = False
     strict_signoff: bool = False
     signoff_passed: bool = False
     benchmark_all_passed: bool = False
+    benchmark_ran: int = 0
+    benchmark_total_cases: int = 0
+    benchmark_skipped: int = 0
+    benchmark_skipped_backend: int = 0
+    benchmark_execution_coverage: float = 0.0
+    benchmark_backend_ready: bool = False
+    benchmark_backend_fingerprint_ok: bool = False
+    backend_missing_cases: list[str] = Field(default_factory=list)
     verify_ok: bool = False
     campaign_policy_passed: bool = False
     observed_backend_sha256: str = ""
     policy_backend_sha256: str = ""
+    fingerprint_match: bool = False
+    blocker_categories: list[str] = Field(default_factory=list)
     condition_failures: list[str] = Field(default_factory=list)
     conditions: dict[str, bool] = Field(default_factory=dict)
 
@@ -2279,23 +2290,93 @@ def create_app() -> FastAPI:
         observed = observed_raw if isinstance(observed_raw, dict) else {}
         signoff_policy_raw = signoff.get("policy")
         signoff_policy = signoff_policy_raw if isinstance(signoff_policy_raw, dict) else {}
+        backend_missing_cases_raw = benchmark.get("backend_missing_cases")
+        backend_missing_cases = (
+            [str(v) for v in backend_missing_cases_raw]
+            if isinstance(backend_missing_cases_raw, list)
+            else []
+        )
+        benchmark_ran = _as_int(benchmark.get("ran", 0), 0)
+        benchmark_total_cases = _as_int(benchmark.get("total_cases", 0), 0)
+        benchmark_skipped = _as_int(benchmark.get("skipped", 0), 0)
+        benchmark_skipped_backend = _as_int(benchmark.get("skipped_backend", 0), 0)
+        benchmark_execution_coverage = _as_float(benchmark.get("execution_coverage", 0.0), 0.0)
+        benchmark_backend_ready = bool(benchmark.get("backend_ready", False))
+        benchmark_backend_fingerprint_ok = bool(benchmark.get("backend_fingerprint_ok", False))
+        strict_signoff = bool(signoff.get("strict_signoff", False))
+        signoff_passed = bool(signoff.get("passed", False))
+        benchmark_all_passed = bool(benchmark.get("all_passed", False))
+        verify_ok = bool(verify.get("ok", False))
+        campaign_policy_passed = bool(campaign_policy.get("passed", False))
+        observed_backend_sha256 = str(observed.get("backend_probe_sha256", "")).strip().lower()
+        policy_backend_sha256 = str(signoff_policy.get("opensees_fingerprint", "")).strip().lower()
+        fingerprint_match = bool(observed_backend_sha256) and (
+            observed_backend_sha256 == policy_backend_sha256
+        )
+
+        failure_category_map = {
+            "suite_release_signoff": "suite_mismatch",
+            "campaign_policy_passed": "campaign_policy_failed",
+            "verify_report_present": "verify_report_missing",
+            "verify_policy_passed": "verify_policy_failed",
+            "require_runs_ok": "insufficient_runs",
+            "min_execution_coverage_ok": "coverage_below_threshold",
+            "fail_on_skip_ok": "skipped_cases_present",
+            "backend_fingerprint_ok": "backend_fingerprint_invalid",
+            "fingerprint_match": "fingerprint_mismatch",
+        }
+        blocker_categories = [
+            failure_category_map.get(name, f"condition_{name}") for name in failures
+        ]
+        if not strict_signoff and "strict_signoff_disabled" not in blocker_categories:
+            blocker_categories.append("strict_signoff_disabled")
+        if (observed_backend_sha256 or policy_backend_sha256) and (not fingerprint_match):
+            if "fingerprint_mismatch" not in blocker_categories:
+                blocker_categories.append("fingerprint_mismatch")
+        if not signoff_passed and "signoff_not_passed" not in blocker_categories:
+            blocker_categories.append("signoff_not_passed")
+        if benchmark_skipped_backend > 0 and "backend_cases_skipped" not in blocker_categories:
+            blocker_categories.append("backend_cases_skipped")
+        if backend_missing_cases and "backend_missing_cases" not in blocker_categories:
+            blocker_categories.append("backend_missing_cases")
+
+        release_ready = (
+            strict_signoff
+            and signoff_passed
+            and benchmark_all_passed
+            and verify_ok
+            and campaign_policy_passed
+            and benchmark_skipped == 0
+            and benchmark_skipped_backend == 0
+            and benchmark_execution_coverage >= 1.0
+            and benchmark_backend_ready
+            and benchmark_backend_fingerprint_ok
+            and fingerprint_match
+        )
 
         return ReleaseSignoffLatestResponse(
             found=True,
             summary_path=str(path),
             generated_utc=str(summary.get("generated_utc", "")),
             suite=str(summary.get("suite", "")),
-            strict_signoff=bool(signoff.get("strict_signoff", False)),
-            signoff_passed=bool(signoff.get("passed", False)),
-            benchmark_all_passed=bool(benchmark.get("all_passed", False)),
-            verify_ok=bool(verify.get("ok", False)),
-            campaign_policy_passed=bool(campaign_policy.get("passed", False)),
-            observed_backend_sha256=str(observed.get("backend_probe_sha256", ""))
-            .strip()
-            .lower(),
-            policy_backend_sha256=str(signoff_policy.get("opensees_fingerprint", ""))
-            .strip()
-            .lower(),
+            release_ready=release_ready,
+            strict_signoff=strict_signoff,
+            signoff_passed=signoff_passed,
+            benchmark_all_passed=benchmark_all_passed,
+            benchmark_ran=benchmark_ran,
+            benchmark_total_cases=benchmark_total_cases,
+            benchmark_skipped=benchmark_skipped,
+            benchmark_skipped_backend=benchmark_skipped_backend,
+            benchmark_execution_coverage=benchmark_execution_coverage,
+            benchmark_backend_ready=benchmark_backend_ready,
+            benchmark_backend_fingerprint_ok=benchmark_backend_fingerprint_ok,
+            backend_missing_cases=backend_missing_cases,
+            verify_ok=verify_ok,
+            campaign_policy_passed=campaign_policy_passed,
+            observed_backend_sha256=observed_backend_sha256,
+            policy_backend_sha256=policy_backend_sha256,
+            fingerprint_match=fingerprint_match,
+            blocker_categories=blocker_categories,
             condition_failures=failures,
             conditions=conditions,
         )

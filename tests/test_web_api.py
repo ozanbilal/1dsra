@@ -831,9 +831,19 @@ def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
     assert payload["found"] is True
     assert payload["suite"] == "release-signoff"
     assert payload["strict_signoff"] is True
+    assert payload["release_ready"] is False
     assert payload["signoff_passed"] is False
     assert payload["campaign_policy_passed"] is False
+    assert payload["benchmark_all_passed"] is True
+    assert payload["verify_ok"] is True
+    assert payload["benchmark_ran"] == 0
+    assert payload["benchmark_total_cases"] == 0
+    assert payload["benchmark_execution_coverage"] == 0.0
+    assert payload["fingerprint_match"] is False
     assert "campaign_policy_passed" in payload["condition_failures"]
+    assert "campaign_policy_failed" in payload["blocker_categories"]
+    assert "fingerprint_mismatch" in payload["blocker_categories"]
+    assert "signoff_not_passed" in payload["blocker_categories"]
     assert payload["observed_backend_sha256"] == "a" * 64
     assert payload["policy_backend_sha256"] == "b" * 64
 

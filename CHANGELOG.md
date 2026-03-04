@@ -44,7 +44,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `signals` payload includes `dt_s`, `delta_t_s`, and `delta_t`
   - config-template endpoints: `GET /api/config/templates`, `POST /api/config/template`
   - parity/science visibility endpoints: `GET /api/parity/latest`, `GET /api/science/confidence`
-  - release signoff visibility endpoint: `GET /api/release/signoff/latest`
+  - release signoff visibility endpoint: `GET /api/release/signoff/latest` (includes `release_ready`, coverage/runs, fingerprint match, and blocker categories)
 - React Web Studio model-builder panel:
   - create template-based YAML config files from UI
   - auto-fill generated config path into run form

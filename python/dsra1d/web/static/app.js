@@ -468,8 +468,23 @@ function buildReleaseHealth({
     });
     const strict = Boolean(releaseSignoff.strict_signoff);
     const passed = Boolean(releaseSignoff.signoff_passed);
+    const releaseReady = Boolean(releaseSignoff.release_ready);
+    const coverage = Number(releaseSignoff.benchmark_execution_coverage || 0);
     checks.push({ label: "strict_signoff", ok: strict, value: strict ? "enabled" : "disabled" });
     checks.push({ label: "signoff_passed", ok: passed, value: passed ? "true" : "false" });
+    checks.push({
+      label: "release_ready",
+      ok: releaseReady,
+      value: releaseReady ? "true" : "false",
+    });
+    checks.push({
+      label: "signoff_coverage",
+      ok: coverage >= 1.0,
+      value: `${releaseSignoff.benchmark_ran || 0}/${releaseSignoff.benchmark_total_cases || 0} cov=${fmt(
+        coverage,
+        3
+      )}`,
+    });
     if (!strict) blockers.push("Release signoff summary is not strict-signoff.");
     if (!passed) {
       const failed = Array.isArray(releaseSignoff.condition_failures)
@@ -478,6 +493,12 @@ function buildReleaseHealth({
       blockers.push(
         `Release signoff not passed${failed.length ? `: ${failed.join(", ")}` : ""}.`
       );
+    }
+    const categories = Array.isArray(releaseSignoff.blocker_categories)
+      ? releaseSignoff.blocker_categories.filter((v) => String(v || "").trim().length > 0)
+      : [];
+    if (categories.length) {
+      warnings.push(`Signoff categories: ${categories.join(", ")}`);
     }
   }
 
@@ -495,7 +516,9 @@ function buildReleaseHealth({
       value: `${parityRow.confidence_tier || "n/a"} | ${parityRow.last_verified_utc || "n/a"}`,
     });
     const matrixFp = normalizeFingerprint(parityRow.binary_fingerprint || "");
-    const reportFp = normalizeFingerprint(parityPrimary?.binary_fingerprint || "");
+    const reportFp = normalizeFingerprint(
+      releaseSignoff?.observed_backend_sha256 || parityPrimary?.binary_fingerprint || ""
+    );
     const matrixFpOk = isSha256(matrixFp);
     checks.push({ label: "matrix_fingerprint", ok: matrixFpOk, value: mini(matrixFp || "n/a") });
     if (!matrixFpOk) blockers.push("Scientific matrix fingerprint is not a valid sha256.");

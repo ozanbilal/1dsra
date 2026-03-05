@@ -8,6 +8,7 @@ This checklist is the operational gate for `v*` tags.
 - `campaign_summary.json` contains `policy.campaign.passed=true`
 - `campaign_summary.json` contains `signoff.passed=true` when generated with `--strict-signoff`
 - Backend fingerprint check passed (required in release path; matrix value and observed run sha256 must match exactly)
+- `python scripts/check_fingerprint_alignment.py --expected-sha <DSRA1D_CI_OPENSEES_SHA256>` passed
 - `python scripts/check_release_signoff.py --campaign-dir <dir> --require-fingerprint` passed
 - `signoff.conditions.backend_probe_not_assumed=true` and `signoff.observed.backend_probe_assumed_available=false`
 - Changelog/tag checks passed

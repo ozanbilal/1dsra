@@ -33,6 +33,10 @@ jobs:
             echo "DSRA1D_CI_OPENSEES_SHA256 is required for release signoff." >&2
             exit 1
           fi
+          python scripts/check_fingerprint_alignment.py \
+            --expected-sha "${DSRA1D_CI_OPENSEES_SHA256}" \
+            --policy benchmarks/policies/release_signoff.yml \
+            --matrix SCIENTIFIC_CONFIDENCE_MATRIX.md
 
       - name: OpenSees Release Backend Probe
         run: |

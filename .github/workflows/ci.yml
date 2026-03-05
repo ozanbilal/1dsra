@@ -69,6 +69,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      - name: Validate Dedicated Runner Fingerprint Alignment
+        run: |
+          if [ -z "${DSRA1D_CI_OPENSEES_SHA256}" ]; then
+            echo "DSRA1D_CI_OPENSEES_SHA256 is required for dedicated parity gate." >&2
+            exit 1
+          fi
+          python scripts/check_fingerprint_alignment.py \
+            --expected-sha "${DSRA1D_CI_OPENSEES_SHA256}" \
+            --policy benchmarks/policies/release_signoff.yml \
+            --matrix SCIENTIFIC_CONFIDENCE_MATRIX.md
+
       - name: OpenSees Backend Probe (Dedicated Runner)
         run: |
           export DSRA1D_OPENSEES_EXE_OVERRIDE="${DSRA1D_CI_OPENSEES_EXE:-OpenSees}"

@@ -26,6 +26,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      - name: Validate Release Policy Consistency
+        run: python scripts/check_release_policy_consistency.py
+
       - name: Lint
         run: python -m ruff check .
 
@@ -68,6 +71,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
+
+      - name: Validate Release Policy Consistency
+        run: python scripts/check_release_policy_consistency.py
 
       - name: Validate Dedicated Runner Fingerprint Alignment
         run: |

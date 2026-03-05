@@ -203,6 +203,7 @@ Missing:
 - Release machine-check now enforces exact SHA-256 parity: matrix `opensees-parity.binary_fingerprint` must match signoff observed backend fingerprint
 - Strict signoff now also enforces `backend_probe_not_assumed` (probe timeout-assumption is treated as release blocker)
 - CI/release dedicated runner gates now run `scripts/check_fingerprint_alignment.py` so CI variable, policy fingerprint, and matrix fingerprint must match before parity execution
+- CI/release gates now run `scripts/check_release_policy_consistency.py` to prevent `release_signoff.yml` drift from benchmark suite/case matrix
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)

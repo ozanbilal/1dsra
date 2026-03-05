@@ -129,6 +129,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - strict signoff now requires `backend_probe_not_assumed=true` (timeout-assumed probe states are treated as release blockers)
   - release checker (`scripts/check_release_signoff.py`) now explicitly validates non-assumed backend probe condition fields in `campaign_summary.json`
   - dedicated CI/release workflows now run `scripts/check_fingerprint_alignment.py` to enforce SHA alignment across CI variable, release policy, and scientific confidence matrix before parity execution
+  - new policy consistency checker (`scripts/check_release_policy_consistency.py`) now guards `component_suites` and `require_runs` drift against benchmark case lists in CI/release
 - Web UI convergence diagnostics:
   - `Convergence` tab now shows structured solver/EQL diagnostics cards with severity badges
   - raw convergence payload moved under collapsible details section

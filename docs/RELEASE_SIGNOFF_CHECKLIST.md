@@ -5,6 +5,7 @@ This checklist is the operational gate for `v*` tags.
 ## Machine-checked (must pass)
 - Dedicated parity runner job completed (`self-hosted, linux, x64, opensees`)
 - `1dsra campaign --suite release-signoff` passed
+- `python scripts/check_release_policy_consistency.py` passed
 - `campaign_summary.json` contains `policy.campaign.passed=true`
 - `campaign_summary.json` contains `signoff.passed=true` when generated with `--strict-signoff`
 - Backend fingerprint check passed (required in release path; matrix value and observed run sha256 must match exactly)

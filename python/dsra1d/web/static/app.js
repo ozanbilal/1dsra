@@ -1570,13 +1570,25 @@ function App() {
     if (!runId) return;
     const fetchWithRoot = async (rootCandidate) => {
       const query = makeRunQuery(rootCandidate);
-      const [signals, summary, hysteresis, profileSummary] = await Promise.all([
+      const summary = await requestJSON(
+        `/api/runs/${encodeURIComponent(runId)}/results/summary${query}`
+      );
+      const [signalsResult, hysteresisResult, profileSummaryResult] = await Promise.allSettled([
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/signals${query}`),
-        requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/summary${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/hysteresis${query}`),
         requestJSON(`/api/runs/${encodeURIComponent(runId)}/results/profile-summary${query}`),
       ]);
-      return { signals, summary, hysteresis, profileSummary, rootCandidate };
+      const softIssues = [];
+      const unwrap = (result, label) => {
+        if (result.status === "fulfilled") return result.value;
+        const message = String(result.reason || "unknown error").replace(/^Error:\s*/, "");
+        softIssues.push(`${label}: ${message}`);
+        return null;
+      };
+      const signals = unwrap(signalsResult, "signals");
+      const hysteresis = unwrap(hysteresisResult, "hysteresis");
+      const profileSummary = unwrap(profileSummaryResult, "profile");
+      return { signals, summary, hysteresis, profileSummary, rootCandidate, softIssues };
     };
 
     try {
@@ -1585,8 +1597,12 @@ function App() {
       setRunSummary(first.summary);
       setRunHysteresis(first.hysteresis);
       setRunProfileSummary(first.profileSummary);
-      const firstLayer = first.hysteresis?.layers?.[0];
+      const firstLayer = first.hysteresis?.layers?.[0] || null;
       setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
+      if (Array.isArray(first.softIssues) && first.softIssues.length > 0) {
+        setStatusKind("warn");
+        setStatus(`Run detail partial: ${first.softIssues.join(" | ")}`);
+      }
     } catch (err) {
       const fallbackRoot = runRootForId(runId, rootOverride);
       if (fallbackRoot && fallbackRoot !== rootOverride) {
@@ -1596,8 +1612,12 @@ function App() {
           setRunSummary(second.summary);
           setRunHysteresis(second.hysteresis);
           setRunProfileSummary(second.profileSummary);
-          const firstLayer = second.hysteresis?.layers?.[0];
+          const firstLayer = second.hysteresis?.layers?.[0] || null;
           setSelectedLayerIndex(firstLayer ? String(firstLayer.layer_index) : "");
+          if (Array.isArray(second.softIssues) && second.softIssues.length > 0) {
+            setStatusKind("warn");
+            setStatus(`Run detail partial: ${second.softIssues.join(" | ")}`);
+          }
           return;
         } catch {
           // keep original error below

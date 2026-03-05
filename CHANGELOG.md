@@ -120,6 +120,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `POST /api/run` now returns normalized `output_root` for deterministic frontend root sync
   - run discovery now includes run directories with `run_meta.json` even when artifacts are partial (prevents false `Run not found`)
   - signals/download endpoints now return `409` with explicit "artifacts incomplete/unreadable" details instead of ambiguous `404`
+- React run-detail loading is now degradation-tolerant: summary/convergence can render even if `signals`/`hysteresis`/`profile` sub-requests fail (partial detail warning instead of full panel failure).
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

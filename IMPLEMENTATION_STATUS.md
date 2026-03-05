@@ -10,6 +10,8 @@ Current state is: **core scaffold complete, effective-stress OpenSees adapter fu
 Recent updates (2026-03-05):
 - Web convergence/profile health surfaces timeout recovery diagnostics (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage).
 - OpenSees backend probe hardened against double-timeout false negatives (`-version` + Tcl fallback timeout now defers final decision to runtime execution).
+- Run resolution hardened for partial runs: directories with `run_meta.json` are discoverable even when artifacts are incomplete; data endpoints now report explicit `409 artifacts incomplete` instead of `404 run not found`.
+- Web run endpoint now returns normalized `output_root`, and React run flow uses it to keep run-detail fetch root in sync.
 
 ## 2. Phase-by-Phase Status
 

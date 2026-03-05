@@ -793,7 +793,53 @@ def test_web_run_endpoint_success_with_relative_paths(tmp_path) -> None:
     payload = resp.json()
     assert payload["backend"] == "mock"
     assert payload["status"] == "ok"
+    assert Path(payload["output_root"]).resolve() == out_root.resolve()
     assert (out_root / payload["run_id"]).exists()
+
+
+def test_web_incomplete_run_dir_is_listed_and_signals_returns_409(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "partial-runs"
+    run_dir = root / "run-partial123456"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "run_meta.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_dir.name,
+                "timestamp_utc": "2026-03-05T10:00:00Z",
+                "solver_backend": "opensees",
+                "status": "error",
+                "message": "OpenSees failed before result stores were written.",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app())
+    list_resp = client.get("/api/runs", params={"output_root": str(root)})
+    assert list_resp.status_code == 200
+    rows = list_resp.json()
+    assert any(row.get("run_id") == run_dir.name for row in rows)
+
+    summary_resp = client.get(
+        f"/api/runs/{run_dir.name}/results/summary",
+        params={"output_root": str(root)},
+    )
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()
+    assert summary["run_id"] == run_dir.name
+    assert summary["status"] == "error"
+
+    signals_resp = client.get(
+        f"/api/runs/{run_dir.name}/signals",
+        params={"output_root": str(root)},
+    )
+    assert signals_resp.status_code == 409
+    detail = str(signals_resp.json().get("detail", ""))
+    assert "Run artifacts incomplete" in detail
 
 
 def test_web_run_endpoint_missing_motion_returns_400(tmp_path) -> None:

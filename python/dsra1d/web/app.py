@@ -38,6 +38,7 @@ from dsra1d.materials import (
 from dsra1d.motion import import_peer_at2_to_csv, load_motion, load_motion_series, preprocess_motion
 from dsra1d.pipeline import load_result, run_analysis
 from dsra1d.post import compute_spectra, compute_transfer_function
+from dsra1d.store import ResultStore
 from dsra1d.types import Motion
 from dsra1d.units import accel_factor_to_si
 
@@ -57,6 +58,7 @@ class RunRequest(BaseModel):
 class RunResponse(BaseModel):
     run_id: str
     output_dir: str
+    output_root: str
     status: str
     message: str
     backend: str
@@ -502,11 +504,22 @@ def _collect_runs(output_root: Path) -> list[Path]:
 def _looks_like_run_dir(path: Path) -> bool:
     if not path.exists() or not path.is_dir():
         return False
-    return (
-        (path / "run_meta.json").exists()
-        and (path / "results.h5").exists()
-        and (path / "results.sqlite").exists()
-    )
+    return (path / "run_meta.json").exists()
+
+
+def _load_result_or_409(run_dir: Path) -> ResultStore:
+    try:
+        return load_result(run_dir)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Run artifacts incomplete for {run_dir.name}: {exc}",
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Run artifacts unreadable for {run_dir.name}: {exc}",
+        ) from exc
 
 
 def _path_mtime(path: Path) -> float:
@@ -2782,7 +2795,7 @@ def create_app() -> FastAPI:
         max_spectral_points: int = Query(default=2400, ge=100, le=40000),
     ) -> dict[str, object]:
         run_dir = _resolve_run_dir(run_id, output_root)
-        rs = load_result(run_dir)
+        rs = _load_result_or_409(run_dir)
         time = rs.time
         acc = rs.acc_surface
         n = int(min(time.size, acc.size))
@@ -2943,7 +2956,7 @@ def create_app() -> FastAPI:
         output_root: str = Query(default=""),
     ) -> PlainTextResponse:
         run_dir = _resolve_run_dir(run_id, output_root)
-        rs = load_result(run_dir)
+        rs = _load_result_or_409(run_dir)
         n = int(min(rs.time.size, rs.acc_surface.size))
         if n <= 1:
             raise HTTPException(status_code=400, detail="Run has insufficient signal samples.")
@@ -2961,7 +2974,7 @@ def create_app() -> FastAPI:
         output_root: str = Query(default=""),
     ) -> PlainTextResponse:
         run_dir = _resolve_run_dir(run_id, output_root)
-        rs = load_result(run_dir)
+        rs = _load_result_or_409(run_dir)
         n = int(rs.ru.size)
         if n <= 0:
             raise HTTPException(status_code=400, detail="Run has no PWP/ru samples.")
@@ -3034,9 +3047,11 @@ def create_app() -> FastAPI:
             dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
             motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
             result = run_analysis(cfg, motion, output_dir=output_root)
+            result_output_root = result.output_dir.parent.resolve()
             return RunResponse(
                 run_id=result.run_id,
                 output_dir=str(result.output_dir),
+                output_root=str(result_output_root),
                 status=result.status,
                 message=f"{backend_note} | {result.message}",
                 backend=backend,

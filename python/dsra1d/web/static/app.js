@@ -1725,10 +1725,17 @@ function App() {
           opensees_executable: wizard.control_step?.opensees_executable || null,
         }),
       });
-      await loadRuns(targetOutputRoot);
-      await loadRunsTree(targetOutputRoot);
+      const resolvedOutputRoot =
+        typeof payload.output_root === "string" && payload.output_root.trim()
+          ? payload.output_root.trim()
+          : targetOutputRoot;
+      if (resolvedOutputRoot !== outputRoot) {
+        setOutputRoot(resolvedOutputRoot);
+      }
+      await loadRuns(resolvedOutputRoot);
+      await loadRunsTree(resolvedOutputRoot);
       setSelectedRunId(payload.run_id);
-      await loadRunDetail(payload.run_id, targetOutputRoot);
+      await loadRunDetail(payload.run_id, resolvedOutputRoot);
       setStatusKind(payload.status === "ok" ? "ok" : "warn");
       setStatus(`Run done: ${payload.run_id} | ${payload.message}`);
     } catch (err) {

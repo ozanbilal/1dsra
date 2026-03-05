@@ -115,7 +115,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - run-summary convergence payload now exposes timeout diagnostics/recovery (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage)
   - backend probe now avoids false-negative "not available" when both `-version` and Tcl fallback probes timeout (runtime execution remains authoritative)
   - backend probe now exposes `assumed_available` in API/UI/CLI so timeout-based assumptions are visible as warning instead of opaque success
-  - backend probe API/UI now surfaces executable source context (`requested_input`, env override value/usage) for deterministic path diagnosis
+- backend probe API/UI now surfaces executable source context (`requested_input`, env override value/usage) for deterministic path diagnosis
+- run orchestration/root resolution hardening:
+  - `POST /api/run` now returns normalized `output_root` for deterministic frontend root sync
+  - run discovery now includes run directories with `run_meta.json` even when artifacts are partial (prevents false `Run not found`)
+  - signals/download endpoints now return `409` with explicit "artifacts incomplete/unreadable" details instead of ambiguous `404`
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

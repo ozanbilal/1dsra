@@ -121,6 +121,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - run discovery now includes run directories with `run_meta.json` even when artifacts are partial (prevents false `Run not found`)
   - signals/download endpoints now return `409` with explicit "artifacts incomplete/unreadable" details instead of ambiguous `404`
 - React run-detail loading is now degradation-tolerant: summary/convergence can render even if `signals`/`hysteresis`/`profile` sub-requests fail (partial detail warning instead of full panel failure).
+- GitHub Actions noise reduction:
+  - `ci.yml` now uses workflow `concurrency` to auto-cancel superseded queued runs on the same branch/ref
+  - dedicated OpenSees parity/signoff gate was removed from per-push CI and remains mandatory in `release.yml` and manual parity workflow
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

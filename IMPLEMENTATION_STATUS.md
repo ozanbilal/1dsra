@@ -1,6 +1,6 @@
 # StrataWave Implementation Status
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## 1. Summary
 
@@ -13,6 +13,7 @@ Recent updates (2026-03-05):
 - Run resolution hardened for partial runs: directories with `run_meta.json` are discoverable even when artifacts are incomplete; data endpoints now report explicit `409 artifacts incomplete` instead of `404 run not found`.
 - Web run endpoint now returns normalized `output_root`, and React run flow uses it to keep run-detail fetch root in sync.
 - React run-detail fetch path now supports partial rendering: summary/convergence remain visible even if one or more result channels fail (soft warning instead of hard blank-state failure).
+- Push CI no longer waits on dedicated OpenSees runner; dedicated parity/signoff gate remains mandatory in `release.yml` and manual parity workflow. `ci.yml` now also uses workflow `concurrency` to auto-cancel superseded queued runs on the same ref.
 
 ## 2. Phase-by-Phase Status
 
@@ -143,7 +144,7 @@ Implemented:
 - Manual parity workflow now also accepts executable extra-args override (`opensees_extra_args`)
 - Manual parity workflow now supports backend fingerprint requirements and defaults to 6-run parity target
 - New aggregated benchmark suite: `release-signoff` (`core-es` + `core-hyst` + `core-linear` + `core-eql` + `opensees-parity`)
-- CI dedicated runner parity gate is now non-optional (`self-hosted, linux, x64, opensees`) and executes `release-signoff`
+- Release/manual dedicated runner parity gate is non-optional (`self-hosted, linux, x64, opensees`) and executes `release-signoff`
 - CI dedicated runner now enforces `summarize --strict-signoff` for machine-readable signoff verdicts
 - Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
 - Parity suite now distinguishes missing executable vs failed backend probe (`missing_opensees` / `probe_failed`)
@@ -175,7 +176,7 @@ Status: **In progress (mid)**
 
 Missing:
 - Final dedicated runner provisioning + operational reliability monitoring (self-hosted agent health/SLA)
-- Organization-level sign-off for release gates (CI/release now enforce `release-signoff` + `strict-signoff`)
+- Organization-level sign-off for release gates (release path enforces `release-signoff` + `strict-signoff`)
 - Production fingerprint lifecycle process (rotate/update `DSRA1D_CI_OPENSEES_SHA256` and matrix evidence)
 - Artifact publishing policy finalization (GitHub release workflow + release tag/version + changelog guards are now added)
 - Dedicated OpenSees parity release gate runner provisioning (`self-hosted, linux, x64, opensees`) and secret/variable bootstrap
@@ -199,14 +200,14 @@ Missing:
 - `benchmark`/`campaign` support explicit-checks enforcement: `--require-explicit-checks` (parity envelopes must be explicitly locked)
 - Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
 - Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
-- CI/release workflow campaign gates now enforce full coverage (`--min-execution-coverage 1.0`)
+- Release/manual parity workflow gates enforce full coverage (`--min-execution-coverage 1.0`)
 - `release-signoff` suite now aggregates all critical suites into one parity-first gate
-- CI dedicated OpenSees parity gate is mandatory (`self-hosted, linux, x64, opensees`)
+- Dedicated OpenSees parity gate is mandatory in release/manual parity workflows (`self-hosted, linux, x64, opensees`)
 - Release workflow now enforces strict signoff + machine-check checklist (`check_release_signoff.py`)
 - Release machine-check now enforces exact SHA-256 parity: matrix `opensees-parity.binary_fingerprint` must match signoff observed backend fingerprint
 - Strict signoff now also enforces `backend_probe_not_assumed` (probe timeout-assumption is treated as release blocker)
-- CI/release dedicated runner gates now run `scripts/check_fingerprint_alignment.py` so CI variable, policy fingerprint, and matrix fingerprint must match before parity execution
-- CI/release gates now run `scripts/check_release_policy_consistency.py` to prevent `release_signoff.yml` drift from benchmark suite/case matrix
+- Release/manual dedicated runner gates now run `scripts/check_fingerprint_alignment.py` so CI variable, policy fingerprint, and matrix fingerprint must match before parity execution
+- CI/release workflows now run `scripts/check_release_policy_consistency.py` to prevent `release_signoff.yml` drift from benchmark suite/case matrix
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
@@ -284,7 +285,7 @@ Missing:
 ## 4. What Is Not Yet Production-Ready
 
 - No confirmed OpenSees binary execution in this environment (binary not present at runtime checks)
-- Dedicated runner parity gate configured in CI/release workflows; runner availability and secret/var provisioning remain environment-dependent
+- Dedicated runner parity gate configured in release/manual parity workflows; runner availability and secret/var provisioning remain environment-dependent
 - No full scientific validation campaign for PM4 calibration fidelity
 - No formal acceptance thresholds for all engineering KPIs across scenario matrix
 - Native solver path (`core/` C++ runtime) is scaffold-only
@@ -353,7 +354,7 @@ Status legend:
 | GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
 | Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
 | Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
-| Real-binary OpenSees integration validation | Partial | Optional integration harness + dedicated CI/release parity gates with backend fingerprint policy hooks | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
+| Real-binary OpenSees integration validation | Partial | Optional integration harness + dedicated release/manual parity gates with backend fingerprint policy hooks | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
 | Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |
 | Release hardening and governance | Partial | Release/tag/changelog guards added | Finalize org sign-off, manuals, and artifact policy |
 | Native effective-stress solver beyond OpenSees interop | Out-of-v1 | Explicitly deferred | Start after linear/EQL native milestones |

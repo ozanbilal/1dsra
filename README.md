@@ -252,7 +252,7 @@ Apache-2.0
 - Scientific confidence matrix: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - CI workflow enforces matrix quality gates (`ruff`, `mypy`, `pytest`) and native suite campaign gates (`core-es`, `core-hyst`, `core-linear`, `core-eql`).
-- Dedicated OpenSees runner gate is mandatory in CI/release (`self-hosted, linux, x64, opensees`) and uses `release-signoff`.
+- Dedicated OpenSees runner gate is mandatory in `release.yml` and manual parity workflow, not on every `push` CI run.
 - Release workflow enforces strict signoff (`1dsra summarize --strict-signoff`) and machine checks (`scripts/check_release_signoff.py`).
 - Before tagging a release, set `opensees-parity` fingerprint in `SCIENTIFIC_CONFIDENCE_MATRIX.md` to the exact 64-hex sha256 observed on dedicated signoff run.
 - Version bump helper: `python scripts/release_bump.py --version 0.1.0`
@@ -286,7 +286,7 @@ Use explicit-checks policy to enforce locked parity envelopes:
 Use OpenSees readiness policy for parity suites:
 - `--require-opensees` (fails if parity cases are skipped due to missing OpenSees backend)
 Dedicated parity gate runs on `self-hosted, linux, x64, opensees` runners and is
-non-optional in CI/release paths.
+non-optional in release/manual parity paths.
 Set repository variable `DSRA1D_CI_OPENSEES_EXE` (or ensure `OpenSees` is on PATH)
 for deterministic executable resolution on the dedicated runner.
 Release path also requires fingerprint variable:

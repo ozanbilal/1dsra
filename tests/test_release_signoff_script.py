@@ -6,7 +6,12 @@ import sys
 from pathlib import Path
 
 
-def _write_release_artifacts(campaign_dir: Path, observed_sha256: str) -> None:
+def _write_release_artifacts(
+    campaign_dir: Path,
+    observed_sha256: str,
+    *,
+    probe_assumed_available: bool = False,
+) -> None:
     campaign_dir.mkdir(parents=True, exist_ok=True)
     (campaign_dir / "benchmark_release-signoff.json").write_text(
         json.dumps(
@@ -42,7 +47,13 @@ def _write_release_artifacts(campaign_dir: Path, observed_sha256: str) -> None:
                 "signoff": {
                     "strict_signoff": True,
                     "passed": True,
-                    "observed": {"backend_probe_sha256": observed_sha256},
+                    "conditions": {
+                        "backend_probe_not_assumed": not probe_assumed_available,
+                    },
+                    "observed": {
+                        "backend_probe_sha256": observed_sha256,
+                        "backend_probe_assumed_available": probe_assumed_available,
+                    },
                 },
             },
             indent=2,
@@ -136,3 +147,15 @@ def test_release_signoff_checker_fails_on_sha_mismatch(tmp_path: Path) -> None:
     result = _run_checker(campaign_dir, matrix_path, require_fingerprint=True)
     assert result.returncode != 0
     assert "must match signoff observed backend sha256" in (result.stderr + result.stdout)
+
+
+def test_release_signoff_checker_fails_when_probe_is_assumed(tmp_path: Path) -> None:
+    campaign_dir = tmp_path / "campaign"
+    matrix_path = tmp_path / "SCIENTIFIC_CONFIDENCE_MATRIX.md"
+    observed_sha = "e" * 64
+    _write_release_artifacts(campaign_dir, observed_sha, probe_assumed_available=True)
+    _write_matrix(matrix_path, observed_sha)
+
+    result = _run_checker(campaign_dir, matrix_path, require_fingerprint=True)
+    assert result.returncode != 0
+    assert "backend_probe_not_assumed" in (result.stderr + result.stdout)

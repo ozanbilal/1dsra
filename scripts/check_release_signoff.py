@@ -120,10 +120,20 @@ def main() -> int:
     signoff = signoff_obj if isinstance(signoff_obj, dict) else {}
     _require(bool(signoff.get("strict_signoff", False)), "signoff.strict_signoff must be true.")
     _require(bool(signoff.get("passed", False)), "signoff.passed must be true.")
+    conditions_obj = signoff.get("conditions")
+    conditions = conditions_obj if isinstance(conditions_obj, dict) else {}
+    _require(
+        bool(conditions.get("backend_probe_not_assumed", False)),
+        "signoff.conditions.backend_probe_not_assumed must be true.",
+    )
+    observed_obj = signoff.get("observed")
+    observed = observed_obj if isinstance(observed_obj, dict) else {}
+    _require(
+        not bool(observed.get("backend_probe_assumed_available", False)),
+        "signoff.observed.backend_probe_assumed_available must be false.",
+    )
 
     if args.require_fingerprint:
-        observed_obj = signoff.get("observed")
-        observed = observed_obj if isinstance(observed_obj, dict) else {}
         observed_sha = _normalize_sha256(str(observed.get("backend_probe_sha256", "")))
         _require(bool(observed_sha), "signoff.observed.backend_probe_sha256 must be non-empty.")
         _require(

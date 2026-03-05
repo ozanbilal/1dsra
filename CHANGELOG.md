@@ -127,6 +127,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `opensees-parity` golden constraints now gate warning/convergence/divide-by-zero counters
   - `lock-golden` metric catalog extended with solver diagnostic metric names
   - strict signoff now requires `backend_probe_not_assumed=true` (timeout-assumed probe states are treated as release blockers)
+  - release checker (`scripts/check_release_signoff.py`) now explicitly validates non-assumed backend probe condition fields in `campaign_summary.json`
 - Web UI convergence diagnostics:
   - `Convergence` tab now shows structured solver/EQL diagnostics cards with severity badges
   - raw convergence payload moved under collapsible details section

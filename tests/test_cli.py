@@ -159,7 +159,9 @@ def test_cli_dt_check(tmp_path: Path) -> None:
     assert (tmp_path / "dt_check" / "dt_check_summary.json").exists()
 
 
-def test_cli_validate_check_backend_missing_executable(tmp_path: Path) -> None:
+def test_cli_validate_check_backend_missing_executable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("DSRA1D_OPENSEES_EXE_OVERRIDE", raising=False)
+    monkeypatch.delenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", raising=False)
     cfg = tmp_path / "missing_opensees.yml"
     cfg.write_text(
         """
@@ -1048,6 +1050,72 @@ def test_cli_summarize_strict_signoff_fails_when_campaign_not_release_signoff(
         ],
     )
     assert result.exit_code == 13
+
+
+def test_cli_summarize_strict_signoff_fails_when_backend_probe_assumed(
+    tmp_path: Path,
+) -> None:
+    campaign_dir = tmp_path / "campaign_assumed_probe"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    policy_sha = str(
+        cli_main._load_release_signoff_policy().get("opensees_fingerprint", "")
+    ).strip()
+    benchmark_report = {
+        "suite": "release-signoff",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 18,
+        "total_cases": 18,
+        "skipped_backend": 0,
+        "backend_ready": True,
+        "backend_fingerprint_ok": True,
+        "execution_coverage": 1.0,
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 18,
+            "require_opensees": True,
+            "min_execution_coverage": 1.0,
+            "require_backend_sha256": policy_sha,
+        },
+        "backend_probe": {"binary_sha256": policy_sha, "assumed_available": True},
+        "cases": [],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 18,
+        "passed_runs": 18,
+        "failed_runs": 0,
+        "policy": {
+            "require_runs": 18,
+            "conditions": {"verify_ok": True, "no_failed_runs": True, "require_runs_ok": True},
+            "passed": True,
+        },
+        "reports": {},
+    }
+    (campaign_dir / "benchmark_release-signoff.json").write_text(
+        json.dumps(benchmark_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "verify_batch_report.json").write_text(
+        json.dumps(verify_batch_report, indent=2),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--input",
+            str(campaign_dir),
+            "--strict-signoff",
+        ],
+    )
+    assert result.exit_code == 13
+    summary = json.loads((campaign_dir / "campaign_summary.json").read_text(encoding="utf-8"))
+    signoff = summary.get("signoff", {})
+    assert signoff.get("passed") is False
+    conditions = signoff.get("conditions", {})
+    assert conditions.get("backend_probe_not_assumed") is False
 
 
 def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:

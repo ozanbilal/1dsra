@@ -126,6 +126,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - benchmark reports now carry OpenSees solver diagnostics as actual metrics
   - `opensees-parity` golden constraints now gate warning/convergence/divide-by-zero counters
   - `lock-golden` metric catalog extended with solver diagnostic metric names
+  - strict signoff now requires `backend_probe_not_assumed=true` (timeout-assumed probe states are treated as release blockers)
 - Web UI convergence diagnostics:
   - `Convergence` tab now shows structured solver/EQL diagnostics cards with severity badges
   - raw convergence payload moved under collapsible details section

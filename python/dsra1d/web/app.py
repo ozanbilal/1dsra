@@ -305,6 +305,7 @@ class ReleaseSignoffLatestResponse(BaseModel):
     benchmark_execution_coverage: float = 0.0
     benchmark_backend_ready: bool = False
     benchmark_backend_fingerprint_ok: bool = False
+    benchmark_backend_probe_assumed_available: bool = False
     backend_missing_cases: list[str] = Field(default_factory=list)
     verify_ok: bool = False
     campaign_policy_passed: bool = False
@@ -682,6 +683,7 @@ def _suite_parity_status(suite: str, report: dict[str, object]) -> ParitySuiteSt
     backend_probe = report.get("backend_probe")
     backend_probe_dict = backend_probe if isinstance(backend_probe, dict) else {}
     binary_fingerprint = str(backend_probe_dict.get("binary_sha256", "")).strip().lower()
+    backend_probe_assumed = bool(backend_probe_dict.get("assumed_available", False))
 
     all_passed = bool(report.get("all_passed", False))
     skipped = _as_int(report.get("skipped", 0), 0)
@@ -699,6 +701,8 @@ def _suite_parity_status(suite: str, report: dict[str, object]) -> ParitySuiteSt
         block_reasons.append("backend_ready=false")
     if not backend_fingerprint_ok:
         block_reasons.append("backend_fingerprint_ok=false")
+    if backend_probe_assumed:
+        block_reasons.append("backend_probe_assumed=true")
 
     return ParitySuiteStatus(
         suite=suite,
@@ -2582,6 +2586,11 @@ def create_app() -> FastAPI:
         benchmark_execution_coverage = _as_float(benchmark.get("execution_coverage", 0.0), 0.0)
         benchmark_backend_ready = bool(benchmark.get("backend_ready", False))
         benchmark_backend_fingerprint_ok = bool(benchmark.get("backend_fingerprint_ok", False))
+        benchmark_probe_raw = benchmark.get("backend_probe")
+        benchmark_probe = benchmark_probe_raw if isinstance(benchmark_probe_raw, dict) else {}
+        backend_probe_assumed_available = bool(
+            benchmark_probe.get("assumed_available", False)
+        )
         strict_signoff = bool(signoff.get("strict_signoff", False))
         signoff_passed = bool(signoff.get("passed", False))
         benchmark_all_passed = bool(benchmark.get("all_passed", False))
@@ -2603,6 +2612,7 @@ def create_app() -> FastAPI:
             "fail_on_skip_ok": "skipped_cases_present",
             "backend_fingerprint_ok": "backend_fingerprint_invalid",
             "fingerprint_match": "fingerprint_mismatch",
+            "backend_probe_not_assumed": "backend_probe_assumed",
         }
         blocker_categories = [
             failure_category_map.get(name, f"condition_{name}") for name in failures
@@ -2618,6 +2628,8 @@ def create_app() -> FastAPI:
             blocker_categories.append("backend_cases_skipped")
         if backend_missing_cases and "backend_missing_cases" not in blocker_categories:
             blocker_categories.append("backend_missing_cases")
+        if backend_probe_assumed_available and "backend_probe_assumed" not in blocker_categories:
+            blocker_categories.append("backend_probe_assumed")
 
         unique_blocker_categories = list(dict.fromkeys(blocker_categories))
 
@@ -2633,6 +2645,7 @@ def create_app() -> FastAPI:
             and benchmark_backend_ready
             and benchmark_backend_fingerprint_ok
             and fingerprint_match
+            and (not backend_probe_assumed_available)
         )
 
         category_weights = {
@@ -2649,6 +2662,7 @@ def create_app() -> FastAPI:
             "signoff_not_passed": 24,
             "backend_cases_skipped": 18,
             "backend_missing_cases": 18,
+            "backend_probe_assumed": 18,
         }
         severity_score = sum(
             int(category_weights.get(category, 10)) for category in unique_blocker_categories
@@ -2683,6 +2697,7 @@ def create_app() -> FastAPI:
             benchmark_execution_coverage=benchmark_execution_coverage,
             benchmark_backend_ready=benchmark_backend_ready,
             benchmark_backend_fingerprint_ok=benchmark_backend_fingerprint_ok,
+            benchmark_backend_probe_assumed_available=backend_probe_assumed_available,
             backend_missing_cases=backend_missing_cases,
             verify_ok=verify_ok,
             campaign_policy_passed=campaign_policy_passed,

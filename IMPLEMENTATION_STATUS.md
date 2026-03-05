@@ -201,6 +201,7 @@ Missing:
 - CI dedicated OpenSees parity gate is mandatory (`self-hosted, linux, x64, opensees`)
 - Release workflow now enforces strict signoff + machine-check checklist (`check_release_signoff.py`)
 - Release machine-check now enforces exact SHA-256 parity: matrix `opensees-parity.binary_fingerprint` must match signoff observed backend fingerprint
+- Strict signoff now also enforces `backend_probe_not_assumed` (probe timeout-assumption is treated as release blocker)
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)

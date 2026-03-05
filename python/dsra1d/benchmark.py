@@ -582,6 +582,7 @@ def run_benchmark_suite(
             "requested": probe_exe,
             "extra_args": probe_extra,
             "available": probe.available,
+            "assumed_available": bool(getattr(probe, "assumed_available", False)),
             "resolved": str(probe.resolved) if probe.resolved is not None else "",
             "version": probe.version,
             "command": probe.command,

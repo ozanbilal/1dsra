@@ -488,6 +488,7 @@ function buildReleaseHealth({
     const strict = Boolean(releaseSignoff.strict_signoff);
     const passed = Boolean(releaseSignoff.signoff_passed);
     const releaseReady = Boolean(releaseSignoff.release_ready);
+    const probeAssumed = Boolean(releaseSignoff.benchmark_backend_probe_assumed_available);
     const coverage = Number(releaseSignoff.benchmark_execution_coverage || 0);
     checks.push({ label: "strict_signoff", ok: strict, value: strict ? "enabled" : "disabled" });
     checks.push({ label: "signoff_passed", ok: passed, value: passed ? "true" : "false" });
@@ -512,6 +513,11 @@ function buildReleaseHealth({
         3
       )}`,
     });
+    checks.push({
+      label: "backend_probe_assumed",
+      ok: !probeAssumed,
+      value: probeAssumed ? "true" : "false",
+    });
     if (!strict) blockers.push("Release signoff summary is not strict-signoff.");
     if (!passed) {
       const failed = Array.isArray(releaseSignoff.condition_failures)
@@ -526,6 +532,11 @@ function buildReleaseHealth({
       : [];
     if (categories.length) {
       warnings.push(`Signoff categories: ${categories.join(", ")}`);
+    }
+    if (probeAssumed) {
+      blockers.push(
+        "Release backend probe is timeout-assumed. Run signoff on stable runner with explicit probe success."
+      );
     }
   }
 

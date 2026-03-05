@@ -1090,13 +1090,17 @@ def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
     summary = {
         "suite": "release-signoff",
         "generated_utc": "2026-03-04T12:45:00Z",
-        "benchmark": {"all_passed": True},
+        "benchmark": {"all_passed": True, "backend_probe": {"assumed_available": True}},
         "verify_batch": {"ok": True},
         "policy": {"campaign": {"passed": False}},
         "signoff": {
             "strict_signoff": True,
             "passed": False,
-            "conditions": {"campaign_policy_passed": False, "backend_fingerprint_ok": True},
+            "conditions": {
+                "campaign_policy_passed": False,
+                "backend_fingerprint_ok": True,
+                "backend_probe_not_assumed": False,
+            },
             "observed": {"backend_probe_sha256": "a" * 64},
             "policy": {"opensees_fingerprint": "b" * 64},
         },
@@ -1115,6 +1119,7 @@ def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
     assert payload["campaign_policy_passed"] is False
     assert payload["benchmark_all_passed"] is True
     assert payload["verify_ok"] is True
+    assert payload["benchmark_backend_probe_assumed_available"] is True
     assert payload["benchmark_ran"] == 0
     assert payload["benchmark_total_cases"] == 0
     assert payload["benchmark_execution_coverage"] == 0.0
@@ -1123,6 +1128,7 @@ def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
     assert payload["severity_label"] in {"warning", "high", "critical"}
     assert "campaign_policy_passed" in payload["condition_failures"]
     assert "campaign_policy_failed" in payload["blocker_categories"]
+    assert "backend_probe_assumed" in payload["blocker_categories"]
     assert "fingerprint_mismatch" in payload["blocker_categories"]
     assert "signoff_not_passed" in payload["blocker_categories"]
     assert payload["observed_backend_sha256"] == "a" * 64

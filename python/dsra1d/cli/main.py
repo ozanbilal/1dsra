@@ -1120,6 +1120,7 @@ def summarize(
         verify_policy_obj = _as_mapping(policy_obj.get("verify_batch"))
         report_probe = _as_mapping(benchmark_data.get("backend_probe"))
         report_probe_sha = str(report_probe.get("binary_sha256", "")).strip().lower()
+        report_probe_assumed = bool(report_probe.get("assumed_available", False))
         policy_sha = str(policy.get("opensees_fingerprint", "")).strip().lower()
 
         ran = _as_int(benchmark_obj.get("ran", 0), 0)
@@ -1146,6 +1147,7 @@ def summarize(
             "fail_on_skip_ok": (not policy_fail_on_skip) or (skipped == 0),
             "backend_fingerprint_ok": backend_fingerprint_ok,
             "fingerprint_match": (not policy_sha) or (report_probe_sha == policy_sha),
+            "backend_probe_not_assumed": not report_probe_assumed,
         }
         signoff_passed = all(bool(v) for v in conditions.values())
         summary["signoff"] = {
@@ -1163,6 +1165,7 @@ def summarize(
                 "skipped": skipped,
                 "execution_coverage": coverage,
                 "backend_probe_sha256": report_probe_sha,
+                "backend_probe_assumed_available": report_probe_assumed,
                 "benchmark_require_backend_sha256": str(
                     bench_policy_obj.get("require_backend_sha256", "")
                 ).strip().lower(),

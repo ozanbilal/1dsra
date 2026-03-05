@@ -48,7 +48,9 @@ def test_benchmark_core_es_passes(tmp_path: Path) -> None:
         assert dt_sensitivity["passed"] is True
 
 
-def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path) -> None:
+def test_benchmark_opensees_parity_skips_without_binary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", "OPEN_SEES_DEF_MISSING_EXE")
+    monkeypatch.delenv("DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE", raising=False)
     report = run_benchmark_suite("opensees-parity", tmp_path)
     assert report["all_passed"] is True
     assert int(report["skipped"]) >= 6

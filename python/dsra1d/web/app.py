@@ -360,9 +360,12 @@ class ResultProfileSummaryResponse(BaseModel):
 
 class BackendProbeResponse(BaseModel):
     requested: str
+    requested_input: str = ""
     resolved: str | None = None
     available: bool
     assumed_available: bool = False
+    env_override: str | None = None
+    env_override_used: bool = False
     version: str = ""
     error: str = ""
     binary_sha256: str | None = None
@@ -444,11 +447,15 @@ def _discover_opensees_executable() -> Path | None:
     return None
 
 
-def _effective_opensees_executable(raw_value: str | None) -> str:
+def _normalize_opensees_executable(raw_value: str | None) -> str:
     raw = (raw_value or "").strip()
     if len(raw) >= 2 and ((raw[0] == raw[-1] == '"') or (raw[0] == raw[-1] == "'")):
         raw = raw[1:-1].strip()
-    raw = raw.strip("\"'") or "OpenSees"
+    return raw.strip("\"'") or "OpenSees"
+
+
+def _effective_opensees_executable(raw_value: str | None) -> str:
+    raw = _normalize_opensees_executable(raw_value)
     if raw != "OpenSees":
         return raw
     discovered = _discover_opensees_executable()
@@ -2009,7 +2016,11 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
 
     requested_backend = payload.analysis_step.solver_backend
     requested_executable = _effective_opensees_executable(payload.control_step.opensees_executable)
+    env_override_raw = os.getenv(OPENSEES_EXE_ENV, "").strip()
+    env_override = _normalize_opensees_executable(env_override_raw) if env_override_raw else ""
     derived["opensees_requested"] = requested_executable
+    if env_override:
+        derived["opensees_env_override"] = env_override
     if requested_backend in {"opensees", "auto"}:
         probe = probe_opensees_executable(requested_executable)
         derived["opensees_resolved"] = (
@@ -2051,6 +2062,20 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
                     WizardSanityCheckItem(name="backend_probe", status="warning", message=msg)
                 )
                 warnings.append(f"{msg} Auto backend may fall back to mock.")
+        if env_override and (
+            _normalize_opensees_executable(payload.control_step.opensees_executable)
+            == "OpenSees"
+        ):
+            checks.append(
+                WizardSanityCheckItem(
+                    name="backend_env_override",
+                    status="warning",
+                    message=(
+                        f"{OPENSEES_EXE_ENV} is set; backend probe/runtime may use this "
+                        "override when executable is OpenSees."
+                    ),
+                )
+            )
 
     if requested_backend in {"opensees", "auto"} and motion_path_resolved is not None:
         if dt_used is not None:
@@ -2201,13 +2226,29 @@ def create_app() -> FastAPI:
     def backend_probe_opensees(
         executable: str = Query(default="OpenSees"),
     ) -> BackendProbeResponse:
-        effective_executable = _effective_opensees_executable(executable)
+        requested_input = _normalize_opensees_executable(executable)
+        effective_executable = _effective_opensees_executable(requested_input)
+        env_override_raw = os.getenv(OPENSEES_EXE_ENV, "").strip()
+        env_override = _normalize_opensees_executable(env_override_raw) if env_override_raw else ""
+        env_override_resolved = (
+            resolve_opensees_executable(env_override) if env_override else None
+        )
         probe = probe_opensees_executable(effective_executable)
+        env_override_used = False
+        if (
+            env_override_resolved is not None
+            and requested_input == "OpenSees"
+            and probe.resolved is not None
+        ):
+            env_override_used = probe.resolved.resolve() == env_override_resolved.resolve()
         return BackendProbeResponse(
             requested=effective_executable,
+            requested_input=requested_input,
             resolved=str(probe.resolved) if probe.resolved is not None else None,
             available=bool(probe.available),
             assumed_available=bool(probe.assumed_available),
+            env_override=env_override or None,
+            env_override_used=bool(env_override_used),
             version=str(probe.version or ""),
             error=str(probe.stderr or ""),
             binary_sha256=probe.binary_sha256 or None,

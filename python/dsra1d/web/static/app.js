@@ -4,6 +4,7 @@ import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
 
 const html = htm.bind(React.createElement);
+const OPENSEES_EXE_ENV_LABEL = "DSRA1D_OPENSEES_EXE_OVERRIDE";
 
 const WIZARD_STEPS = [
   { id: "analysis_step", title: "1) Analysis Type" },
@@ -1474,8 +1475,11 @@ function App() {
     } catch (err) {
       setBackendProbe({
         requested: executable,
+        requested_input: executable,
         available: false,
         assumed_available: false,
+        env_override: null,
+        env_override_used: false,
         version: "",
         error: String(err),
       });
@@ -2425,8 +2429,22 @@ function App() {
                           : "OpenSees not available"}
                       </div>
                       <div className="muted">
+                        ${backendProbe.requested_input &&
+                        backendProbe.requested_input !== backendProbe.requested
+                          ? `Input: ${backendProbe.requested_input}`
+                          : ""}
+                        ${backendProbe.requested_input &&
+                        backendProbe.requested_input !== backendProbe.requested
+                          ? html`<br />`
+                          : null}
                         ${backendProbe.resolved ? `Resolved: ${backendProbe.resolved}` : ""}
                         ${backendProbe.version ? html`<br />Version: ${backendProbe.version}` : null}
+                        ${backendProbe.env_override
+                          ? html`<br />${OPENSEES_EXE_ENV_LABEL}: ${backendProbe.env_override}`
+                          : null}
+                        ${backendProbe.env_override
+                          ? html`<br />Env override used: ${backendProbe.env_override_used ? "yes" : "no"}`
+                          : null}
                         ${backendProbe.error ? html`<br />Error: ${backendProbe.error}` : null}
                       </div>
                     `
@@ -3080,6 +3098,9 @@ function App() {
                           : `OpenSees ok: ${backendProbe.requested}`
                         : `OpenSees missing: ${backendProbe.requested}`}
                     </div>
+                    ${backendProbe.env_override
+                      ? html`<div className="muted">${OPENSEES_EXE_ENV_LABEL}: ${backendProbe.env_override} (${backendProbe.env_override_used ? "used" : "not used"})</div>`
+                      : null}
                   `
                 : null}
               <div className="field">

@@ -253,6 +253,7 @@ Missing:
 - Multi-run compare now includes reference-based diagnostics (`PSA ratio`, transfer/surface `Δ`, `ΔPGA`/PGA ratio)
 - Web API now includes backend readiness probe endpoint (`/api/backend/opensees/probe`) used by wizard run diagnostics
 - Backend probe payload now includes `assumed_available`; UI/CLI render this as warning when probe timed out and availability was inferred
+- Backend probe payload now includes executable-source diagnostics (`requested_input`, env override value/used) to debug path override issues
 - Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
 - Web API now includes parity/science visibility endpoints (`/api/parity/latest`, `/api/science/confidence`)
 - Web API now includes release signoff visibility endpoint (`/api/release/signoff/latest`) with normalized go/no-go fields (`release_ready`, coverage/runs, fingerprint match, blocker categories, severity score/label)

@@ -149,6 +149,7 @@ Damping routing:
 Included API endpoints:
 - `GET /api/health`
 - `GET /api/backend/opensees/probe?executable=<path-or-name>`
+- backend probe response includes `requested_input`, `requested`, `assumed_available`, `env_override`, `env_override_used` for executable source diagnostics
 - `GET /api/runs?output_root=<path>`
 - `GET /api/runs/tree?output_root=<path>`
 - `GET /api/runs/{run_id}/signals?output_root=<path>`

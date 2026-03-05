@@ -33,9 +33,12 @@ def test_web_backend_probe_endpoint() -> None:
     payload = resp.json()
     assert isinstance(payload.get("requested"), str)
     assert payload["requested"]
+    assert isinstance(payload.get("requested_input"), str)
     assert "available" in payload
     assert "assumed_available" in payload
     assert isinstance(payload["assumed_available"], bool)
+    assert "env_override_used" in payload
+    assert isinstance(payload["env_override_used"], bool)
     assert "version" in payload
 
 
@@ -50,6 +53,23 @@ def test_web_backend_probe_trims_wrapping_quotes() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["requested"] == exe
+    assert payload["requested_input"] == exe
+
+
+def test_web_backend_probe_reports_env_override(monkeypatch) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    exe = shutil.which("python")
+    assert exe is not None
+    monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", exe)
+
+    client = TestClient(create_app())
+    resp = client.get("/api/backend/opensees/probe", params={"executable": "OpenSees"})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["env_override"] == exe
+    assert payload["env_override_used"] is True
 
 
 def test_web_runs_endpoint_returns_list() -> None:

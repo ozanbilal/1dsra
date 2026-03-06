@@ -361,6 +361,7 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append("    set repEle $layerRepElem($matTag)")
     lines.append("    set stressFile [format \"%s/layer_%s_stress.out\" $output_dir $matTag]")
     lines.append("    set strainFile [format \"%s/layer_%s_strain.out\" $output_dir $matTag]")
+    lines.append("    set pwpFile [format \"%s/layer_%s_pwp_raw.out\" $output_dir $matTag]")
     lines.append("    catch {")
     lines.append(
         "        recorder Element -file $stressFile -time -ele $repEle material 1 stress"
@@ -369,6 +370,11 @@ def render_tcl(config: ProjectConfig, motion_file: Path, output_dir: Path) -> st
     lines.append("    catch {")
     lines.append(
         "        recorder Element -file $strainFile -time -ele $repEle material 1 strain"
+    )
+    lines.append("    }")
+    lines.append("    catch {")
+    lines.append(
+        "        recorder Node -file $pwpFile -time -node $nodeL([expr {$repEle + 1}]) -dof 3 disp"
     )
     lines.append("    }")
     lines.append("}")

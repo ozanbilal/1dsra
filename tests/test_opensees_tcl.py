@@ -38,6 +38,7 @@ def test_render_tcl_contains_expected_blocks() -> None:
     assert "pwp_ru.out" in script
     assert "layer_%s_stress.out" in script
     assert "layer_%s_strain.out" in script
+    assert "layer_%s_pwp_raw.out" in script
     assert "-dof 3 disp" in script
     assert "updateParameter $pTag $hPerm" in script
     assert "foreach pTag $hPermParamTags" in script

@@ -2458,8 +2458,13 @@ function App() {
       const layerIdx = Number(layer?.idx ?? idx);
       const thickness = Number(layer?.thickness_m || 0);
       const unitWeight = Number(layer?.unit_weight_kN_m3 ?? layer?.unit_weight_kn_m3 ?? 0);
-      const sigmaMid = cumulativeSigma + Math.max(unitWeight, 0) * Math.max(thickness, 0) * 0.5;
+      const sigmaMidDerived =
+        cumulativeSigma + Math.max(unitWeight, 0) * Math.max(thickness, 0) * 0.5;
       cumulativeSigma += Math.max(unitWeight, 0) * Math.max(thickness, 0);
+      const sigmaMid =
+        Number.isFinite(Number(layer?.sigma_v0_mid_kpa)) && layer?.sigma_v0_mid_kpa !== null
+          ? Number(layer.sigma_v0_mid_kpa)
+          : sigmaMidDerived;
       const hysteresisLayer =
         hysteresisByIdx.get(layerIdx) ||
         hysteresisByIdx.get(layerIdx - 1) ||
@@ -2487,6 +2492,18 @@ function App() {
             ? Number(hysteresisLayer.loop_energy)
             : null,
         sigma_v0_mid_kpa: sigmaMid,
+        ru_max:
+          Number.isFinite(Number(layer?.ru_max)) && layer?.ru_max !== null
+            ? Number(layer.ru_max)
+            : null,
+        delta_u_max:
+          Number.isFinite(Number(layer?.delta_u_max)) && layer?.delta_u_max !== null
+            ? Number(layer.delta_u_max)
+            : null,
+        sigma_v_eff_min:
+          Number.isFinite(Number(layer?.sigma_v_eff_min)) && layer?.sigma_v_eff_min !== null
+            ? Number(layer.sigma_v_eff_min)
+            : null,
       };
     });
   }, [runProfileSummary, hysteresisView]);
@@ -4523,6 +4540,48 @@ function App() {
                             />
                           </div>
                         </div>
+                        <div className="profile-atlas">
+                          <div className="profile-atlas-head">
+                            <strong>Effective Stress Atlas</strong>
+                            <span className="muted">
+                              Layer representative pore-pressure recorder response
+                            </span>
+                          </div>
+                          <div className="profile-visual-grid">
+                            <${DepthProfileChartCard}
+                              title="ru_max by Depth"
+                              subtitle="Peak excess pore-pressure ratio per representative layer node"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.ru_max}
+                              color="var(--copper)"
+                              xLabel="ru"
+                            />
+                            <${DepthProfileChartCard}
+                              title="delta_u_max by Depth"
+                              subtitle="Peak excess pore pressure from layer pwp recorder"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.delta_u_max}
+                              color="var(--stone)"
+                              xLabel="delta_u (kPa)"
+                            />
+                            <${DepthProfileChartCard}
+                              title="sigma'_v,min by Depth"
+                              subtitle="Minimum effective vertical stress proxy per layer"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.sigma_v_eff_min}
+                              color="var(--teal)"
+                              xLabel="kPa"
+                            />
+                            <${DepthProfileChartCard}
+                              title="sigma_v0 Mid-Depth"
+                              subtitle="Static reference stress used for layer ru conversion"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.sigma_v0_mid_kpa}
+                              color="var(--indigo)"
+                              xLabel="kPa"
+                            />
+                          </div>
+                        </div>
                         <div className="layer-table-wrap profile-summary-wrap">
                           <table className="layer-table profile-summary-table">
                             <thead>
@@ -4542,6 +4601,9 @@ function App() {
                                 <th>damping_proxy</th>
                                 <th>loop_energy</th>
                                 <th>sigma_v0_mid</th>
+                                <th>ru_max</th>
+                                <th>delta_u_max</th>
+                                <th>sigma'_v,min</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -4563,6 +4625,9 @@ function App() {
                                     <td>${fmt(layer.damping_proxy, 4)}</td>
                                     <td>${fmt(layer.loop_energy, 4)}</td>
                                     <td>${fmt(layer.sigma_v0_mid_kpa, 3)}</td>
+                                    <td>${fmt(layer.ru_max, 4)}</td>
+                                    <td>${fmt(layer.delta_u_max, 4)}</td>
+                                    <td>${fmt(layer.sigma_v_eff_min, 3)}</td>
                                   </tr>
                                 `
                               )}

@@ -16,6 +16,9 @@ Recent updates (2026-03-05):
 - Push CI no longer waits on dedicated OpenSees runner; dedicated parity/signoff gate remains mandatory in `release.yml` and manual parity workflow. `ci.yml` now also uses workflow `concurrency` to auto-cancel superseded queued runs on the same ref.
 - Results `Profile` tab now includes a `Profile Atlas` block: stratigraphy bands plus depth-oriented `Vs`, `gamma_max`, and mesh-density plots above the layer table.
 - Results `Profile` tab now also includes a `Layer Response Atlas`: depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots, plus expanded layer table fields.
+- OpenSees Tcl now emits per-layer representative pore-pressure recorders (`layer_<tag>_pwp_raw.out`) in addition to stress/strain recorder channels.
+- Web `profile-summary` now reads representative layer `pwp_raw` artifacts and returns per-layer `sigma_v0_mid_kpa`, `ru_max`, `delta_u_max`, and `sigma_v_eff_min`.
+- React `Profile` tab now includes an `Effective Stress Atlas` and corresponding table columns for layer-wise effective-stress review.
 - Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
 - Profile gamma-depth rendering now falls back to layer hysteresis strain amplitude when backend-native `gamma_max` channels are unavailable.
 - `Results Frame` mode is now a true two-panel studio: left rail for run/artifact/quality navigation and right canvas for the active result tab.
@@ -76,6 +79,7 @@ Implemented:
   - PM4 dynamic-stage `FirstCall` initialization is applied per element/material tag
   - dynamic stage uses step-by-step fallback (`KrylovNewton` -> `ModifiedNewton` + substep retry)
 - OpenSees Tcl now emits per-layer representative stress/strain element recorders (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) for UI hysteresis channels
+- OpenSees Tcl now emits per-layer representative pore-pressure recorders (`layer_<tag>_pwp_raw.out`) for depth-wise effective-stress review
 - CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
 - OpenSees backend probe hardening: if both `-version` and Tcl fallback probes timeout, probe now reports "assumed available" to avoid false blockers (final authority is runtime execution)
 - Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
@@ -242,6 +246,7 @@ Missing:
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
 - Results `Profile` tab now includes visual depth summaries (`Profile Atlas`) in addition to the layer table for faster engineering review
 - Results `Profile` tab now includes a second visual `Layer Response Atlas` for depth-based stress/strength diagnostics (`tau_peak`, mobilized ratio, damping proxy, static overburden proxy)
+- Results `Profile` tab now includes an `Effective Stress Atlas` for depth-based `ru_max`, `delta_u_max`, and `sigma'_v,min` review from representative layer pore-pressure recorders
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
 - Results workspace now includes API-backed `Release Blockers` panel (go/no-go + blocker/warning list from parity/science/signoff/runtime diagnostics)

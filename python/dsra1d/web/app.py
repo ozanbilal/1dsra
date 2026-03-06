@@ -28,7 +28,11 @@ from dsra1d.config.models import (
     ProjectConfig,
     ScaleMode,
 )
-from dsra1d.interop.opensees import probe_opensees_executable, resolve_opensees_executable
+from dsra1d.interop.opensees import (
+    probe_opensees_executable,
+    read_pwp_raw,
+    resolve_opensees_executable,
+)
 from dsra1d.materials import (
     bounded_damping_from_reduction,
     generate_masing_loop,
@@ -348,6 +352,10 @@ class ResultProfileLayerRow(BaseModel):
     z_bottom_m: float
     n_sub: int
     gamma_max: float | None = None
+    sigma_v0_mid_kpa: float | None = None
+    ru_max: float | None = None
+    delta_u_max: float | None = None
+    sigma_v_eff_min: float | None = None
 
 
 class ResultProfileSummaryResponse(BaseModel):
@@ -890,7 +898,42 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def _read_profile_layer_summary(sqlite_path: Path) -> list[ResultProfileLayerRow]:
+def _read_layer_pwp_profile_stats(
+    run_dir: Path,
+    *,
+    layer_idx: int,
+    sigma_v0_mid_kpa: float,
+) -> tuple[float | None, float | None, float | None]:
+    if sigma_v0_mid_kpa <= 0.0:
+        return None, None, None
+    candidates = [
+        run_dir / f"layer_{layer_idx}_pwp_raw.out",
+        run_dir / f"layer_{layer_idx + 1}_pwp_raw.out",
+        run_dir / f"layer_{max(layer_idx - 1, 0)}_pwp_raw.out",
+    ]
+    pwp_path = next((path for path in candidates if path.exists()), None)
+    if pwp_path is None:
+        return None, None, None
+
+    _, pwp = read_pwp_raw(pwp_path)
+    pwp = np.asarray(pwp, dtype=np.float64)
+    if pwp.size == 0:
+        return None, None, None
+
+    delta_u = np.maximum(-pwp, 0.0)
+    if delta_u.size == 0:
+        return None, None, None
+
+    delta_u_max = float(np.max(delta_u))
+    ru_max = float(np.clip(delta_u_max / sigma_v0_mid_kpa, 0.0, 1.5))
+    sigma_v_eff_min = float(max(sigma_v0_mid_kpa - delta_u_max, 0.0))
+    return ru_max, delta_u_max, sigma_v_eff_min
+
+
+def _read_profile_layer_summary(
+    sqlite_path: Path,
+    run_dir: Path | None = None,
+) -> list[ResultProfileLayerRow]:
     if not sqlite_path.exists():
         return []
     conn = sqlite3.connect(sqlite_path)
@@ -948,6 +991,19 @@ def _read_profile_layer_summary(sqlite_path: Path) -> list[ResultProfileLayerRow
             gamma_max = gamma_by_idx.get(layer_idx)
             if gamma_max is None:
                 gamma_max = gamma_by_idx.get(layer_idx + 1)
+            unit_weight_kn_m3 = float(unit_weight)
+            sigma_v0_mid_kpa = (
+                max(cum_depth, 0.0) + max(t_m, 0.0) * 0.5
+            ) * max(unit_weight_kn_m3, 0.0)
+            ru_max = None
+            delta_u_max = None
+            sigma_v_eff_min = None
+            if run_dir is not None:
+                ru_max, delta_u_max, sigma_v_eff_min = _read_layer_pwp_profile_stats(
+                    run_dir,
+                    layer_idx=layer_idx,
+                    sigma_v0_mid_kpa=sigma_v0_mid_kpa,
+                )
 
             layers.append(
                 ResultProfileLayerRow(
@@ -955,12 +1011,16 @@ def _read_profile_layer_summary(sqlite_path: Path) -> list[ResultProfileLayerRow
                     name=layer_name,
                     material=str(material),
                     thickness_m=t_m,
-                    unit_weight_kn_m3=float(unit_weight),
+                    unit_weight_kn_m3=unit_weight_kn_m3,
                     vs_m_s=float(vs),
                     z_top_m=float(z_top_m),
                     z_bottom_m=float(z_bottom_m),
                     n_sub=max(1, int(n_sub)),
                     gamma_max=float(gamma_max) if gamma_max is not None else None,
+                    sigma_v0_mid_kpa=sigma_v0_mid_kpa,
+                    ru_max=ru_max,
+                    delta_u_max=delta_u_max,
+                    sigma_v_eff_min=sigma_v_eff_min,
                 )
             )
         return layers
@@ -2937,7 +2997,7 @@ def create_app() -> FastAPI:
     ) -> ResultProfileSummaryResponse:
         run_dir = _resolve_run_dir(run_id, output_root)
         sqlite_path = run_dir / "results.sqlite"
-        layer_rows = _read_profile_layer_summary(sqlite_path)
+        layer_rows = _read_profile_layer_summary(sqlite_path, run_dir=run_dir)
         metrics = _read_metrics(sqlite_path)
         total_thickness_m = float(sum(max(0.0, layer.thickness_m) for layer in layer_rows))
         return ResultProfileSummaryResponse(

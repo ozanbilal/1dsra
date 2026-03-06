@@ -53,6 +53,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - layer-wise stress-strain loop and mobilized-strength payload
   - `Stress-Strain` / `Mobilized Strength` tabs now render backend data
   - OpenSees recorder artifacts (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) are now consumed when present; PM4 layers fall back to MKZ proxy only when recorder channels are missing
+- Layer effective-stress profile visibility:
+  - OpenSees Tcl now emits representative layer pore-pressure recorders (`layer_<tag>_pwp_raw.out`)
+  - `GET /api/runs/{run_id}/results/profile-summary` now returns layer-wise `sigma_v0_mid_kpa`, `ru_max`, `delta_u_max`, and `sigma_v_eff_min`
+  - React `Profile` tab now includes an `Effective Stress Atlas` and extended layer table columns for recorder-based effective-stress review
 - Wizard Soil Profile UX upgrades:
   - per-layer `material_params` and `material_optional_args` editors
   - layer utility controls: duplicate, reorder (up/down), CSV import/export
@@ -130,6 +134,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `Profile` tab now includes a `Profile Atlas` block with stratigraphy bands and depth-oriented `Vs`, `gamma_max`, and mesh-density plots
   - keeps the tab useful even before deeper DEEPSOIL-style database browser parity is implemented
   - `Profile` tab now also includes a `Layer Response Atlas` with depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots
+  - `Profile` tab now also includes an `Effective Stress Atlas` with layer-wise `ru_max`, `delta_u_max`, and `sigma'_v,min`
   - profile summary table now exposes these derived layer response fields for direct review/export parity
   - `gamma_max` depth plot now falls back to hysteresis strain amplitude when backend-specific layer gamma channels are absent
 - Web run resolution hardening:

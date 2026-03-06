@@ -121,7 +121,7 @@ Run flow (no manual YAML editing required):
 5. Use `Open Results Frame` in Results header to switch into a full-width output workspace.
 6. Review `Parity Health`, `Scientific Confidence`, and `Release Blockers` cards for quick go/no-go diagnostics.
    `Release Blockers` uses backend signoff endpoint fields (`release_ready`, fingerprint match, blocker categories, severity score/label).
-7. Use `Profile Atlas` inside the `Profile` tab for a fast depth read of stratigraphy, `Vs`, `gamma_max`, mesh density, `tau_peak`, mobilized strength, damping proxy, and static overburden proxy before dropping to the detailed table.
+7. Use `Profile Atlas` inside the `Profile` tab for a fast depth read of stratigraphy, `Vs`, `gamma_max`, mesh density, `tau_peak`, mobilized strength, damping proxy, static overburden proxy, and layer-level effective-stress metrics (`ru_max`, `delta_u_max`, `sigma'_v,min`) before dropping to the detailed table.
 8. In `Results Frame` mode, the UI now switches to a two-panel studio: left rail for run/artifact/quality navigation, right canvas for the active result tab.
 
 Damping routing:
@@ -209,6 +209,7 @@ Supported input units: `m/s2`, `m/s^2`, `mps2`, `g`, `gal`, `cm/s2`, `cm/s^2`.
 - `quadUP` element assembly
 - boundary conditions (`rigid` or `elastic_halfspace` with Lysmer-style dashpot), gravity+dynamic stages
 - surface acceleration and pore-pressure ratio recorder outputs
+- representative layer pore-pressure recorder outputs (`layer_<tag>_pwp_raw.out`) for depth-wise effective-stress review
 - PM4 stage-transition hardening:
   - `FirstCall` initialization per PM4 element/material after `updateMaterialStage ... -stage 1`
   - gravity stage with temporary high permeability, then restore user `h_perm/v_perm`

@@ -1083,6 +1083,11 @@ def test_web_results_profile_summary_endpoint(tmp_path) -> None:
     from fastapi.testclient import TestClient
 
     result = _make_mock_run(tmp_path)
+    run_dir = Path(result.output_dir)
+    t = np.linspace(0.0, 6.0, 120, dtype=np.float64)
+    pwp = -np.linspace(0.0, 24.0, 120, dtype=np.float64)
+    np.savetxt(run_dir / "layer_1_pwp_raw.out", np.column_stack([t, pwp]))
+
     root = tmp_path / "web-runs"
     client = TestClient(create_app())
     resp = client.get(
@@ -1099,6 +1104,10 @@ def test_web_results_profile_summary_endpoint(tmp_path) -> None:
     assert "name" in first
     assert "z_top_m" in first
     assert "z_bottom_m" in first
+    assert first["sigma_v0_mid_kpa"] is not None
+    assert first["delta_u_max"] == pytest.approx(24.0, rel=1e-6)
+    assert first["sigma_v_eff_min"] is not None
+    assert first["ru_max"] is not None
 
 
 def test_web_parity_latest_endpoint_reads_latest_report(tmp_path) -> None:

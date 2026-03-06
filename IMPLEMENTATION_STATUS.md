@@ -14,6 +14,7 @@ Recent updates (2026-03-05):
 - Web run endpoint now returns normalized `output_root`, and React run flow uses it to keep run-detail fetch root in sync.
 - React run-detail fetch path now supports partial rendering: summary/convergence remain visible even if one or more result channels fail (soft warning instead of hard blank-state failure).
 - Push CI no longer waits on dedicated OpenSees runner; dedicated parity/signoff gate remains mandatory in `release.yml` and manual parity workflow. `ci.yml` now also uses workflow `concurrency` to auto-cancel superseded queued runs on the same ref.
+- Results `Profile` tab now includes a `Profile Atlas` block: stratigraphy bands plus depth-oriented `Vs`, `gamma_max`, and mesh-density plots above the layer table.
 
 ## 2. Phase-by-Phase Status
 
@@ -234,6 +235,7 @@ Missing:
 - Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
 - Results `Convergence` and profile health cards now surface OpenSees timeout diagnostics/recovery metadata (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage) even when log-level diagnostics are absent
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
+- Results `Profile` tab now includes visual depth summaries (`Profile Atlas`) in addition to the layer table for faster engineering review
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
 - Results workspace now includes API-backed `Release Blockers` panel (go/no-go + blocker/warning list from parity/science/signoff/runtime diagnostics)

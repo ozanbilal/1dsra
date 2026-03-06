@@ -121,6 +121,7 @@ Run flow (no manual YAML editing required):
 5. Use `Open Results Frame` in Results header to switch into a full-width output workspace.
 6. Review `Parity Health`, `Scientific Confidence`, and `Release Blockers` cards for quick go/no-go diagnostics.
    `Release Blockers` uses backend signoff endpoint fields (`release_ready`, fingerprint match, blocker categories, severity score/label).
+7. Use `Profile Atlas` inside the `Profile` tab for a fast depth read of stratigraphy, `Vs`, `gamma_max`, and mesh density before dropping to the detailed table.
 
 Damping routing:
 - Wizard `Damping` step writes directly into config analysis fields:

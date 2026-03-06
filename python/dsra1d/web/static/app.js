@@ -73,10 +73,23 @@ const MATERIAL_PARAM_PRESETS = {
   elastic: { nu: 0.3 },
 };
 
+const MATERIAL_COLORS = {
+  pm4sand: "rgba(161, 83, 35, 0.78)",
+  pm4silt: "rgba(15, 110, 106, 0.72)",
+  mkz: "rgba(63, 67, 121, 0.72)",
+  gqh: "rgba(104, 68, 139, 0.72)",
+  elastic: "rgba(45, 57, 68, 0.62)",
+};
+
 function materialParamDefaults(material) {
   const key = String(material || "pm4sand").toLowerCase();
   const base = MATERIAL_PARAM_PRESETS[key] || {};
   return { ...base };
+}
+
+function materialColor(material) {
+  const key = String(material || "elastic").toLowerCase();
+  return MATERIAL_COLORS[key] || "rgba(45, 57, 68, 0.42)";
 }
 
 function materialParamRows(material, rawParams) {
@@ -800,6 +813,98 @@ function buildChartGeometry(series) {
   };
 }
 
+function buildDepthProfileGeometry(layers, valueAccessor) {
+  const ordered = (Array.isArray(layers) ? layers : [])
+    .map((layer, idx) => {
+      const x = Number(valueAccessor(layer));
+      const zTop = Number(layer?.z_top_m);
+      const zBottom = Number(layer?.z_bottom_m);
+      if (!Number.isFinite(x) || !Number.isFinite(zTop) || !Number.isFinite(zBottom)) return null;
+      if (zBottom <= zTop) return null;
+      return {
+        key: `${layer?.idx ?? idx}-${layer?.name || "layer"}`,
+        name: layer?.name || `Layer ${idx + 1}`,
+        color: materialColor(layer?.material),
+        value: x,
+        zTop,
+        zBottom,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.zTop - b.zTop);
+  if (ordered.length === 0) return null;
+
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let zMax = 0;
+  ordered.forEach((row) => {
+    if (row.value < xMin) xMin = row.value;
+    if (row.value > xMax) xMax = row.value;
+    if (row.zBottom > zMax) zMax = row.zBottom;
+  });
+  if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || zMax <= 0) return null;
+  if (Math.abs(xMax - xMin) < 1e-12) {
+    xMin -= 0.5;
+    xMax += 0.5;
+  }
+  if (xMin > 0) xMin = 0;
+  const xPad = 0.08 * Math.max(xMax - xMin, 1);
+  xMin -= xPad;
+  xMax += xPad;
+
+  const { width, height, padLeft, padRight, padTop, padBottom } = CHART_FRAME;
+  const innerW = width - padLeft - padRight;
+  const innerH = height - padTop - padBottom;
+  const xToPx = (x) => padLeft + ((x - xMin) / (xMax - xMin)) * innerW;
+  const depthToPx = (depth) => padTop + (depth / zMax) * innerH;
+
+  const pathParts = [];
+  ordered.forEach((row, idx) => {
+    const xPx = xToPx(row.value).toFixed(2);
+    const yTop = depthToPx(row.zTop).toFixed(2);
+    const yBottom = depthToPx(row.zBottom).toFixed(2);
+    if (idx === 0) {
+      pathParts.push(`M ${xPx} ${yTop}`);
+    } else {
+      const prevBottom = depthToPx(ordered[idx - 1].zBottom).toFixed(2);
+      pathParts.push(`L ${xPx} ${prevBottom}`);
+      pathParts.push(`L ${xPx} ${yTop}`);
+    }
+    pathParts.push(`L ${xPx} ${yBottom}`);
+  });
+
+  const xTicks = buildTicks(xMin, xMax, 5).map((v) => ({
+    value: v,
+    px: xToPx(v),
+    label: formatAxisTick(v),
+  }));
+  const yTicks = buildTicks(0, zMax, 6).map((v) => ({
+    value: v,
+    py: depthToPx(v),
+    label: formatAxisTick(v),
+  }));
+  const bandRects = ordered.map((row) => ({
+    key: row.key,
+    y: depthToPx(row.zTop),
+    height: Math.max(depthToPx(row.zBottom) - depthToPx(row.zTop), 2),
+    color: row.color,
+    label: row.name,
+  }));
+
+  return {
+    width,
+    height,
+    padLeft,
+    padRight,
+    padTop,
+    padBottom,
+    xTicks,
+    yTicks,
+    path: pathParts.join(" "),
+    bands: bandRects,
+  };
+}
+
 function ChartCard({ title, subtitle, x, y, color = "var(--copper)" }) {
   const geometry = useMemo(
     () =>
@@ -1018,6 +1123,161 @@ function MultiSeriesChartCard({ title, subtitle, series }) {
             </div>
           `
         : html`<div className="muted">No data</div>`}
+    </section>
+  `;
+}
+
+function DepthProfileChartCard({
+  title,
+  subtitle,
+  layers,
+  valueAccessor,
+  color = "var(--copper)",
+}) {
+  const geometry = useMemo(
+    () => buildDepthProfileGeometry(layers, valueAccessor),
+    [layers, valueAccessor]
+  );
+  return html`
+    <section className="chart-card depth-chart-card">
+      <div className="chart-head">
+        <h4>${title}</h4>
+        ${subtitle ? html`<span className="muted">${subtitle}</span>` : null}
+      </div>
+      ${geometry
+        ? html`
+            <svg viewBox=${`0 0 ${geometry.width} ${geometry.height}`} role="img" aria-label=${title}>
+              ${geometry.bands.map(
+                (band) => html`
+                  <rect
+                    x=${geometry.padLeft}
+                    y=${band.y}
+                    width=${geometry.width - geometry.padLeft - geometry.padRight}
+                    height=${band.height}
+                    fill=${band.color}
+                    opacity="0.06"
+                  ></rect>
+                `
+              )}
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft}
+                    y1=${tick.py}
+                    x2=${geometry.width - geometry.padRight}
+                    y2=${tick.py}
+                    className="chart-grid-line"
+                  ></line>
+                `
+              )}
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.padTop}
+                x2=${geometry.padLeft}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              <line
+                x1=${geometry.padLeft}
+                y1=${geometry.height - geometry.padBottom}
+                x2=${geometry.width - geometry.padRight}
+                y2=${geometry.height - geometry.padBottom}
+                className="chart-axis-line"
+              ></line>
+              ${geometry.xTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${tick.px}
+                    y1=${geometry.height - geometry.padBottom}
+                    x2=${tick.px}
+                    y2=${geometry.height - geometry.padBottom + 4}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${tick.px}
+                    y=${geometry.height - geometry.padBottom + 16}
+                    textAnchor="middle"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
+              ${geometry.yTicks.map(
+                (tick) => html`
+                  <line
+                    x1=${geometry.padLeft - 4}
+                    y1=${tick.py}
+                    x2=${geometry.padLeft}
+                    y2=${tick.py}
+                    className="chart-axis-tick"
+                  ></line>
+                  <text
+                    x=${geometry.padLeft - 8}
+                    y=${tick.py + 3}
+                    textAnchor="end"
+                    className="chart-axis-text"
+                  >
+                    ${tick.label}
+                  </text>
+                `
+              )}
+              <path
+                d=${geometry.path}
+                fill="none"
+                stroke=${color}
+                strokeWidth="2.4"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              ></path>
+            </svg>
+          `
+        : html`<div className="muted">No depth data</div>`}
+    </section>
+  `;
+}
+
+function StratigraphyCard({ layers }) {
+  const ordered = (Array.isArray(layers) ? layers : [])
+    .filter((layer) => Number.isFinite(Number(layer?.thickness_m)) && Number(layer.thickness_m) > 0)
+    .sort((a, b) => Number(a?.z_top_m || 0) - Number(b?.z_top_m || 0));
+  const totalThickness = ordered.reduce((sum, layer) => sum + Number(layer.thickness_m || 0), 0);
+  return html`
+    <section className="chart-card stratigraphy-card">
+      <div className="chart-head">
+        <h4>Stratigraphy Atlas</h4>
+        <span className="muted">Layer proportions and materials</span>
+      </div>
+      ${ordered.length === 0
+        ? html`<div className="muted">No layer data</div>`
+        : html`
+            <div className="stratigraphy-stack">
+              ${ordered.map((layer) => {
+                const thickness = Number(layer.thickness_m || 0);
+                const share = totalThickness > 0 ? (thickness / totalThickness) * 100 : 0;
+                return html`
+                  <div
+                    className="stratigraphy-band"
+                    style=${{
+                      background: `linear-gradient(135deg, ${materialColor(layer.material)}, rgba(255,255,255,0.22))`,
+                      minHeight: `${Math.max(46, share * 2.1)}px`,
+                    }}
+                    key=${`strat-${layer.idx}-${layer.name}`}
+                  >
+                    <div className="stratigraphy-band-top">
+                      <strong>${layer.name}</strong>
+                      <span>${fmt(layer.z_top_m, 2)}-${fmt(layer.z_bottom_m, 2)} m</span>
+                    </div>
+                    <div className="stratigraphy-band-meta">
+                      <span>${String(layer.material || "n/a").toUpperCase()}</span>
+                      <span>Vs ${fmt(layer.vs_m_s, 1)}</span>
+                      <span>H ${fmt(thickness, 2)} m</span>
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          `}
     </section>
   `;
 }
@@ -3907,6 +4167,38 @@ function App() {
                           <div className="metric-card">
                             <span>sigma_v_eff_min</span>
                             <b>${fmt(runProfileSummary.sigma_v_eff_min, 4)}</b>
+                          </div>
+                        </div>
+                        <div className="profile-atlas">
+                          <div className="profile-atlas-head">
+                            <strong>Profile Atlas</strong>
+                            <span className="muted">
+                              Depth-oriented summary of the current layer stack
+                            </span>
+                          </div>
+                          <div className="profile-visual-grid">
+                            <${StratigraphyCard} layers=${runProfileSummary.layers} />
+                            <${DepthProfileChartCard}
+                              title="Vs by Depth"
+                              subtitle="Shear-wave velocity profile"
+                              layers=${runProfileSummary.layers}
+                              valueAccessor=${(layer) => layer?.vs_m_s}
+                              color="var(--teal)"
+                            />
+                            <${DepthProfileChartCard}
+                              title="gamma_max by Depth"
+                              subtitle="Peak strain per layer"
+                              layers=${runProfileSummary.layers}
+                              valueAccessor=${(layer) => layer?.gamma_max}
+                              color="var(--copper)"
+                            />
+                            <${DepthProfileChartCard}
+                              title="Mesh Density by Depth"
+                              subtitle="Sub-layer count per main layer"
+                              layers=${runProfileSummary.layers}
+                              valueAccessor=${(layer) => layer?.n_sub}
+                              color="var(--indigo)"
+                            />
                           </div>
                         </div>
                         <div className="layer-table-wrap profile-summary-wrap">

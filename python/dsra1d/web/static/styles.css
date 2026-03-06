@@ -929,6 +929,97 @@ pre {
   margin-bottom: 8px;
 }
 
+.profile-atlas {
+  margin-bottom: 10px;
+}
+
+.profile-atlas-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.profile-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) repeat(3, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.depth-chart-card svg {
+  height: 220px;
+}
+
+.stratigraphy-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stratigraphy-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -36% auto;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), transparent 68%);
+  pointer-events: none;
+}
+
+.stratigraphy-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.stratigraphy-band {
+  position: relative;
+  color: #fff;
+  border-radius: 12px;
+  padding: 0.55rem 0.62rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  overflow: hidden;
+}
+
+.stratigraphy-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 42%),
+    radial-gradient(circle at 84% 18%, rgba(255, 255, 255, 0.18), transparent 36%);
+  pointer-events: none;
+}
+
+.stratigraphy-band-top,
+.stratigraphy-band-meta {
+  position: relative;
+  z-index: 1;
+}
+
+.stratigraphy-band-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.stratigraphy-band-top strong {
+  font-size: 0.82rem;
+}
+
+.stratigraphy-band-top span,
+.stratigraphy-band-meta span {
+  font-size: 0.68rem;
+  opacity: 0.94;
+}
+
+.stratigraphy-band-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .json-details {
   border: 1px dashed rgba(45, 57, 68, 0.24);
   border-radius: 10px;
@@ -956,5 +1047,9 @@ pre {
 
   .auto-profile-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-visual-grid {
+    grid-template-columns: 1fr;
   }
 }

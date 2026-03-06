@@ -124,6 +124,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - GitHub Actions noise reduction:
   - `ci.yml` now uses workflow `concurrency` to auto-cancel superseded queued runs on the same branch/ref
   - dedicated OpenSees parity/signoff gate was removed from per-push CI and remains mandatory in `release.yml` and manual parity workflow
+- Profile results UX:
+  - `Profile` tab now includes a `Profile Atlas` block with stratigraphy bands and depth-oriented `Vs`, `gamma_max`, and mesh-density plots
+  - keeps the tab useful even before deeper DEEPSOIL-style database browser parity is implemented
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

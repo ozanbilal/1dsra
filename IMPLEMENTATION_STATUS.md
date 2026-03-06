@@ -18,6 +18,7 @@ Recent updates (2026-03-05):
 - Results `Profile` tab now also includes a `Layer Response Atlas`: depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots, plus expanded layer table fields.
 - Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
 - Profile gamma-depth rendering now falls back to layer hysteresis strain amplitude when backend-native `gamma_max` channels are unavailable.
+- `Results Frame` mode is now a true two-panel studio: left rail for run/artifact/quality navigation and right canvas for the active result tab.
 
 ## 2. Phase-by-Phase Status
 
@@ -231,6 +232,7 @@ Missing:
 - FastAPI + React migration starter is now available (`StrataWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
 - React dashboard now includes a dedicated `Results Frame` focus mode so outputs can be reviewed in a full-width workspace (without Wizard/Runs crowding)
+- `Results Frame` focus mode now uses a split studio layout instead of stacking all diagnostic cards above the plots
 - Wizard `Damping` step is now solver-routed:
   - `rayleigh` mode writes `analysis.damping_mode`, `rayleigh_mode_1_hz`, `rayleigh_mode_2_hz`, `rayleigh_update_matrix`
   - native linear/eql/nonlinear backends now consume Rayleigh damping in runtime

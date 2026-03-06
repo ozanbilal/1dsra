@@ -82,6 +82,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - React Results Frame mode:
   - one-click `Open Results Frame` focus view for de-cluttered result inspection
   - dedicated run selector and artifact downloads in focused mode
+  - focused mode now renders as a two-panel analysis studio (left navigation rail + right result canvas)
+  - compare overlays are intentionally hidden in focused mode to keep the main result canvas readable
 - Results quality visibility:
   - added `Parity Health` card (coverage, fingerprint, blockers)
   - added `Scientific Confidence` card (suite tiers + verification timestamps)

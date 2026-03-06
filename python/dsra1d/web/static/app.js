@@ -3814,7 +3814,7 @@ function App() {
                 >
                   ${isResultsFrameMode ? "Back to Workspace" : "Open Results Frame"}
                 </button>
-                ${selectedRunId
+                ${selectedRunId && !isResultsFrameMode
                   ? html`
                       <div className="download-row">
                         <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
@@ -3862,20 +3862,70 @@ function App() {
                 `
               : null}
 
-            <div className="tab-row results-tab-row">
-              ${RESULT_TABS.map(
-                (tab) => html`
-                  <button
-                    className=${`tab-btn ${activeResultTab === tab ? "active" : ""}`}
-                    onClick=${() => setActiveResultTab(tab)}
-                  >
-                    ${tab}
-                  </button>
-                `
-              )}
-            </div>
+            <div className=${`results-shell ${isResultsFrameMode ? "results-shell-frame" : ""}`}>
+              <div className="results-sidebar-stack">
+                ${isResultsFrameMode && selectedRunId
+                  ? html`
+                      <section className="results-run-card">
+                        <div className="results-run-card-head">
+                          <div>
+                            <div className="results-kicker">Active Run</div>
+                            <h4>${selectedRunId}</h4>
+                          </div>
+                          <span className=${`chip ${
+                            String(runSummary?.status || selectedRun?.status || "")
+                              .toLowerCase()
+                              .includes("ok")
+                              ? "chip-ok"
+                              : "chip-bad"
+                          }`}>
+                            ${runSummary?.status || selectedRun?.status || "n/a"}
+                          </span>
+                        </div>
+                        <div className="muted">
+                          ${runSummary?.project_name || selectedRun?.project_name || "n/a"}<br />
+                          backend=${runSummary?.solver_backend || selectedRun?.solver_backend || "n/a"}
+                        </div>
+                        <div className="metric-grid results-run-metrics">
+                          <div className="metric-card">
+                            <span>PGA</span><b>${fmt(metrics.pga)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>ru_max</span><b>${fmt(metrics.ruMax)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>delta_u_max</span><b>${fmt(metrics.duMax)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>dt_s</span><b>${fmt(metrics.dt, 6)}</b>
+                          </div>
+                        </div>
+                        <div className="quality-subtitle">Artifacts</div>
+                        <div className="download-row">
+                          <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
+                          <a className="btn-min" href=${artifactLinks.pwp}>pwp_effective.csv</a>
+                          <a className="btn-min" href=${artifactLinks.h5}>results.h5</a>
+                          <a className="btn-min" href=${artifactLinks.sqlite}>results.sqlite</a>
+                          <a className="btn-min" href=${artifactLinks.meta}>run_meta.json</a>
+                        </div>
+                      </section>
+                    `
+                  : null}
 
-            <div className="quality-grid">
+                <div className=${`tab-row results-tab-row ${isResultsFrameMode ? "results-tab-row-rail" : ""}`}>
+                  ${RESULT_TABS.map(
+                    (tab) => html`
+                      <button
+                        className=${`tab-btn ${activeResultTab === tab ? "active" : ""}`}
+                        onClick=${() => setActiveResultTab(tab)}
+                      >
+                        ${tab}
+                      </button>
+                    `
+                  )}
+                </div>
+
+                <div className="quality-grid">
               <section className="quality-card">
                 <div className="row between">
                   <strong>Parity Health</strong>
@@ -4061,9 +4111,9 @@ function App() {
                     `
                   : null}
               </section>
-            </div>
+                </div>
 
-            <div className="compare-box">
+                <div className="compare-box">
               <div className="row between">
                 <strong>Multi-Motion Compare</strong>
                 <div className="row">
@@ -4116,7 +4166,8 @@ function App() {
                 : null}
 
               ${compareSeries.count > 0
-                ? html`
+                ? !isResultsFrameMode
+                  ? html`
                     <div className="metric-grid">
                       ${compareSeries.metrics.map(
                         (row) => html`
@@ -4193,8 +4244,65 @@ function App() {
                         `
                       : null}
                   `
+                  : html`
+                      <div className="metric-grid">
+                        ${compareSeries.metrics.map(
+                          (row) => html`
+                            <div className="metric-card" key=${`cmp-${row.runId}`}>
+                              <span>${row.label}</span>
+                              <b>PGA: ${fmt(row.pga, 4)}</b>
+                            </div>
+                          `
+                        )}
+                      </div>
+                      <div className="muted">
+                        Compare charts are hidden in Results Frame mode to keep the analysis canvas
+                        focused. Switch back to Workspace to inspect multi-run overlays.
+                      </div>
+                    `
                 : null}
-            </div>
+                </div>
+              </div>
+
+              <div className="results-stage">
+                ${isResultsFrameMode
+                  ? html`
+                      <div className="results-stage-head">
+                        <div>
+                          <div className="results-kicker">Analysis Canvas</div>
+                          <h4>${activeResultTab}</h4>
+                          <div className="muted">
+                            ${selectedRunId
+                              ? `${selectedRunId} | ${mini(
+                                  runSummary?.project_name || selectedRun?.project_name || "n/a"
+                                )}`
+                              : "Select a run to inspect outputs."}
+                          </div>
+                        </div>
+                        ${selectedRunId
+                          ? html`
+                              <div className="results-stage-chips">
+                                <span className="chip chip-neutral">
+                                  ${runSummary?.solver_backend || selectedRun?.solver_backend || "n/a"}
+                                </span>
+                                <span
+                                  className=${`chip ${
+                                    convergenceSeverityClass(convergenceView.severity) === "diag-ok"
+                                      ? "chip-ok"
+                                      : convergenceSeverityClass(convergenceView.severity) ===
+                                          "diag-critical"
+                                        ? "chip-bad"
+                                        : "chip-neutral"
+                                  }`}
+                                >
+                                  ${String(convergenceView.severity || "neutral")}
+                                </span>
+                              </div>
+                            `
+                          : null}
+                      </div>
+                    `
+                  : null}
 
             ${!selectedRunId
               ? html`<div className="muted">Select a run to view results.</div>`
@@ -4629,6 +4737,8 @@ ${JSON.stringify(convergenceView.raw || { available: false }, null, 2)}
                       `}
                 `
               : null}
+              </div>
+            </div>
           </section>
         </main>
       </section>

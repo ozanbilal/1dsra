@@ -639,6 +639,16 @@ function mini(text) {
   return `${asText.slice(0, 52)}...`;
 }
 
+function summarizeLayerNames(names) {
+  const items = Array.isArray(names)
+    ? names.map((value) => String(value || "").trim()).filter((value) => value.length > 0)
+    : [];
+  if (!items.length) return "n/a";
+  const preview = items.slice(0, 3).join(", ");
+  if (items.length <= 3) return `${items.length} layer${items.length === 1 ? "" : "s"} | ${preview}`;
+  return `${items.length} layers | ${preview} +${items.length - 3} more`;
+}
+
 function parentPath(pathValue) {
   const raw = String(pathValue || "").trim();
   if (!raw) return "";
@@ -2804,6 +2814,11 @@ function App() {
     const nonEmpty = parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0);
     return nonEmpty.join(" | ");
   }, [parityPrimary]);
+  const backendProbeDetailError =
+    backendProbe && (!backendProbe.available || backendProbe.assumed_available)
+      ? String(backendProbe.error || "").trim()
+      : "";
+  const outputLayerSummary = summarizeLayerNames(runSummary?.output_layers || []);
   const releaseHealth = useMemo(
     () =>
       buildReleaseHealth({
@@ -2970,7 +2985,7 @@ function App() {
                         ${backendProbe.env_override
                           ? html`<br />Env override used: ${backendProbe.env_override_used ? "yes" : "no"}`
                           : null}
-                        ${backendProbe.error ? html`<br />Error: ${backendProbe.error}` : null}
+                        ${backendProbeDetailError ? html`<br />Error: ${backendProbeDetailError}` : null}
                       </div>
                     `
                   : html`<div className="muted">No backend probe yet.</div>`}
@@ -4491,7 +4506,7 @@ function App() {
                       <span>Status</span><b>${runSummary.status || "n/a"}</b>
                     </div>
                     <div className="metric-card">
-                      <span>Layers</span><b>${(runSummary.output_layers || []).join(", ") || "n/a"}</b>
+                      <span>Layers</span><b title=${(runSummary.output_layers || []).join(", ")}>${outputLayerSummary}</b>
                     </div>
                   </div>
                   <div className=${`status ${convergenceSeverityClass(convergenceView.severity)}`}>

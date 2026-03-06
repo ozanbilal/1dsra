@@ -78,6 +78,14 @@ def test_probe_opensees_executable_timeout_falls_back_to_tcl(monkeypatch) -> Non
     assert calls[1][-1].endswith(".tcl")
 
 
+def test_first_non_empty_line_skips_opensees_prompt() -> None:
+    line = runner_mod._first_non_empty_line(
+        "OpenSees >\nOpenSees -- Open System For Earthquake Engineering Simulation Version 3.8.0\n",
+        "",
+    )
+    assert line == "OpenSees -- Open System For Earthquake Engineering Simulation Version 3.8.0"
+
+
 def test_probe_opensees_executable_double_timeout_assumes_available(monkeypatch) -> None:
     calls: list[list[str]] = []
 

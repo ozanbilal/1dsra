@@ -73,13 +73,29 @@ def _decode_timeout_stream(value: str | bytes | None) -> str:
 
 
 def _first_non_empty_line(*values: str) -> str:
+    lines: list[str] = []
     for value in values:
         if not value:
             continue
         for line in value.splitlines():
             text = line.strip()
             if text:
-                return text
+                lines.append(text)
+
+    if not lines:
+        return "unknown"
+
+    prompt_re = re.compile(r"^OpenSees\s*>\s*$", re.IGNORECASE)
+    meaningful = [line for line in lines if not prompt_re.match(line)]
+    preferred = [
+        line
+        for line in meaningful
+        if "version" in line.lower() or line.lower().startswith("opensees")
+    ]
+    if preferred:
+        return preferred[0]
+    if meaningful:
+        return meaningful[0]
     return "unknown"
 
 

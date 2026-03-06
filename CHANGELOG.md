@@ -129,6 +129,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - keeps the tab useful even before deeper DEEPSOIL-style database browser parity is implemented
   - `Profile` tab now also includes a `Layer Response Atlas` with depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots
   - profile summary table now exposes these derived layer response fields for direct review/export parity
+  - `gamma_max` depth plot now falls back to hysteresis strain amplitude when backend-specific layer gamma channels are absent
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows

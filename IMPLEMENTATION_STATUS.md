@@ -17,6 +17,7 @@ Recent updates (2026-03-05):
 - Results `Profile` tab now includes a `Profile Atlas` block: stratigraphy bands plus depth-oriented `Vs`, `gamma_max`, and mesh-density plots above the layer table.
 - Results `Profile` tab now also includes a `Layer Response Atlas`: depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots, plus expanded layer table fields.
 - Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
+- Profile gamma-depth rendering now falls back to layer hysteresis strain amplitude when backend-native `gamma_max` channels are unavailable.
 
 ## 2. Phase-by-Phase Status
 

@@ -2467,6 +2467,12 @@ function App() {
         null;
       return {
         ...layer,
+        gamma_metric:
+          Number.isFinite(Number(layer?.gamma_max)) && layer?.gamma_max !== null
+            ? Number(layer.gamma_max)
+            : hysteresisLayer && Number.isFinite(Number(hysteresisLayer.strain_amplitude))
+              ? Number(hysteresisLayer.strain_amplitude)
+              : null,
         tau_peak: peakAbs(hysteresisLayer?.stress || []),
         mobilized_strength_ratio:
           hysteresisLayer && Number.isFinite(Number(hysteresisLayer.mobilized_strength_ratio))
@@ -4350,12 +4356,12 @@ function App() {
                               xLabel="Vs (m/s)"
                             />
                             <${DepthProfileChartCard}
-                              title="gamma_max by Depth"
-                              subtitle="Peak strain per layer"
+                              title="gamma Metric by Depth"
+                              subtitle="Peak strain per layer or hysteresis amplitude fallback"
                               layers=${profileDerivedLayers}
-                              valueAccessor=${(layer) => layer?.gamma_max}
+                              valueAccessor=${(layer) => layer?.gamma_metric}
                               color="var(--copper)"
-                              xLabel="gamma_max"
+                              xLabel="gamma"
                             />
                             <${DepthProfileChartCard}
                               title="Mesh Density by Depth"
@@ -4422,7 +4428,7 @@ function App() {
                                 <th>Vs (m/s)</th>
                                 <th>Unit W. (kN/m^3)</th>
                                 <th>n_sub</th>
-                                <th>gamma_max</th>
+                                <th>gamma_metric</th>
                                 <th>tau_peak</th>
                                 <th>mob_ratio</th>
                                 <th>damping_proxy</th>
@@ -4443,7 +4449,7 @@ function App() {
                                     <td>${fmt(layer.vs_m_s, 2)}</td>
                                     <td>${fmt(layer.unit_weight_kN_m3 ?? layer.unit_weight_kn_m3, 2)}</td>
                                     <td>${layer.n_sub}</td>
-                                    <td>${fmt(layer.gamma_max, 6)}</td>
+                                    <td>${fmt(layer.gamma_metric, 6)}</td>
                                     <td>${fmt(layer.tau_peak, 4)}</td>
                                     <td>${fmt(layer.mobilized_strength_ratio, 4)}</td>
                                     <td>${fmt(layer.damping_proxy, 4)}</td>

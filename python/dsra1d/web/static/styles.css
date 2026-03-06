@@ -881,6 +881,14 @@ pre {
   font-family: "IBM Plex Mono", monospace;
 }
 
+.chart-axis-label {
+  fill: rgba(23, 23, 25, 0.86);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: "IBM Plex Mono", monospace;
+}
+
 .json-box {
   border: 1px solid rgba(45, 57, 68, 0.2);
   border-radius: 10px;
@@ -945,6 +953,10 @@ pre {
   display: grid;
   grid-template-columns: minmax(260px, 0.85fr) repeat(3, minmax(280px, 1fr));
   gap: 8px;
+}
+
+.profile-atlas + .profile-atlas {
+  margin-top: 12px;
 }
 
 .depth-chart-card svg {

@@ -15,6 +15,8 @@ Recent updates (2026-03-05):
 - React run-detail fetch path now supports partial rendering: summary/convergence remain visible even if one or more result channels fail (soft warning instead of hard blank-state failure).
 - Push CI no longer waits on dedicated OpenSees runner; dedicated parity/signoff gate remains mandatory in `release.yml` and manual parity workflow. `ci.yml` now also uses workflow `concurrency` to auto-cancel superseded queued runs on the same ref.
 - Results `Profile` tab now includes a `Profile Atlas` block: stratigraphy bands plus depth-oriented `Vs`, `gamma_max`, and mesh-density plots above the layer table.
+- Results `Profile` tab now also includes a `Layer Response Atlas`: depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots, plus expanded layer table fields.
+- Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
 
 ## 2. Phase-by-Phase Status
 
@@ -236,6 +238,7 @@ Missing:
 - Results `Convergence` and profile health cards now surface OpenSees timeout diagnostics/recovery metadata (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage) even when log-level diagnostics are absent
 - Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
 - Results `Profile` tab now includes visual depth summaries (`Profile Atlas`) in addition to the layer table for faster engineering review
+- Results `Profile` tab now includes a second visual `Layer Response Atlas` for depth-based stress/strength diagnostics (`tau_peak`, mobilized ratio, damping proxy, static overburden proxy)
 - Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
 - Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
 - Results workspace now includes API-backed `Release Blockers` panel (go/no-go + blocker/warning list from parity/science/signoff/runtime diagnostics)

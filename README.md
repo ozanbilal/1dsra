@@ -121,7 +121,7 @@ Run flow (no manual YAML editing required):
 5. Use `Open Results Frame` in Results header to switch into a full-width output workspace.
 6. Review `Parity Health`, `Scientific Confidence`, and `Release Blockers` cards for quick go/no-go diagnostics.
    `Release Blockers` uses backend signoff endpoint fields (`release_ready`, fingerprint match, blocker categories, severity score/label).
-7. Use `Profile Atlas` inside the `Profile` tab for a fast depth read of stratigraphy, `Vs`, `gamma_max`, and mesh density before dropping to the detailed table.
+7. Use `Profile Atlas` inside the `Profile` tab for a fast depth read of stratigraphy, `Vs`, `gamma_max`, mesh density, `tau_peak`, mobilized strength, damping proxy, and static overburden proxy before dropping to the detailed table.
 
 Damping routing:
 - Wizard `Damping` step writes directly into config analysis fields:
@@ -140,6 +140,7 @@ Damping routing:
 - One-column CSV fallback `dt` now follows Analysis Control (`dt` or `1/(20*f_max)`) to avoid distorted PSA previews
 - Imported/processed motions are tracked in SI (`m/s2`) in wizard state to prevent double unit conversion
 - Motion preview plots: processed acceleration, PSA, FAS ratio
+- Results and compare plots now include explicit x/y axis titles for direct engineering reading inside the web UI
 - Motion outputs: processed CSV + metrics JSON
 
 ### Results Compare

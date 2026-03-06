@@ -127,6 +127,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Profile results UX:
   - `Profile` tab now includes a `Profile Atlas` block with stratigraphy bands and depth-oriented `Vs`, `gamma_max`, and mesh-density plots
   - keeps the tab useful even before deeper DEEPSOIL-style database browser parity is implemented
+  - `Profile` tab now also includes a `Layer Response Atlas` with depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots
+  - profile summary table now exposes these derived layer response fields for direct review/export parity
 - Web run resolution hardening:
   - `/api/runs` now discovers run folders recursively under `output_root` (nested campaign/output trees supported)
   - run-detail endpoints can resolve `run_id` from parent roots, reducing intermittent `Run not found` errors in UI workflows
@@ -166,6 +168,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - fixed Python 3.12 strict-typing regression in web profile-summary response model (`ResultProfileLayerRow`) caused by alias/constructor mismatch
 - Chart readability:
   - all SVG charts now include axis lines, tick marks, numeric tick labels, and horizontal grid lines (single-series and multi-series views)
+  - key results/compare/profile charts now also include explicit x/y axis titles
 - Wizard damping routing:
   - `damping_step.mode=rayleigh` is now mapped into `analysis.damping_mode` config fields
   - native `linear/eql/nonlinear` solvers now consume Rayleigh coefficients (`mode_1`, `mode_2`) instead of metadata-only handling

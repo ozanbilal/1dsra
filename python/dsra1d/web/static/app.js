@@ -690,10 +690,10 @@ async function fileToBase64(file) {
 const CHART_FRAME = {
   width: 1000,
   height: 280,
-  padLeft: 58,
+  padLeft: 72,
   padRight: 18,
-  padTop: 14,
-  padBottom: 36,
+  padTop: 18,
+  padBottom: 50,
 };
 
 function formatAxisTick(value) {
@@ -713,6 +713,18 @@ function finitePoints(xValues, yValues) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     out.push({ x, y });
   }
+  return out;
+}
+
+function peakAbs(values) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  let out = null;
+  values.forEach((value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
+    const mag = Math.abs(num);
+    if (out === null || mag > out) out = mag;
+  });
   return out;
 }
 
@@ -816,7 +828,9 @@ function buildChartGeometry(series) {
 function buildDepthProfileGeometry(layers, valueAccessor) {
   const ordered = (Array.isArray(layers) ? layers : [])
     .map((layer, idx) => {
-      const x = Number(valueAccessor(layer));
+      const rawValue = valueAccessor(layer);
+      if (rawValue === null || rawValue === undefined || rawValue === "") return null;
+      const x = Number(rawValue);
       const zTop = Number(layer?.z_top_m);
       const zBottom = Number(layer?.z_bottom_m);
       if (!Number.isFinite(x) || !Number.isFinite(zTop) || !Number.isFinite(zBottom)) return null;
@@ -905,7 +919,15 @@ function buildDepthProfileGeometry(layers, valueAccessor) {
   };
 }
 
-function ChartCard({ title, subtitle, x, y, color = "var(--copper)" }) {
+function ChartCard({
+  title,
+  subtitle,
+  x,
+  y,
+  color = "var(--copper)",
+  xLabel = "",
+  yLabel = "",
+}) {
   const geometry = useMemo(
     () =>
       buildChartGeometry([
@@ -991,6 +1013,31 @@ function ChartCard({ title, subtitle, x, y, color = "var(--copper)" }) {
                   </text>
                 `
               )}
+              ${xLabel
+                ? html`
+                    <text
+                      x=${(geometry.padLeft + geometry.width - geometry.padRight) / 2}
+                      y=${geometry.height - 8}
+                      textAnchor="middle"
+                      className="chart-axis-label"
+                    >
+                      ${xLabel}
+                    </text>
+                  `
+                : null}
+              ${yLabel
+                ? html`
+                    <text
+                      x="16"
+                      y=${(geometry.padTop + geometry.height - geometry.padBottom) / 2}
+                      textAnchor="middle"
+                      transform=${`rotate(-90 16 ${(geometry.padTop + geometry.height - geometry.padBottom) / 2})`}
+                      className="chart-axis-label"
+                    >
+                      ${yLabel}
+                    </text>
+                  `
+                : null}
               <polyline
                 fill="none"
                 stroke=${color}
@@ -1021,7 +1068,7 @@ function pickOverlayColor(index) {
   return OVERLAY_COLORS[index % OVERLAY_COLORS.length];
 }
 
-function MultiSeriesChartCard({ title, subtitle, series }) {
+function MultiSeriesChartCard({ title, subtitle, series, xLabel = "", yLabel = "" }) {
   const normalized = Array.isArray(series) ? series : [];
   const geometry = useMemo(() => buildChartGeometry(normalized), [normalized]);
 
@@ -1097,6 +1144,31 @@ function MultiSeriesChartCard({ title, subtitle, series }) {
                   </text>
                 `
               )}
+              ${xLabel
+                ? html`
+                    <text
+                      x=${(geometry.padLeft + geometry.width - geometry.padRight) / 2}
+                      y=${geometry.height - 8}
+                      textAnchor="middle"
+                      className="chart-axis-label"
+                    >
+                      ${xLabel}
+                    </text>
+                  `
+                : null}
+              ${yLabel
+                ? html`
+                    <text
+                      x="16"
+                      y=${(geometry.padTop + geometry.height - geometry.padBottom) / 2}
+                      textAnchor="middle"
+                      transform=${`rotate(-90 16 ${(geometry.padTop + geometry.height - geometry.padBottom) / 2})`}
+                      className="chart-axis-label"
+                    >
+                      ${yLabel}
+                    </text>
+                  `
+                : null}
               ${geometry.paths.map(
                 (line) => html`
                   <polyline
@@ -1133,6 +1205,8 @@ function DepthProfileChartCard({
   layers,
   valueAccessor,
   color = "var(--copper)",
+  xLabel = "",
+  yLabel = "Depth (m)",
 }) {
   const geometry = useMemo(
     () => buildDepthProfileGeometry(layers, valueAccessor),
@@ -1222,6 +1296,31 @@ function DepthProfileChartCard({
                   </text>
                 `
               )}
+              ${xLabel
+                ? html`
+                    <text
+                      x=${(geometry.padLeft + geometry.width - geometry.padRight) / 2}
+                      y=${geometry.height - 8}
+                      textAnchor="middle"
+                      className="chart-axis-label"
+                    >
+                      ${xLabel}
+                    </text>
+                  `
+                : null}
+              ${yLabel
+                ? html`
+                    <text
+                      x="16"
+                      y=${(geometry.padTop + geometry.height - geometry.padBottom) / 2}
+                      textAnchor="middle"
+                      transform=${`rotate(-90 16 ${(geometry.padTop + geometry.height - geometry.padBottom) / 2})`}
+                      className="chart-axis-label"
+                    >
+                      ${yLabel}
+                    </text>
+                  `
+                : null}
               <path
                 d=${geometry.path}
                 fill="none"
@@ -2345,6 +2444,46 @@ function App() {
     const energyY = layers.map((layer) => Number(layer.loop_energy));
     return { layers, selected, ratioX, ratioY, energyX, energyY };
   }, [runHysteresis, selectedLayerIndex]);
+
+  const profileDerivedLayers = useMemo(() => {
+    const baseLayers = Array.isArray(runProfileSummary?.layers) ? runProfileSummary.layers : [];
+    if (baseLayers.length === 0) return [];
+    const hysteresisByIdx = new Map();
+    hysteresisView.layers.forEach((layer) => {
+      hysteresisByIdx.set(Number(layer.layer_index), layer);
+    });
+
+    let cumulativeSigma = 0;
+    return baseLayers.map((layer, idx) => {
+      const layerIdx = Number(layer?.idx ?? idx);
+      const thickness = Number(layer?.thickness_m || 0);
+      const unitWeight = Number(layer?.unit_weight_kN_m3 ?? layer?.unit_weight_kn_m3 ?? 0);
+      const sigmaMid = cumulativeSigma + Math.max(unitWeight, 0) * Math.max(thickness, 0) * 0.5;
+      cumulativeSigma += Math.max(unitWeight, 0) * Math.max(thickness, 0);
+      const hysteresisLayer =
+        hysteresisByIdx.get(layerIdx) ||
+        hysteresisByIdx.get(layerIdx - 1) ||
+        hysteresisByIdx.get(layerIdx + 1) ||
+        null;
+      return {
+        ...layer,
+        tau_peak: peakAbs(hysteresisLayer?.stress || []),
+        mobilized_strength_ratio:
+          hysteresisLayer && Number.isFinite(Number(hysteresisLayer.mobilized_strength_ratio))
+            ? Number(hysteresisLayer.mobilized_strength_ratio)
+            : null,
+        damping_proxy:
+          hysteresisLayer && Number.isFinite(Number(hysteresisLayer.damping_proxy))
+            ? Number(hysteresisLayer.damping_proxy)
+            : null,
+        loop_energy:
+          hysteresisLayer && Number.isFinite(Number(hysteresisLayer.loop_energy))
+            ? Number(hysteresisLayer.loop_energy)
+            : null,
+        sigma_v0_mid_kpa: sigmaMid,
+      };
+    });
+  }, [runProfileSummary, hysteresisView]);
 
   const artifactLinks = useMemo(() => {
     if (!selectedRunId) {
@@ -3987,16 +4126,22 @@ function App() {
                         title="Compare Surface Acceleration"
                         subtitle="Overlay by selected runs"
                         series=${compareSeries.time}
+                        xLabel="Time (s)"
+                        yLabel="Acceleration (m/s^2)"
                       />
                       <${MultiSeriesChartCard}
                         title="Compare PSA (5%)"
                         subtitle="Overlay by selected runs"
                         series=${compareSeries.psa}
+                        xLabel="Period (s)"
+                        yLabel="PSA (m/s^2)"
                       />
                       <${MultiSeriesChartCard}
                         title="Compare Transfer |H(f)|"
                         subtitle="Overlay by selected runs"
                         series=${compareSeries.transfer}
+                        xLabel="Frequency (Hz)"
+                        yLabel="Amplification"
                       />
                       <${MultiSeriesChartCard}
                         title="PSA Ratio to Reference"
@@ -4004,6 +4149,8 @@ function App() {
                           ? `ref=${compareReferenceDerived.referenceId}`
                           : "select a reference run"}
                         series=${compareReferenceDerived.ratioPsa}
+                        xLabel="Period (s)"
+                        yLabel="PSA Ratio"
                       />
                       <${MultiSeriesChartCard}
                         title="Transfer Δ to Reference"
@@ -4011,6 +4158,8 @@ function App() {
                           ? `ref=${compareReferenceDerived.referenceId}`
                           : "select a reference run"}
                         series=${compareReferenceDerived.deltaTransfer}
+                        xLabel="Frequency (Hz)"
+                        yLabel="Δ|H(f)|"
                       />
                       <${MultiSeriesChartCard}
                         title="Surface Acc Δ to Reference"
@@ -4018,6 +4167,8 @@ function App() {
                           ? `ref=${compareReferenceDerived.referenceId}`
                           : "select a reference run"}
                         series=${compareReferenceDerived.deltaTime}
+                        xLabel="Time (s)"
+                        yLabel="ΔAcceleration (m/s^2)"
                       />
                     </div>
                     ${compareReferenceDerived.metrics.length > 0
@@ -4062,18 +4213,24 @@ function App() {
                       x=${runSignal.time_s || []}
                       y=${runSignal.surface_acc_m_s2 || []}
                       color="var(--copper)"
+                      xLabel="Time (s)"
+                      yLabel="Acceleration (m/s^2)"
                     />
                     <${ChartCard}
                       title="Pore Pressure Ratio (ru)"
                       x=${runSignal.ru_time_s || runSignal.ru_t || []}
                       y=${runSignal.ru || []}
                       color="var(--stone)"
+                      xLabel="Time (s)"
+                      yLabel="ru"
                     />
                     <${ChartCard}
                       title="delta_u"
                       x=${runSignal.delta_u_time_s || runSignal.delta_u_t || []}
                       y=${runSignal.delta_u || []}
                       color="#7f5f2d"
+                      xLabel="Time (s)"
+                      yLabel="delta_u"
                     />
                     <${ChartCard}
                       title="sigma_v_eff"
@@ -4081,6 +4238,8 @@ function App() {
                       y=${runSignal.sigma_v_eff || []}
                       color="#1b7d87"
                       subtitle=${`sigma_v_ref=${fmt(metrics.sigmaRef)}`}
+                      xLabel="Time (s)"
+                      yLabel="kPa"
                     />
                   </div>
                 `
@@ -4095,12 +4254,16 @@ function App() {
                       y=${runSignal.psa_m_s2 || []}
                       color="var(--teal)"
                       subtitle=${runSignal.spectra_source || "recomputed"}
+                      xLabel="Period (s)"
+                      yLabel="PSA (m/s^2)"
                     />
                     <${ChartCard}
                       title="Transfer |H(f)|"
                       x=${runSignal.freq_hz || []}
                       y=${runSignal.transfer_abs || []}
                       color="var(--indigo)"
+                      xLabel="Frequency (Hz)"
+                      yLabel="Amplification"
                     />
                   </div>
                 `
@@ -4177,27 +4340,72 @@ function App() {
                             </span>
                           </div>
                           <div className="profile-visual-grid">
-                            <${StratigraphyCard} layers=${runProfileSummary.layers} />
+                            <${StratigraphyCard} layers=${profileDerivedLayers} />
                             <${DepthProfileChartCard}
                               title="Vs by Depth"
                               subtitle="Shear-wave velocity profile"
-                              layers=${runProfileSummary.layers}
+                              layers=${profileDerivedLayers}
                               valueAccessor=${(layer) => layer?.vs_m_s}
                               color="var(--teal)"
+                              xLabel="Vs (m/s)"
                             />
                             <${DepthProfileChartCard}
                               title="gamma_max by Depth"
                               subtitle="Peak strain per layer"
-                              layers=${runProfileSummary.layers}
+                              layers=${profileDerivedLayers}
                               valueAccessor=${(layer) => layer?.gamma_max}
                               color="var(--copper)"
+                              xLabel="gamma_max"
                             />
                             <${DepthProfileChartCard}
                               title="Mesh Density by Depth"
                               subtitle="Sub-layer count per main layer"
-                              layers=${runProfileSummary.layers}
+                              layers=${profileDerivedLayers}
                               valueAccessor=${(layer) => layer?.n_sub}
                               color="var(--indigo)"
+                              xLabel="n_sub"
+                            />
+                          </div>
+                        </div>
+                        <div className="profile-atlas">
+                          <div className="profile-atlas-head">
+                            <strong>Layer Response Atlas</strong>
+                            <span className="muted">
+                              Stress-strain derived layer diagnostics and static stress proxy
+                            </span>
+                          </div>
+                          <div className="profile-visual-grid">
+                            <${DepthProfileChartCard}
+                              title="tau_peak by Depth"
+                              subtitle="Peak shear stress from stored loop/recorder"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.tau_peak}
+                              color="var(--stone)"
+                              xLabel="tau_peak"
+                            />
+                            <${DepthProfileChartCard}
+                              title="Mobilized Strength by Depth"
+                              subtitle="Mobilized ratio per layer"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.mobilized_strength_ratio}
+                              color="var(--copper)"
+                              xLabel="ratio"
+                            />
+                            <${DepthProfileChartCard}
+                              title="Damping Proxy by Depth"
+                              subtitle="Equivalent damping proxy from loop reduction"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.damping_proxy}
+                              color="var(--teal)"
+                              xLabel="damping"
+                            />
+                            <${DepthProfileChartCard}
+                              title="sigma_v0 Mid-Depth Proxy"
+                              subtitle="Static overburden estimate from unit weight profile"
+                              layers=${profileDerivedLayers}
+                              valueAccessor=${(layer) => layer?.sigma_v0_mid_kpa}
+                              color="var(--indigo)"
+                              xLabel="kPa"
                             />
                           </div>
                         </div>
@@ -4215,10 +4423,15 @@ function App() {
                                 <th>Unit W. (kN/m^3)</th>
                                 <th>n_sub</th>
                                 <th>gamma_max</th>
+                                <th>tau_peak</th>
+                                <th>mob_ratio</th>
+                                <th>damping_proxy</th>
+                                <th>loop_energy</th>
+                                <th>sigma_v0_mid</th>
                               </tr>
                             </thead>
                             <tbody>
-                              ${runProfileSummary.layers.map(
+                              ${profileDerivedLayers.map(
                                 (layer) => html`
                                   <tr key=${`profile-layer-${layer.idx}-${layer.name}`}>
                                     <td>${layer.idx}</td>
@@ -4231,6 +4444,11 @@ function App() {
                                     <td>${fmt(layer.unit_weight_kN_m3 ?? layer.unit_weight_kn_m3, 2)}</td>
                                     <td>${layer.n_sub}</td>
                                     <td>${fmt(layer.gamma_max, 6)}</td>
+                                    <td>${fmt(layer.tau_peak, 4)}</td>
+                                    <td>${fmt(layer.mobilized_strength_ratio, 4)}</td>
+                                    <td>${fmt(layer.damping_proxy, 4)}</td>
+                                    <td>${fmt(layer.loop_energy, 4)}</td>
+                                    <td>${fmt(layer.sigma_v0_mid_kpa, 3)}</td>
                                   </tr>
                                 `
                               )}
@@ -4339,6 +4557,8 @@ ${JSON.stringify(convergenceView.raw || { available: false }, null, 2)}
                             x=${hysteresisView.selected?.strain || []}
                             y=${hysteresisView.selected?.stress || []}
                             color="var(--stone)"
+                            xLabel="Strain"
+                            yLabel="Stress"
                           />
                         </div>
                         ${runHysteresis?.note
@@ -4385,12 +4605,16 @@ ${JSON.stringify(convergenceView.raw || { available: false }, null, 2)}
                             x=${hysteresisView.ratioX}
                             y=${hysteresisView.ratioY}
                             color="var(--copper)"
+                            xLabel="Layer Index"
+                            yLabel="Mobilized Ratio"
                           />
                           <${ChartCard}
                             title="Loop Energy by Layer"
                             x=${hysteresisView.energyX}
                             y=${hysteresisView.energyY}
                             color="var(--teal)"
+                            xLabel="Layer Index"
+                            yLabel="Loop Energy"
                           />
                         </div>
                         ${runHysteresis?.note

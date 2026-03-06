@@ -158,6 +158,7 @@ Included API endpoints:
 - `GET /api/runs/{run_id}/signals?output_root=<path>`
   - returns `409` with clear message when run exists but required artifacts are incomplete
 - `GET /api/runs/{run_id}/results/summary?output_root=<path>`
+- `GET /api/runs/{run_id}/profile-summary.csv?output_root=<path>`
 - `GET /api/runs/{run_id}/surface-acc.csv?output_root=<path>`
 - `GET /api/runs/{run_id}/pwp-effective.csv?output_root=<path>`
 - `GET /api/wizard/schema`

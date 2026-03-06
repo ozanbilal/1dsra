@@ -1110,6 +1110,36 @@ def test_web_results_profile_summary_endpoint(tmp_path) -> None:
     assert first["ru_max"] is not None
 
 
+def test_web_download_profile_summary_csv_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    result = _make_mock_run(tmp_path)
+    run_dir = Path(result.output_dir)
+    np.savetxt(
+        run_dir / "layer_1_pwp_raw.out",
+        np.column_stack(
+            [
+                np.array([0.0, 1.0], dtype=np.float64),
+                np.array([0.0, -12.5], dtype=np.float64),
+            ]
+        ),
+    )
+
+    root = tmp_path / "web-runs"
+    client = TestClient(create_app())
+    resp = client.get(
+        f"/api/runs/{result.run_id}/profile-summary.csv",
+        params={"output_root": str(root)},
+    )
+    assert resp.status_code == 200
+    text = resp.text
+    assert "idx,name,material,z_top_m,z_bottom_m" in text
+    assert "sigma_v0_mid_kpa" in text
+    assert "ru_max" in text
+    assert len(text.splitlines()) >= 2
+
+
 def test_web_parity_latest_endpoint_reads_latest_report(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient

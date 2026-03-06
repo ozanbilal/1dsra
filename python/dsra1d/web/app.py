@@ -368,6 +368,38 @@ class ResultProfileSummaryResponse(BaseModel):
     layers: list[ResultProfileLayerRow] = Field(default_factory=list)
 
 
+def _profile_summary_csv_text(summary: ResultProfileSummaryResponse) -> str:
+    lines = [
+        (
+            "idx,name,material,z_top_m,z_bottom_m,thickness_m,vs_m_s,"
+            "unit_weight_kN_m3,n_sub,gamma_max,sigma_v0_mid_kpa,ru_max,delta_u_max,sigma_v_eff_min"
+        )
+    ]
+    for layer in summary.layers:
+        values = [
+            layer.idx,
+            layer.name,
+            layer.material,
+            f"{layer.z_top_m:.8f}",
+            f"{layer.z_bottom_m:.8f}",
+            f"{layer.thickness_m:.8f}",
+            f"{layer.vs_m_s:.8f}",
+            f"{layer.unit_weight_kn_m3:.8f}",
+            layer.n_sub,
+            "" if layer.gamma_max is None else f"{layer.gamma_max:.10e}",
+            "" if layer.sigma_v0_mid_kpa is None else f"{layer.sigma_v0_mid_kpa:.10e}",
+            "" if layer.ru_max is None else f"{layer.ru_max:.10e}",
+            "" if layer.delta_u_max is None else f"{layer.delta_u_max:.10e}",
+            "" if layer.sigma_v_eff_min is None else f"{layer.sigma_v_eff_min:.10e}",
+        ]
+        row = ",".join(
+            f"\"{str(value).replace('\"', '\"\"')}\"" if isinstance(value, str) else str(value)
+            for value in values
+        )
+        lines.append(row)
+    return "\n".join(lines)
+
+
 class BackendProbeResponse(BaseModel):
     requested: str
     requested_input: str = ""
@@ -3009,6 +3041,29 @@ def create_app() -> FastAPI:
             sigma_v_eff_min=metrics.get("sigma_v_eff_min"),
             layers=layer_rows,
         )
+
+    @app.get("/api/runs/{run_id}/profile-summary.csv")
+    def download_profile_summary_csv(
+        run_id: str,
+        output_root: str = Query(default=""),
+    ) -> PlainTextResponse:
+        run_dir = _resolve_run_dir(run_id, output_root)
+        sqlite_path = run_dir / "results.sqlite"
+        layer_rows = _read_profile_layer_summary(sqlite_path, run_dir=run_dir)
+        metrics = _read_metrics(sqlite_path)
+        total_thickness_m = float(sum(max(0.0, layer.thickness_m) for layer in layer_rows))
+        summary = ResultProfileSummaryResponse(
+            run_id=run_id,
+            layer_count=len(layer_rows),
+            total_thickness_m=total_thickness_m,
+            ru_max=metrics.get("ru_max"),
+            delta_u_max=metrics.get("delta_u_max"),
+            sigma_v_eff_min=metrics.get("sigma_v_eff_min"),
+            layers=layer_rows,
+        )
+        payload = _profile_summary_csv_text(summary)
+        headers = {"Content-Disposition": f'attachment; filename="{run_id}_profile_summary.csv"'}
+        return PlainTextResponse(payload, media_type="text/csv", headers=headers)
 
     @app.get("/api/runs/{run_id}/surface-acc.csv")
     def download_surface_csv(

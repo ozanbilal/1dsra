@@ -2508,11 +2508,37 @@ function App() {
     });
   }, [runProfileSummary, hysteresisView]);
 
+  const profileAtlasMetrics = useMemo(() => {
+    const values = profileDerivedLayers;
+    const maxOf = (key) => {
+      const nums = values
+        .map((layer) => Number(layer?.[key]))
+        .filter((value) => Number.isFinite(value));
+      if (!nums.length) return null;
+      return Math.max(...nums);
+    };
+    const minOf = (key) => {
+      const nums = values
+        .map((layer) => Number(layer?.[key]))
+        .filter((value) => Number.isFinite(value));
+      if (!nums.length) return null;
+      return Math.min(...nums);
+    };
+    return {
+      gammaMax: maxOf("gamma_metric"),
+      tauPeakMax: maxOf("tau_peak"),
+      ruLayerMax: maxOf("ru_max"),
+      deltaUMax: maxOf("delta_u_max"),
+      sigmaVEffMin: minOf("sigma_v_eff_min"),
+    };
+  }, [profileDerivedLayers]);
+
   const artifactLinks = useMemo(() => {
     if (!selectedRunId) {
       return {
         surface: "",
         pwp: "",
+        profile: "",
         h5: "",
         sqlite: "",
         meta: "",
@@ -2524,6 +2550,7 @@ function App() {
     return {
       surface: withQuery(`/api/runs/${id}/surface-acc.csv`),
       pwp: withQuery(`/api/runs/${id}/pwp-effective.csv`),
+      profile: withQuery(`/api/runs/${id}/profile-summary.csv`),
       h5: withQuery(`/api/runs/${id}/download/results.h5`),
       sqlite: withQuery(`/api/runs/${id}/download/results.sqlite`),
       meta: withQuery(`/api/runs/${id}/download/run_meta.json`),
@@ -3836,6 +3863,7 @@ function App() {
                       <div className="download-row">
                         <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
                         <a className="btn-min" href=${artifactLinks.pwp}>pwp_effective.csv</a>
+                        <a className="btn-min" href=${artifactLinks.profile}>profile_summary.csv</a>
                         <a className="btn-min" href=${artifactLinks.h5}>results.h5</a>
                         <a className="btn-min" href=${artifactLinks.sqlite}>results.sqlite</a>
                         <a className="btn-min" href=${artifactLinks.meta}>run_meta.json</a>
@@ -3921,6 +3949,7 @@ function App() {
                         <div className="download-row">
                           <a className="btn-min" href=${artifactLinks.surface}>surface_acc.csv</a>
                           <a className="btn-min" href=${artifactLinks.pwp}>pwp_effective.csv</a>
+                          <a className="btn-min" href=${artifactLinks.profile}>profile_summary.csv</a>
                           <a className="btn-min" href=${artifactLinks.h5}>results.h5</a>
                           <a className="btn-min" href=${artifactLinks.sqlite}>results.sqlite</a>
                           <a className="btn-min" href=${artifactLinks.meta}>run_meta.json</a>
@@ -4461,6 +4490,28 @@ function App() {
                           <div className="metric-card">
                             <span>sigma_v_eff_min</span>
                             <b>${fmt(runProfileSummary.sigma_v_eff_min, 4)}</b>
+                          </div>
+                        </div>
+                        <div className="metric-grid profile-kpi-grid">
+                          <div className="metric-card">
+                            <span>gamma_metric max</span>
+                            <b>${fmt(profileAtlasMetrics.gammaMax, 6)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>tau_peak max</span>
+                            <b>${fmt(profileAtlasMetrics.tauPeakMax, 4)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>layer ru_max</span>
+                            <b>${fmt(profileAtlasMetrics.ruLayerMax, 4)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>layer delta_u max</span>
+                            <b>${fmt(profileAtlasMetrics.deltaUMax, 4)}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>layer sigma'_v,min</span>
+                            <b>${fmt(profileAtlasMetrics.sigmaVEffMin, 4)}</b>
                           </div>
                         </div>
                         <div className="profile-atlas">

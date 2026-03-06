@@ -57,6 +57,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - OpenSees Tcl now emits representative layer pore-pressure recorders (`layer_<tag>_pwp_raw.out`)
   - `GET /api/runs/{run_id}/results/profile-summary` now returns layer-wise `sigma_v0_mid_kpa`, `ru_max`, `delta_u_max`, and `sigma_v_eff_min`
   - React `Profile` tab now includes an `Effective Stress Atlas` and extended layer table columns for recorder-based effective-stress review
+  - `GET /api/runs/{run_id}/profile-summary.csv` added for direct export of the layer summary table
+  - React results artifact panel now exposes `profile_summary.csv`
 - Wizard Soil Profile UX upgrades:
   - per-layer `material_params` and `material_optional_args` editors
   - layer utility controls: duplicate, reorder (up/down), CSV import/export

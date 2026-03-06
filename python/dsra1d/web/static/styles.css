@@ -1092,6 +1092,108 @@ pre {
   margin-bottom: 10px;
 }
 
+.layer-ribbon-atlas {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.72)),
+    radial-gradient(circle at top right, rgba(161, 83, 35, 0.08), transparent 38%);
+}
+
+.layer-ribbon-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.layer-ribbon-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.layer-ribbon-depth {
+  border: 1px solid rgba(45, 57, 68, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 244, 235, 0.82);
+  padding: 0.5rem 0.6rem;
+  display: grid;
+  gap: 4px;
+}
+
+.layer-ribbon-depth span {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(45, 57, 68, 0.6);
+}
+
+.layer-ribbon-depth strong {
+  font-size: 0.94rem;
+}
+
+.layer-ribbon-body {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(45, 57, 68, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+}
+
+.layer-ribbon-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--layer-tone) 22%, transparent), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 55%);
+  pointer-events: none;
+}
+
+.layer-ribbon-band,
+.layer-ribbon-metrics {
+  position: relative;
+  z-index: 1;
+}
+
+.layer-ribbon-band {
+  display: grid;
+  place-items: center;
+  padding: 0.7rem 0.8rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--layer-tone) 80%, #fff), color-mix(in srgb, var(--layer-tone) 46%, #fff));
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.layer-ribbon-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  padding: 0.55rem 0.7rem;
+}
+
+.layer-ribbon-metrics span {
+  display: grid;
+  gap: 3px;
+  padding: 0.35rem 0.45rem;
+  border-radius: 10px;
+  border: 1px solid rgba(45, 57, 68, 0.1);
+  background: rgba(248, 244, 235, 0.72);
+  font-size: 0.72rem;
+  color: rgba(45, 57, 68, 0.72);
+}
+
+.layer-ribbon-metrics b {
+  font-size: 0.84rem;
+  color: rgba(45, 57, 68, 0.96);
+}
+
 .profile-atlas-head {
   display: flex;
   justify-content: space-between;
@@ -1217,6 +1319,11 @@ pre {
   }
 
   .profile-visual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .layer-ribbon-row,
+  .layer-ribbon-body {
     grid-template-columns: 1fr;
   }
 }

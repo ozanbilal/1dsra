@@ -59,6 +59,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - React `Profile` tab now includes an `Effective Stress Atlas` and extended layer table columns for recorder-based effective-stress review
   - `GET /api/runs/{run_id}/profile-summary.csv` added for direct export of the layer summary table
   - React results artifact panel now exposes `profile_summary.csv`
+  - React `Profile` tab now includes a `Layer Ledger` strip for one-glance review of depth, material, stiffness, and pore-pressure response
 - Wizard Soil Profile UX upgrades:
   - per-layer `material_params` and `material_optional_args` editors
   - layer utility controls: duplicate, reorder (up/down), CSV import/export

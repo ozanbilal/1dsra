@@ -1381,6 +1381,55 @@ function StratigraphyCard({ layers }) {
   `;
 }
 
+function LayerRibbonAtlas({ layers }) {
+  const ordered = (Array.isArray(layers) ? layers : [])
+    .filter((layer) => Number.isFinite(Number(layer?.thickness_m)) && Number(layer.thickness_m) > 0)
+    .sort((a, b) => Number(a?.z_top_m || 0) - Number(b?.z_top_m || 0));
+
+  return html`
+    <section className="chart-card layer-ribbon-atlas">
+      <div className="chart-head">
+        <h4>Layer Ledger</h4>
+        <span className="muted">Depth, material, stiffness and pore-pressure response in one strip</span>
+      </div>
+      ${ordered.length === 0
+        ? html`<div className="muted">No layer summary available.</div>`
+        : html`
+            <div className="layer-ribbon-stack">
+              ${ordered.map((layer) => {
+                const material = String(layer?.material || "elastic");
+                const tone = materialColor(material);
+                return html`
+                  <article
+                    key=${`ledger-${layer.idx}-${layer.name}`}
+                    className="layer-ribbon-row"
+                    style=${{ "--layer-tone": tone }}
+                  >
+                    <div className="layer-ribbon-depth">
+                      <span>${fmt(layer.z_top_m, 2)} - ${fmt(layer.z_bottom_m, 2)} m</span>
+                      <strong>${layer.name}</strong>
+                    </div>
+                    <div className="layer-ribbon-body">
+                      <div className="layer-ribbon-band">
+                        <span>${material}</span>
+                      </div>
+                      <div className="layer-ribbon-metrics">
+                        <span>Vs <b>${fmt(layer.vs_m_s, 1)}</b></span>
+                        <span>gamma <b>${fmt(layer.gamma_metric, 5)}</b></span>
+                        <span>tau <b>${fmt(layer.tau_peak, 3)}</b></span>
+                        <span>ru <b>${fmt(layer.ru_max, 3)}</b></span>
+                        <span>sigma'_v,min <b>${fmt(layer.sigma_v_eff_min, 2)}</b></span>
+                      </div>
+                    </div>
+                  </article>
+                `;
+              })}
+            </div>
+          `}
+    </section>
+  `;
+}
+
 function metricFromSignal(signal, key, reducer = "max_abs") {
   if (!signal || !Array.isArray(signal[key]) || signal[key].length === 0) return null;
   const arr = signal[key];
@@ -4514,6 +4563,7 @@ function App() {
                             <b>${fmt(profileAtlasMetrics.sigmaVEffMin, 4)}</b>
                           </div>
                         </div>
+                        <${LayerRibbonAtlas} layers=${profileDerivedLayers} />
                         <div className="profile-atlas">
                           <div className="profile-atlas-head">
                             <strong>Profile Atlas</strong>

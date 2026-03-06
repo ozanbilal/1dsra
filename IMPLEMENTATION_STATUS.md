@@ -20,6 +20,7 @@ Recent updates (2026-03-05):
 - Web `profile-summary` now reads representative layer `pwp_raw` artifacts and returns per-layer `sigma_v0_mid_kpa`, `ru_max`, `delta_u_max`, and `sigma_v_eff_min`.
 - React `Profile` tab now includes an `Effective Stress Atlas` and corresponding table columns for layer-wise effective-stress review.
 - Results artifact/download panel now exposes `profile_summary.csv` for direct export of the layer response table.
+- React `Profile` tab now includes a `Layer Ledger` strip for dense, one-glance layer review before dropping into atlases and tables.
 - Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
 - Profile gamma-depth rendering now falls back to layer hysteresis strain amplitude when backend-native `gamma_max` channels are unavailable.
 - `Results Frame` mode is now a true two-panel studio: left rail for run/artifact/quality navigation and right canvas for the active result tab.

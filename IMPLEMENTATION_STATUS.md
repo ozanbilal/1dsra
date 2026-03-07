@@ -8,6 +8,8 @@ This file tracks implementation progress against the original v1.0 plan.
 Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
 
 Recent updates (2026-03-05):
+- Release quality card is now context-aware in React Web Studio: ordinary run workspaces without parity/signoff artifacts render as `not-evaluated` instead of false `no-go`, while real runtime failures still surface as blockers.
+- OpenSees backend readiness presentation now filters the prompt-only `OpenSees >` line and shows the actual executable banner/version text.
 - Web convergence/profile health surfaces timeout recovery diagnostics (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage).
 - OpenSees backend probe hardened against double-timeout false negatives (`-version` + Tcl fallback timeout now defers final decision to runtime execution).
 - Run resolution hardened for partial runs: directories with `run_meta.json` are discoverable even when artifacts are incomplete; data endpoints now report explicit `409 artifacts incomplete` instead of `404 run not found`.

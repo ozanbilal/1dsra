@@ -464,8 +464,22 @@ function buildReleaseHealth({
   const blockers = [];
   const warnings = [];
   const checks = [];
+  const releaseEvidencePresent = Boolean(
+    (parityLatest && parityLatest.found) || (releaseSignoff && releaseSignoff.found)
+  );
 
-  if (!parityLatest || !parityLatest.found || !parityPrimary) {
+  if (!releaseEvidencePresent) {
+    warnings.push(
+      "No parity or release-signoff artifacts under current output root. Release gate is not evaluated for ordinary run workspaces."
+    );
+    checks.push({ label: "parity_report", ok: true, state: "info", value: "not evaluated" });
+    checks.push({
+      label: "release_signoff_summary",
+      ok: true,
+      state: "info",
+      value: "not evaluated",
+    });
+  } else if (!parityLatest || !parityLatest.found || !parityPrimary) {
     blockers.push("Parity report is missing.");
     checks.push({ label: "parity_report", ok: false, value: "missing" });
   } else {
@@ -490,10 +504,10 @@ function buildReleaseHealth({
     }
   }
 
-  if (!releaseSignoff || !releaseSignoff.found) {
+  if (releaseEvidencePresent && (!releaseSignoff || !releaseSignoff.found)) {
     warnings.push("Release signoff summary not found under current output root.");
     checks.push({ label: "release_signoff_summary", ok: false, value: "missing" });
-  } else {
+  } else if (releaseEvidencePresent && releaseSignoff && releaseSignoff.found) {
     checks.push({
       label: "release_signoff_summary",
       ok: true,
@@ -558,7 +572,19 @@ function buildReleaseHealth({
   const parityRow =
     confidenceRows.find((r) => String(r?.suite || "").toLowerCase().includes("opensees-parity")) ||
     null;
-  if (!parityRow) {
+  if (!releaseEvidencePresent) {
+    if (parityRow) {
+      checks.push({
+        label: "science_row",
+        ok: true,
+        state: "info",
+        value: `${parityRow.confidence_tier || "n/a"} | ${parityRow.last_verified_utc || "n/a"}`,
+      });
+    } else {
+      warnings.push("Scientific confidence row for opensees-parity is missing.");
+      checks.push({ label: "science_row", ok: true, state: "info", value: "not evaluated" });
+    }
+  } else if (!parityRow) {
     blockers.push("Scientific confidence row for opensees-parity is missing.");
     checks.push({ label: "science_row", ok: false, value: "missing" });
   } else {
@@ -624,12 +650,66 @@ function buildReleaseHealth({
     }
   }
 
+  const state =
+    blockers.length > 0 ? "blocked" : releaseEvidencePresent ? "go" : "not_evaluated";
   return {
-    ready: blockers.length === 0,
+    ready: state === "go",
+    state,
     blockers,
     warnings,
     checks,
   };
+}
+
+function qualityCheckState(row) {
+  const state = String(row?.state || "").trim().toLowerCase();
+  if (state) return state;
+  return row?.ok ? "ok" : "fail";
+}
+
+function qualityCheckChipClass(row) {
+  const state = qualityCheckState(row);
+  if (state === "ok") return "chip-ok";
+  if (state === "info" || state === "warn" || state === "not_evaluated") return "chip-warn";
+  return "chip-bad";
+}
+
+function qualityCheckChipLabel(row) {
+  const state = qualityCheckState(row);
+  if (state === "info") return "info";
+  if (state === "warn") return "warn";
+  if (state === "not_evaluated") return "n/a";
+  return state === "ok" ? "ok" : "fail";
+}
+
+function releaseHealthChipClass(releaseHealth) {
+  const state = String(releaseHealth?.state || "").trim().toLowerCase();
+  if (state === "go") return "chip-ok";
+  if (state === "not_evaluated") return "chip-warn";
+  return "chip-bad";
+}
+
+function releaseHealthChipLabel(releaseHealth) {
+  const state = String(releaseHealth?.state || "").trim().toLowerCase();
+  if (state === "go") return "go";
+  if (state === "not_evaluated") return "not-evaluated";
+  return "no-go";
+}
+
+function releaseHealthStatusClass(releaseHealth) {
+  const state = String(releaseHealth?.state || "").trim().toLowerCase();
+  if (state === "go") return "status-ok";
+  if (state === "not_evaluated") return "status-warn";
+  return "status-err";
+}
+
+function releaseHealthHeadline(releaseHealth) {
+  const state = String(releaseHealth?.state || "").trim().toLowerCase();
+  if (state === "go") return "Release signoff conditions look healthy.";
+  if (state === "not_evaluated") {
+    return "Release gate is not evaluated for this run workspace.";
+  }
+  return "Release is blocked by one or more critical checks.";
 }
 
 function mini(text) {
@@ -4159,8 +4239,8 @@ function App() {
                     >
                       Refresh
                     </button>
-                    <span className=${`chip ${releaseHealth.ready ? "chip-ok" : "chip-bad"}`}>
-                      ${releaseHealth.ready ? "go" : "no-go"}
+                    <span className=${`chip ${releaseHealthChipClass(releaseHealth)}`}>
+                      ${releaseHealthChipLabel(releaseHealth)}
                     </span>
                   </div>
                 </div>
@@ -4179,12 +4259,10 @@ function App() {
                     `
                   : null}
                 <div
-                  className=${`status ${releaseHealth.ready ? "status-ok" : "status-err"}`}
+                  className=${`status ${releaseHealthStatusClass(releaseHealth)}`}
                 >
                   <strong>
-                    ${releaseHealth.ready
-                      ? "Release signoff conditions look healthy."
-                      : "Release is blocked by one or more critical checks."}
+                    ${releaseHealthHeadline(releaseHealth)}
                   </strong>
                 </div>
                 <div className="quality-list">
@@ -4192,8 +4270,8 @@ function App() {
                     (row) => html`
                       <div className="quality-list-row">
                         <span><strong>${row.label}</strong></span>
-                        <span className=${`chip ${row.ok ? "chip-ok" : "chip-bad"}`}
-                          >${row.ok ? "ok" : "fail"}</span
+                        <span className=${`chip ${qualityCheckChipClass(row)}`}
+                          >${qualityCheckChipLabel(row)}</span
                         >
                         <span className="muted">${row.value || "n/a"}</span>
                       </div>

@@ -78,6 +78,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - React Wizard flow hardening:
   - step-level readiness badges and inline issue reporting
   - `Generate Config` and `Run Now` buttons now enforce required step validity before execution
+
+### Changed
+- React release-quality panel now distinguishes ordinary run workspaces from actual release-signoff contexts:
+  - missing parity/signoff artifacts under a normal run root now render as `not-evaluated` instead of false `no-go`
+  - global scientific-confidence rows remain visible as informational context until a real parity/signoff bundle is loaded
+- OpenSees backend-readiness display now suppresses prompt-only `OpenSees >` probe lines and shows the actual executable banner/version text.
   - template selector now shows short preset descriptions in Analysis step
 - Web motion upload flow:
   - new API endpoints: `POST /api/motion/upload/csv`, `POST /api/motion/upload/peer-at2`

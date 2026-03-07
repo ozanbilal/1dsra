@@ -442,6 +442,85 @@ function buildProfileHealthCards(view) {
   return [];
 }
 
+function buildRuntimeDiagnostics(summary, view) {
+  if (!summary) {
+    return {
+      state: "neutral",
+      title: "No run selected",
+      subtitle: "Select a run to inspect runtime diagnostics.",
+      stats: [],
+      blockers: [],
+      warnings: [],
+    };
+  }
+
+  const blockers = [];
+  const warnings = [];
+  const conv = summary.convergence || {};
+  const status = String(summary.status || "unknown").toLowerCase();
+  const backend = String(summary.solver_backend || "n/a");
+  const warningCount = Number(conv.warning_count || 0);
+  const failedConverge = Number(conv.failed_converge_count || 0);
+  const analyzeFailed = Number(conv.analyze_failed_count || 0);
+  const divideByZero = Number(conv.divide_by_zero_count || 0);
+  const fallbackFailed = Number(conv.dynamic_fallback_failed || 0);
+  const timeoutRecovered = Boolean(conv.timeout_recovered);
+  const timeoutRecoveredCoverage = toFiniteNumber(conv.timeout_recovered_coverage);
+
+  if (status !== "ok") blockers.push(`Run status is ${summary.status || "unknown"}.`);
+  if (Number.isFinite(divideByZero) && divideByZero > 0) {
+    blockers.push(`divide_by_zero_count=${Math.round(divideByZero)}`);
+  }
+  if (Number.isFinite(fallbackFailed) && fallbackFailed > 0) {
+    blockers.push(`dynamic_fallback_failed=${Math.round(fallbackFailed)}`);
+  }
+  if (Number.isFinite(analyzeFailed) && analyzeFailed > 0) {
+    blockers.push(`analyze_failed_count=${Math.round(analyzeFailed)}`);
+  }
+  if (Number.isFinite(failedConverge) && failedConverge > 0) {
+    blockers.push(`failed_converge_count=${Math.round(failedConverge)}`);
+  }
+  if (Number.isFinite(warningCount) && warningCount > 0) {
+    warnings.push(`warning_count=${Math.round(warningCount)}`);
+  }
+  if (timeoutRecovered) {
+    warnings.push(
+      `timeout recovered${Number.isFinite(timeoutRecoveredCoverage) ? ` (coverage=${fmt(timeoutRecoveredCoverage, 3)})` : ""}`
+    );
+  }
+  if (view?.mode === "eql" && view?.available && view?.severity === "warning") {
+    warnings.push("EQL iteration did not fully converge.");
+  }
+
+  const state = blockers.length ? "critical" : warnings.length ? "warning" : "ok";
+  const stats = [
+    { label: "Backend", value: backend },
+    { label: "Run Status", value: summary.status || "n/a" },
+    { label: "Warnings", value: fmt(warningCount, 0) },
+    { label: "Failed Converge", value: fmt(failedConverge, 0) },
+    { label: "Analyze Failed", value: fmt(analyzeFailed, 0) },
+    { label: "Divide by Zero", value: fmt(divideByZero, 0) },
+    { label: "Fallback Failed", value: fmt(fallbackFailed, 0) },
+    { label: "Timeout Recovered", value: timeoutRecovered ? "yes" : "no" },
+  ];
+
+  return {
+    state,
+    title:
+      state === "ok"
+        ? "Run diagnostics look stable"
+        : state === "warning"
+          ? "Run diagnostics need review"
+          : "Run diagnostics indicate hard issues",
+    subtitle:
+      view?.subtitle ||
+      "Runtime diagnostics derived from run status, convergence metadata, and OpenSees/EQL summaries.",
+    stats,
+    blockers,
+    warnings,
+  };
+}
+
 function normalizeFingerprint(value) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return "";
@@ -2562,6 +2641,10 @@ function App() {
     () => buildProfileHealthCards(convergenceView),
     [convergenceView]
   );
+  const runtimeDiagnostics = useMemo(
+    () => buildRuntimeDiagnostics(runSummary, convergenceView),
+    [runSummary, convergenceView]
+  );
 
   const hysteresisView = useMemo(() => {
     const layers = Array.isArray(runHysteresis?.layers) ? runHysteresis.layers : [];
@@ -4489,6 +4572,64 @@ function App() {
                             `
                           : null}
                       </div>
+                      ${selectedRunId && runSummary
+                        ? html`
+                            <section className="runtime-diagnostics-card">
+                              <div className="row between">
+                                <div>
+                                  <div className="results-kicker">Runtime Diagnostics</div>
+                                  <strong>${runtimeDiagnostics.title}</strong>
+                                  <div className="muted">${runtimeDiagnostics.subtitle}</div>
+                                </div>
+                                <span
+                                  className=${`diag-chip ${
+                                    runtimeDiagnostics.state === "ok"
+                                      ? "diag-ok"
+                                      : runtimeDiagnostics.state === "warning"
+                                        ? "diag-warning"
+                                        : runtimeDiagnostics.state === "critical"
+                                          ? "diag-critical"
+                                          : "diag-neutral"
+                                  }`}
+                                >
+                                  ${String(runtimeDiagnostics.state || "neutral").toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="runtime-diagnostics-grid">
+                                ${runtimeDiagnostics.stats.map(
+                                  (item) => html`
+                                    <div key=${`runtime-stat-${item.label}`} className="metric-card">
+                                      <span>${item.label}</span>
+                                      <b>${item.value}</b>
+                                    </div>
+                                  `
+                                )}
+                              </div>
+                              ${runtimeDiagnostics.blockers.length
+                                ? html`
+                                    <div className="quality-subtitle">Critical issues</div>
+                                    <div className="quality-list quality-list-compact">
+                                      ${runtimeDiagnostics.blockers.map(
+                                        (item) =>
+                                          html`<div className="quality-list-row quality-list-row-err">${item}</div>`
+                                      )}
+                                    </div>
+                                  `
+                                : null}
+                              ${runtimeDiagnostics.warnings.length
+                                ? html`
+                                    <div className="quality-subtitle">Watch items</div>
+                                    <div className="quality-list quality-list-compact">
+                                      ${runtimeDiagnostics.warnings.map(
+                                        (item) =>
+                                          html`<div className="quality-list-row quality-list-row-warn">${item}</div>`
+                                      )}
+                                    </div>
+                                  `
+                                : null}
+                            </section>
+                          `
+                        : null}
                     `
                   : null}
 

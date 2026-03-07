@@ -8,6 +8,7 @@ This file tracks implementation progress against the original v1.0 plan.
 Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
 
 Recent updates (2026-03-05):
+- Results Frame now includes a dedicated `Runtime Diagnostics` panel in the analysis canvas: backend, run status, warning/failure counters, timeout recovery, and issue lists are visible without switching to the raw `Convergence` tab.
 - Release quality card is now context-aware in React Web Studio: ordinary run workspaces without parity/signoff artifacts render as `not-evaluated` instead of false `no-go`, while real runtime failures still surface as blockers.
 - OpenSees backend readiness presentation now filters the prompt-only `OpenSees >` line and shows the actual executable banner/version text.
 - Web convergence/profile health surfaces timeout recovery diagnostics (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage).

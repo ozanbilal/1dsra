@@ -84,6 +84,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - missing parity/signoff artifacts under a normal run root now render as `not-evaluated` instead of false `no-go`
   - global scientific-confidence rows remain visible as informational context until a real parity/signoff bundle is loaded
 - OpenSees backend-readiness display now suppresses prompt-only `OpenSees >` probe lines and shows the actual executable banner/version text.
+- Results Frame analysis canvas now surfaces a dedicated `Runtime Diagnostics` card so solver/runtime health is visible on the main working screen rather than buried only in the `Convergence` tab.
   - template selector now shows short preset descriptions in Analysis step
 - Web motion upload flow:
   - new API endpoints: `POST /api/motion/upload/csv`, `POST /api/motion/upload/peer-at2`

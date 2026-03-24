@@ -7,6 +7,59 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Native nonlinear accuracy control:
+  - new config field `analysis.nonlinear_substeps`
+  - nonlinear pipeline now forwards substep count into the native solver and records it in `run_meta.json`
+- DEEPSOIL Example 5A parity tuning artifacts:
+  - reload-factor sweeps under `output/pdf/validation/deepsoil_examples/reload_sweep*/`
+  - tuned best-case artifact `nonlinear_5a_rigid_dt0025_tuned`
+  - refreshed focused parity PDF/Markdown/JSON with improved best-case `PSA NRMSE`
+- External DEEPSOIL example parity report generator:
+  - `scripts/build_deepsoil_example_parity_report.py`
+  - writes focused `JSON + Markdown + PDF` evidence pack under `output/pdf/validation/deepsoil_examples/report/`
+  - summarizes current native-vs-DEEPSOIL example runs with explicit `good/partial/poor` case verdicts and best-case overlays
+- Native linear/nonlinear elastic-halfspace boundary support:
+  - native solvers now distinguish `rigid` vs `elastic_halfspace`
+  - elastic-halfspace path now uses incident-wave style base forcing plus impedance damping derived from deepest-layer properties
+  - DEEPSOIL example parity sweep now includes elastic-halfspace `dt=0.005` and `dt=0.0025` native cases
+  - `dt=0.02` elastic-halfspace nonlinear case now fails with an explicit non-finite solver error instead of cascading into SQLite write failures
+- Native solver finite-response guardrails:
+  - linear / eql / nonlinear pipeline now raises explicit non-finite surface-response errors before SQLite write
+- DEEPSOIL-equivalent example pack for smoke testing and reference runs:
+  - `examples/deepsoil_equivalent/linear_reference.yml`
+  - `examples/deepsoil_equivalent/eql_reference.yml`
+  - `examples/deepsoil_equivalent/nonlinear_reference.yml`
+  - `examples/deepsoil_equivalent/effective_stress_reference.yml`
+  - smoke-validated on 2026-03-19 with native `linear`, `eql`, `nonlinear`, and OpenSees-backed effective-stress runs
+- Run list cleanup in the web UI:
+  - meaningful runs are grouped above diagnostic/zero-output runs
+  - diagnostic runs are muted by default and can be expanded on demand
+  - default selection now prefers a meaningful run so charts render on load
+- DEEPSOIL comparison tooling:
+  - new CLI command `compare-deepsoil`
+  - new CLI command `compare-deepsoil-batch`
+  - new SDK entry point `compare_deepsoil_run`
+  - new SDK entry point `compare_deepsoil_manifest`
+  - writes `deepsoil_compare.json` and `deepsoil_compare.md` for side-by-side surface-acceleration, PSA, profile, and hysteresis parity checks
+  - writes `deepsoil_compare_batch.json` and `deepsoil_compare_batch.md` for manifest-driven parity campaigns
+  - `summarize` now accepts `--deepsoil-compare-report` and merges parity status into campaign summaries
+  - strict signoff policy can now explicitly require DEEPSOIL compare/profile/hysteresis coverage
+  - added sample manifest `examples/parity/deepsoil_compare_manifest.sample.json`
+  - added release helper `scripts/run_release_deepsoil_compare.py` and release-manifest starter `benchmarks/policies/release_signoff_deepsoil_manifest.sample.json`
+  - release workflow now runs DEEPSOIL batch parity before strict signoff summary
+  - new web API endpoint `GET /api/parity/deepsoil/latest`
+  - new web API endpoint `GET /api/parity/deepsoil/release-manifest`
+  - React results rail now shows latest DEEPSOIL batch parity cases and failing checks
+  - React `Deepsoil Parity` panel now also shows release-manifest presence and policy gate flags
+  - React `Deepsoil Parity` panel now includes an editable release-manifest table with save/reload/add/delete actions
+  - new external helper `scripts/scaffold_deepsoil_compare_manifest.py` seeds batch parity manifests from existing `run-*` folders
+  - new `examples/parity/README.md` documents the parity-manifest scaffolding workflow
+- Darendeli-style calibration support for native MKZ/GQH workflows:
+  - new config-level `layer.calibration` block for MKZ/GQH layers
+  - auto-derived native `material_params` from Darendeli target curves during config validation/load
+  - new template/example: `mkz-gqh-darendeli` / `examples/configs/mkz_gqh_darendeli.yml`
+  - new CLI command `calibrate-darendeli` for curve/parameter export
+  - regression coverage for Darendeli-calibrated native `eql` and `nonlinear` runs
 - Initial StrataWave v1 scaffold with:
   - CLI + Python SDK workflows
   - OpenSees adapter for effective-stress runs
@@ -67,6 +120,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - starter profile builders (`5-Layer Starter`, preset loader)
   - Auto Profile Creator in UI (`f_max`, points-per-wavelength, min slice thickness, max sublayers)
   - Runs panel accordion toggle (right-top triangle collapse/expand) to free workspace while editing layers
+  - focused `Layer Properties` studio for selected layer QA
+  - MKZ/GQH Darendeli calibration controls with live target-vs-fit `G/Gmax`, damping, and single-element loop preview
 - PM4 calibration-ready template set added:
   - `pm4sand-calibration`
   - `pm4silt-calibration`
@@ -196,4 +251,4 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Added
 - First tagged baseline for repository bootstrap.
-
+- Added an external validation pack generator and published the first shareable PDF bundle under `output/pdf/validation/`.

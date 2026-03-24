@@ -33,12 +33,49 @@ def test_load_pm4silt_calibration_config_ok() -> None:
     assert all(layer.material == "pm4silt" for layer in cfg.profile.layers)
 
 
+def test_load_mkz_gqh_darendeli_config_ok() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_darendeli.yml"))
+    assert cfg.project_name == "sample-mkz-gqh-darendeli"
+    assert cfg.profile.layers[0].material.value == "mkz"
+    assert cfg.profile.layers[1].material.value == "gqh"
+    assert cfg.profile.layers[0].material_params["gamma_ref"] > 0.0
+    assert cfg.profile.layers[1].material_params["a1"] > 0.0
+    assert cfg.analysis.nonlinear_substeps >= 1
+
+
+def test_load_deepsoil_equivalent_reference_pack_configs_ok() -> None:
+    linear_cfg = load_project_config(Path("examples/deepsoil_equivalent/linear_reference.yml"))
+    eql_cfg = load_project_config(Path("examples/deepsoil_equivalent/eql_reference.yml"))
+    nonlinear_cfg = load_project_config(
+        Path("examples/deepsoil_equivalent/nonlinear_reference.yml")
+    )
+    effective_cfg = load_project_config(
+        Path("examples/deepsoil_equivalent/effective_stress_reference.yml")
+    )
+
+    assert linear_cfg.analysis.solver_backend == "linear"
+    assert all(layer.material.value == "elastic" for layer in linear_cfg.profile.layers)
+
+    assert eql_cfg.analysis.solver_backend == "eql"
+    assert {layer.material.value for layer in eql_cfg.profile.layers} == {"mkz", "gqh"}
+
+    assert nonlinear_cfg.analysis.solver_backend == "nonlinear"
+    assert {layer.material.value for layer in nonlinear_cfg.profile.layers} == {"mkz", "gqh"}
+
+    assert effective_cfg.analysis.solver_backend == "opensees"
+    assert {layer.material.value for layer in effective_cfg.profile.layers} == {
+        "pm4sand",
+        "pm4silt",
+    }
+
+
 def test_available_config_templates_contains_pm4_calibration() -> None:
     names = available_config_templates()
     assert "effective-stress" in names
     assert "pm4sand-calibration" in names
     assert "pm4silt-calibration" in names
     assert "mkz-gqh-nonlinear" in names
+    assert "mkz-gqh-darendeli" in names
 
 
 def test_get_config_template_payload_returns_profile_layers() -> None:
@@ -535,6 +572,61 @@ analysis:
   solver_backend: opensees
 opensees:
   executable: OpenSees
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        load_project_config(cfg)
+
+
+def test_darendeli_calibration_derives_mkz_parameters(tmp_path: Path) -> None:
+    cfg = tmp_path / "mkz_darendeli.yml"
+    cfg.write_text(
+        """
+project_name: mkz-darendeli
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: mkz
+      calibration:
+        source: darendeli
+        plasticity_index: 18.0
+        ocr: 1.3
+        mean_effective_stress_kpa: 75.0
+analysis:
+  solver_backend: nonlinear
+""".strip(),
+        encoding="utf-8",
+    )
+    loaded = load_project_config(cfg)
+    params = loaded.profile.layers[0].material_params
+    assert params["gmax"] > 0.0
+    assert params["gamma_ref"] > 0.0
+    assert params["damping_max"] >= params["damping_min"]
+
+
+def test_darendeli_calibration_rejected_for_non_hysteretic_material(tmp_path: Path) -> None:
+    cfg = tmp_path / "elastic_darendeli.yml"
+    cfg.write_text(
+        """
+project_name: elastic-darendeli
+profile:
+  layers:
+    - name: L1
+      thickness_m: 5.0
+      unit_weight_kN_m3: 18.0
+      vs_m_s: 180.0
+      material: elastic
+      calibration:
+        source: darendeli
+        plasticity_index: 18.0
+        ocr: 1.3
+        mean_effective_stress_kpa: 75.0
+analysis:
+  solver_backend: linear
 """.strip(),
         encoding="utf-8",
     )

@@ -11,6 +11,13 @@ def _write_release_artifacts(
     observed_sha256: str,
     *,
     probe_assumed_available: bool = False,
+    require_deepsoil_compare: bool = False,
+    require_deepsoil_profile: bool = False,
+    require_deepsoil_hysteresis: bool = False,
+    deepsoil_compare_present: bool = True,
+    deepsoil_compare_passed: bool = True,
+    deepsoil_profile_required_ok: bool = True,
+    deepsoil_hysteresis_required_ok: bool = True,
 ) -> None:
     campaign_dir.mkdir(parents=True, exist_ok=True)
     (campaign_dir / "benchmark_release-signoff.json").write_text(
@@ -47,8 +54,17 @@ def _write_release_artifacts(
                 "signoff": {
                     "strict_signoff": True,
                     "passed": True,
+                    "policy": {
+                        "require_deepsoil_compare": require_deepsoil_compare,
+                        "require_deepsoil_profile": require_deepsoil_profile,
+                        "require_deepsoil_hysteresis": require_deepsoil_hysteresis,
+                    },
                     "conditions": {
                         "backend_probe_not_assumed": not probe_assumed_available,
+                        "deepsoil_compare_present": deepsoil_compare_present,
+                        "deepsoil_compare_passed": deepsoil_compare_passed,
+                        "deepsoil_profile_required_ok": deepsoil_profile_required_ok,
+                        "deepsoil_hysteresis_required_ok": deepsoil_hysteresis_required_ok,
                     },
                     "observed": {
                         "backend_probe_sha256": observed_sha256,
@@ -159,3 +175,22 @@ def test_release_signoff_checker_fails_when_probe_is_assumed(tmp_path: Path) -> 
     result = _run_checker(campaign_dir, matrix_path, require_fingerprint=True)
     assert result.returncode != 0
     assert "backend_probe_not_assumed" in (result.stderr + result.stdout)
+
+
+def test_release_signoff_checker_fails_when_required_deepsoil_compare_missing(
+    tmp_path: Path,
+) -> None:
+    campaign_dir = tmp_path / "campaign"
+    matrix_path = tmp_path / "SCIENTIFIC_CONFIDENCE_MATRIX.md"
+    observed_sha = "f" * 64
+    _write_release_artifacts(
+        campaign_dir,
+        observed_sha,
+        require_deepsoil_compare=True,
+        deepsoil_compare_present=False,
+    )
+    _write_matrix(matrix_path, observed_sha)
+
+    result = _run_checker(campaign_dir, matrix_path, require_fingerprint=True)
+    assert result.returncode != 0
+    assert "deepsoil_compare_present" in (result.stderr + result.stdout)

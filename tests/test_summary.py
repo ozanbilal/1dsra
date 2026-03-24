@@ -132,6 +132,69 @@ def test_summarize_campaign_with_verify_batch() -> None:
     assert policy["campaign"]["passed"] is False
 
 
+def test_summarize_campaign_with_deepsoil_compare() -> None:
+    benchmark_report: dict[str, object] = {
+        "suite": "core-hyst",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 2,
+        "cases": [
+            {"name": "case01", "status": "ok", "passed": True},
+            {"name": "case02", "status": "ok", "passed": True},
+        ],
+    }
+    deepsoil_compare_report: dict[str, object] = {
+        "total_cases": 2,
+        "passed_cases": 1,
+        "failed_cases": 1,
+        "policy": {
+            "surface_corrcoef_min": 0.95,
+            "surface_nrmse_max": 0.2,
+            "psa_nrmse_max": 0.2,
+            "pga_pct_diff_abs_max": 20.0,
+            "profile_nrmse_max": 0.25,
+            "hysteresis_stress_nrmse_max": 0.25,
+            "hysteresis_energy_pct_diff_abs_max": 25.0,
+        },
+        "cases": [
+            {"name": "deepsoil-ok", "passed": True, "checks": {}},
+            {
+                "name": "deepsoil-bad",
+                "passed": False,
+                "checks": {
+                    "surface_corrcoef_min": True,
+                    "surface_nrmse_max": False,
+                    "psa_nrmse_max": True,
+                    "pga_pct_diff_abs_max": True,
+                },
+            },
+        ],
+    }
+
+    summary = summarize_campaign(
+        benchmark_report=benchmark_report,
+        deepsoil_compare_report=deepsoil_compare_report,
+    )
+
+    deepsoil = summary["deepsoil_compare"]
+    assert isinstance(deepsoil, dict)
+    assert deepsoil["failed_cases"] == 1
+    counts = deepsoil["classification_counts"]
+    assert isinstance(counts, dict)
+    assert counts["passed"] == 1
+    assert counts["surface_nrmse_fail"] == 1
+
+    policy = summary["policy"]
+    assert isinstance(policy, dict)
+    deepsoil_policy = policy["deepsoil_compare"]
+    assert isinstance(deepsoil_policy, dict)
+    assert deepsoil_policy["passed"] is False
+    assert deepsoil_policy["profile_nrmse_max"] == 0.25
+    campaign_policy = policy["campaign"]
+    assert isinstance(campaign_policy, dict)
+    assert campaign_policy["passed"] is False
+
+
 def test_render_summary_markdown_contains_key_sections() -> None:
     summary: dict[str, object] = {
         "generated_utc": "2026-03-01T00:00:00+00:00",
@@ -153,6 +216,12 @@ def test_render_summary_markdown_contains_key_sections() -> None:
             "failed_runs": 0,
             "classification_counts": {"passed": 2},
         },
+        "deepsoil_compare": {
+            "total_cases": 2,
+            "passed_cases": 2,
+            "failed_cases": 0,
+            "classification_counts": {"passed": 2},
+        },
         "policy": {
             "benchmark": {
                 "passed": True,
@@ -162,6 +231,13 @@ def test_render_summary_markdown_contains_key_sections() -> None:
                 "min_execution_coverage": 0.0,
             },
             "verify_batch": {"passed": True, "require_runs": 0},
+            "deepsoil_compare": {
+                "passed": True,
+                "surface_corrcoef_min": 0.95,
+                "surface_nrmse_max": 0.2,
+                "psa_nrmse_max": 0.2,
+                "pga_pct_diff_abs_max": 20.0,
+            },
             "campaign": {"passed": True},
         },
     }
@@ -172,6 +248,8 @@ def test_render_summary_markdown_contains_key_sections() -> None:
     assert "execution_coverage=1.0" in md
     assert "Benchmark policy:" in md
     assert "Verify policy:" in md
+    assert "DEEPSOIL compare:" in md
+    assert "DEEPSOIL compare policy:" in md
     assert "Campaign policy:" in md
     assert "Benchmark classifications" in md
     assert "Verify classifications" in md

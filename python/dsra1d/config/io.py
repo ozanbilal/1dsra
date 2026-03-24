@@ -412,6 +412,81 @@ def _mkz_gqh_nonlinear_template() -> dict[str, Any]:
     return template
 
 
+def _mkz_gqh_darendeli_template() -> dict[str, Any]:
+    return {
+        "project_name": "mkz-gqh-darendeli-template",
+        "seed": 42,
+        "profile": {
+            "layers": [
+                {
+                    "name": "Darendeli-MKZ",
+                    "thickness_m": 6.0,
+                    "unit_weight_kN_m3": 18.2,
+                    "vs_m_s": 190.0,
+                    "material": "mkz",
+                    "material_params": {
+                        "tau_max": 80.0,
+                    },
+                    "calibration": {
+                        "source": "darendeli",
+                        "plasticity_index": 20.0,
+                        "ocr": 1.5,
+                        "mean_effective_stress_kpa": 80.0,
+                        "frequency_hz": 1.0,
+                        "num_cycles": 10.0,
+                        "reload_factor": 2.0,
+                    },
+                },
+                {
+                    "name": "Darendeli-GQH",
+                    "thickness_m": 10.0,
+                    "unit_weight_kN_m3": 19.0,
+                    "vs_m_s": 280.0,
+                    "material": "gqh",
+                    "calibration": {
+                        "source": "darendeli",
+                        "plasticity_index": 8.0,
+                        "ocr": 1.0,
+                        "mean_effective_stress_kpa": 150.0,
+                        "frequency_hz": 1.0,
+                        "num_cycles": 10.0,
+                        "reload_factor": 1.6,
+                    },
+                },
+            ]
+        },
+        "boundary_condition": "elastic_halfspace",
+        "analysis": {
+            "dt": 0.0025,
+            "f_max": 25.0,
+            "solver_backend": "nonlinear",
+            "timeout_s": 180,
+            "retries": 1,
+        },
+        "motion": {
+            "units": "m/s2",
+            "baseline": "remove_mean",
+            "scale_mode": "none",
+        },
+        "output": {
+            "write_hdf5": True,
+            "write_sqlite": True,
+            "parquet_export": False,
+        },
+        "opensees": {
+            "executable": "OpenSees",
+            "extra_args": [],
+            "column_width_m": 1.0,
+            "thickness_m": 1.0,
+            "fluid_bulk_modulus": 2.2e6,
+            "fluid_mass_density": 1.0,
+            "h_perm": 1.0e-5,
+            "v_perm": 1.0e-5,
+            "gravity_steps": 20,
+        },
+    }
+
+
 def _template_factories() -> dict[str, Callable[[], dict[str, Any]]]:
     return {
         "effective-stress": _effective_stress_template,
@@ -421,6 +496,7 @@ def _template_factories() -> dict[str, Callable[[], dict[str, Any]]]:
         "mkz-gqh-mock": _mkz_gqh_mock_template,
         "mkz-gqh-eql": _mkz_gqh_eql_template,
         "mkz-gqh-nonlinear": _mkz_gqh_nonlinear_template,
+        "mkz-gqh-darendeli": _mkz_gqh_darendeli_template,
     }
 
 

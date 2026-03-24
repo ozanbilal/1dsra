@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import cast
 
 import yaml
 from dsra1d.benchmark import CORE_RELEASE_SIGNOFF_SUITES
@@ -70,6 +71,7 @@ def main() -> int:
         isinstance(policy_suites_raw, list),
         "policy component_suites must be a list",
     )
+    assert isinstance(policy_suites_raw, list)
     policy_suites = [str(v) for v in policy_suites_raw]
     _require(
         policy_suites == expected_suites,
@@ -81,7 +83,13 @@ def main() -> int:
 
     case_counts = {suite: _load_case_count(repo_root, suite) for suite in expected_suites}
     expected_runs = int(sum(case_counts.values()))
-    policy_require_runs = int(policy.get("require_runs", 0))
+    policy_require_runs_raw = policy.get("require_runs", 0)
+    _require(
+        isinstance(policy_require_runs_raw, (int, float, str))
+        and not isinstance(policy_require_runs_raw, bool),
+        "policy require_runs must be numeric",
+    )
+    policy_require_runs = int(cast(int | float | str, policy_require_runs_raw))
     _require(
         policy_require_runs == expected_runs,
         (
@@ -96,8 +104,24 @@ def main() -> int:
         "policy require_explicit_checks must be true",
     )
     _require(bool(policy.get("require_opensees", False)), "policy require_opensees must be true")
-    min_cov = float(policy.get("min_execution_coverage", 0.0))
+    min_cov_raw = policy.get("min_execution_coverage", 0.0)
+    _require(
+        isinstance(min_cov_raw, (int, float, str)) and not isinstance(min_cov_raw, bool),
+        "policy min_execution_coverage must be numeric",
+    )
+    min_cov = float(cast(int | float | str, min_cov_raw))
     _require(min_cov >= 1.0, "policy min_execution_coverage must be >= 1.0")
+    require_deepsoil_compare = bool(policy.get("require_deepsoil_compare", False))
+    require_deepsoil_profile = bool(policy.get("require_deepsoil_profile", False))
+    require_deepsoil_hysteresis = bool(policy.get("require_deepsoil_hysteresis", False))
+    _require(
+        (not require_deepsoil_profile and not require_deepsoil_hysteresis)
+        or require_deepsoil_compare,
+        (
+            "policy require_deepsoil_compare must be true when "
+            "require_deepsoil_profile or require_deepsoil_hysteresis is enabled"
+        ),
+    )
 
     print("Release policy consistency validated.")
     print(f"- policy: {policy_path}")

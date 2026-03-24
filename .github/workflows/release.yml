@@ -77,6 +77,11 @@ jobs:
             --require-explicit-checks \
             "${args[@]}"
 
+      - name: Release DEEPSOIL Compare Gate
+        run: |
+          python scripts/run_release_deepsoil_compare.py \
+            --campaign-dir out/release-signoff
+
       - name: Strict Signoff Summary
         run: |
           1dsra summarize \

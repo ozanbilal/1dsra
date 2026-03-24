@@ -3,12 +3,27 @@ from pathlib import Path
 
 import dsra1d.benchmark as benchmark_mod
 import dsra1d.cli.main as cli_main
+import h5py
+import numpy as np
 import pytest
 import typer
 from dsra1d.cli.main import app
+from dsra1d.post import compute_spectra
 from typer.testing import CliRunner
 
 runner = CliRunner()
+
+
+def _write_minimal_run(run_dir: Path, time: np.ndarray, acc: np.ndarray) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    dt = float(np.median(np.diff(time)))
+    spectra = compute_spectra(acc, dt)
+    with h5py.File(run_dir / "results.h5", "w") as h5:
+        h5.create_dataset("/meta/delta_t_s", data=np.asarray([dt], dtype=np.float64))
+        h5.create_dataset("/time", data=time)
+        h5.create_dataset("/signals/surface_acc", data=acc)
+        h5.create_dataset("/spectra/periods", data=spectra.periods)
+        h5.create_dataset("/spectra/psa", data=spectra.psa)
 
 
 def test_cli_validate() -> None:
@@ -72,6 +87,19 @@ def test_cli_init_mkz_gqh_nonlinear_template(tmp_path: Path) -> None:
     assert result.exit_code == 0
     content = out.read_text(encoding="utf-8")
     assert "solver_backend: nonlinear" in content
+
+
+def test_cli_init_mkz_gqh_darendeli_template(tmp_path: Path) -> None:
+    out = tmp_path / "mkz_gqh_darendeli.yml"
+    result = runner.invoke(
+        app,
+        ["init", "--template", "mkz-gqh-darendeli", "--out", str(out)],
+    )
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "source: darendeli" in content
+    assert "material: mkz" in content
+    assert "material: gqh" in content
 
 
 def test_cli_init_effective_stress_strict_plus_template(tmp_path: Path) -> None:
@@ -243,6 +271,121 @@ opensees:
     assert result.exit_code == 0
     assert "OpenSees executable" in result.stdout
     assert "OpenSees version probe" in result.stdout
+
+
+def test_cli_calibrate_darendeli_exports_artifacts(tmp_path: Path) -> None:
+    out_dir = tmp_path / "darendeli"
+    result = runner.invoke(
+        app,
+        [
+            "calibrate-darendeli",
+            "--material",
+            "gqh",
+            "--out",
+            str(out_dir),
+            "--plasticity-index",
+            "12",
+            "--ocr",
+            "1.2",
+            "--mean-effective-stress-kpa",
+            "120",
+            "--vs-m-s",
+            "220",
+            "--unit-weight-kN-m3",
+            "18.5",
+        ],
+    )
+    assert result.exit_code == 0
+    params = out_dir / "darendeli_gqh_params.json"
+    curves = out_dir / "darendeli_gqh_curves.csv"
+    assert params.exists()
+    assert curves.exists()
+    payload = json.loads(params.read_text(encoding="utf-8"))
+    assert payload["material"] == "gqh"
+    assert payload["material_params"]["gamma_ref"] > 0.0
+
+
+def test_cli_compare_deepsoil_exports_artifacts(tmp_path: Path) -> None:
+    dt = 0.01
+    time = np.arange(0.0, 5.0 + dt, dt)
+    acc = 0.5 * np.sin(2.0 * np.pi * 2.0 * time)
+    run_dir = tmp_path / "run-cli"
+    _write_minimal_run(run_dir, time, acc)
+
+    surface_csv = tmp_path / "deepsoil_surface.csv"
+    np.savetxt(
+        surface_csv,
+        np.column_stack([time, 0.98 * acc]),
+        delimiter=",",
+        header="time_s,acc_m_s2",
+        comments="",
+    )
+
+    out_dir = tmp_path / "deepsoil_compare"
+    result = runner.invoke(
+        app,
+        [
+            "compare-deepsoil",
+            "--run",
+            str(run_dir),
+            "--surface-csv",
+            str(surface_csv),
+            "--out",
+            str(out_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    assert (out_dir / "deepsoil_compare.json").exists()
+    assert (out_dir / "deepsoil_compare.md").exists()
+    assert "DEEPSOIL comparison ready" in result.stdout
+
+
+def test_cli_compare_deepsoil_batch_returns_nonzero_on_failed_case(tmp_path: Path) -> None:
+    dt = 0.01
+    time = np.arange(0.0, 5.0 + dt, dt)
+    acc = 0.5 * np.sin(2.0 * np.pi * 2.0 * time)
+    run_dir = tmp_path / "run-batch"
+    _write_minimal_run(run_dir, time, acc)
+
+    surface_csv = tmp_path / "deepsoil_surface.csv"
+    np.savetxt(
+        surface_csv,
+        np.column_stack([time, 0.05 * acc]),
+        delimiter=",",
+        header="time_s,acc_m_s2",
+        comments="",
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "failing-case",
+                        "run": "run-batch",
+                        "surface_csv": "deepsoil_surface.csv",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    out_dir = tmp_path / "deepsoil_compare_batch"
+    result = runner.invoke(
+        app,
+        [
+            "compare-deepsoil-batch",
+            "--manifest",
+            str(manifest),
+            "--out",
+            str(out_dir),
+        ],
+    )
+    assert result.exit_code == 8
+    assert (out_dir / "deepsoil_compare_batch.json").exists()
+    assert (out_dir / "deepsoil_compare_batch.md").exists()
+    assert "passed=0/1" in result.stdout
 
 
 def test_cli_render_tcl_writes_artifacts(tmp_path: Path) -> None:
@@ -934,6 +1077,66 @@ def test_cli_summarize_writes_outputs(tmp_path: Path) -> None:
     assert summary_md.exists()
 
 
+def test_cli_summarize_includes_deepsoil_compare_report(tmp_path: Path) -> None:
+    benchmark_report = {
+        "suite": "core-hyst",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 2,
+        "cases": [
+            {"name": "case01", "status": "ok", "passed": True},
+            {"name": "case02", "status": "ok", "passed": True},
+        ],
+    }
+    deepsoil_report = {
+        "total_cases": 1,
+        "passed_cases": 1,
+        "failed_cases": 0,
+        "policy": {
+            "surface_corrcoef_min": 0.95,
+            "surface_nrmse_max": 0.2,
+            "psa_nrmse_max": 0.2,
+            "pga_pct_diff_abs_max": 20.0,
+        },
+        "cases": [
+            {
+                "name": "deepsoil-case",
+                "passed": True,
+                "checks": {
+                    "surface_corrcoef_min": True,
+                    "surface_nrmse_max": True,
+                    "psa_nrmse_max": True,
+                    "pga_pct_diff_abs_max": True,
+                },
+            }
+        ],
+    }
+    bench_path = tmp_path / "benchmark_core-hyst.json"
+    deepsoil_path = tmp_path / "deepsoil_compare_batch.json"
+    out_dir = tmp_path / "summary_deepsoil"
+    bench_path.write_text(json.dumps(benchmark_report), encoding="utf-8")
+    deepsoil_path.write_text(json.dumps(deepsoil_report), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--benchmark-report",
+            str(bench_path),
+            "--deepsoil-compare-report",
+            str(deepsoil_path),
+            "--out",
+            str(out_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    summary = json.loads((out_dir / "campaign_summary.json").read_text(encoding="utf-8"))
+    assert "deepsoil_compare" in summary
+    policy = summary.get("policy", {})
+    assert isinstance(policy, dict)
+    assert "deepsoil_compare" in policy
+
+
 def test_cli_summarize_strict_signoff_passes_with_input_dir(tmp_path: Path) -> None:
     campaign_dir = tmp_path / "campaign_release"
     campaign_dir.mkdir(parents=True, exist_ok=True)
@@ -1116,6 +1319,211 @@ def test_cli_summarize_strict_signoff_fails_when_backend_probe_assumed(
     assert signoff.get("passed") is False
     conditions = signoff.get("conditions", {})
     assert conditions.get("backend_probe_not_assumed") is False
+
+
+def test_cli_summarize_strict_signoff_fails_when_deepsoil_compare_required_but_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_dir = tmp_path / "campaign_missing_deepsoil"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    policy_sha = str(
+        cli_main._load_release_signoff_policy().get("opensees_fingerprint", "")
+    ).strip()
+    benchmark_report = {
+        "suite": "release-signoff",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 18,
+        "total_cases": 18,
+        "skipped_backend": 0,
+        "backend_ready": True,
+        "backend_fingerprint_ok": True,
+        "execution_coverage": 1.0,
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 18,
+            "require_opensees": True,
+            "min_execution_coverage": 1.0,
+            "require_backend_sha256": policy_sha,
+        },
+        "backend_probe": {"binary_sha256": policy_sha},
+        "cases": [],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 18,
+        "passed_runs": 18,
+        "failed_runs": 0,
+        "policy": {
+            "require_runs": 18,
+            "conditions": {"verify_ok": True, "no_failed_runs": True, "require_runs_ok": True},
+            "passed": True,
+        },
+        "reports": {},
+    }
+    (campaign_dir / "benchmark_release-signoff.json").write_text(
+        json.dumps(benchmark_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "verify_batch_report.json").write_text(
+        json.dumps(verify_batch_report, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli_main,
+        "_load_release_signoff_policy",
+        lambda: {
+            "component_suites": list(cli_main.CORE_RELEASE_SIGNOFF_SUITES),
+            "require_runs": 18,
+            "min_execution_coverage": 1.0,
+            "fail_on_skip": True,
+            "require_explicit_checks": True,
+            "require_opensees": True,
+            "opensees_fingerprint": policy_sha,
+            "require_deepsoil_compare": True,
+            "require_deepsoil_profile": False,
+            "require_deepsoil_hysteresis": False,
+            "policy_path": str(campaign_dir / "mock_policy.yml"),
+        },
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--input",
+            str(campaign_dir),
+            "--strict-signoff",
+        ],
+    )
+    assert result.exit_code == 13
+    summary = json.loads((campaign_dir / "campaign_summary.json").read_text(encoding="utf-8"))
+    signoff = summary.get("signoff", {})
+    assert signoff.get("passed") is False
+    conditions = signoff.get("conditions", {})
+    assert conditions.get("deepsoil_compare_present") is False
+
+
+def test_cli_summarize_strict_signoff_passes_with_required_deepsoil_compare_profile_and_hysteresis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_dir = tmp_path / "campaign_full_deepsoil"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    policy_sha = str(
+        cli_main._load_release_signoff_policy().get("opensees_fingerprint", "")
+    ).strip()
+    benchmark_report = {
+        "suite": "release-signoff",
+        "all_passed": True,
+        "skipped": 0,
+        "ran": 18,
+        "total_cases": 18,
+        "skipped_backend": 0,
+        "backend_ready": True,
+        "backend_fingerprint_ok": True,
+        "execution_coverage": 1.0,
+        "policy": {
+            "fail_on_skip": True,
+            "require_runs": 18,
+            "require_opensees": True,
+            "min_execution_coverage": 1.0,
+            "require_backend_sha256": policy_sha,
+        },
+        "backend_probe": {"binary_sha256": policy_sha},
+        "cases": [],
+    }
+    verify_batch_report = {
+        "ok": True,
+        "total_runs": 18,
+        "passed_runs": 18,
+        "failed_runs": 0,
+        "policy": {
+            "require_runs": 18,
+            "conditions": {"verify_ok": True, "no_failed_runs": True, "require_runs_ok": True},
+            "passed": True,
+        },
+        "reports": {},
+    }
+    deepsoil_compare_report = {
+        "total_cases": 1,
+        "passed_cases": 1,
+        "failed_cases": 0,
+        "policy": {
+            "surface_corrcoef_min": 0.95,
+            "surface_nrmse_max": 0.2,
+            "psa_nrmse_max": 0.2,
+            "pga_pct_diff_abs_max": 20.0,
+            "profile_nrmse_max": 0.25,
+            "hysteresis_stress_nrmse_max": 0.25,
+            "hysteresis_energy_pct_diff_abs_max": 25.0,
+        },
+        "cases": [
+            {
+                "name": "deepsoil-case-01",
+                "passed": True,
+                "profile_csv": "ref_profile.csv",
+                "hysteresis_csv": "ref_loop.csv",
+                "checks": {
+                    "surface_corrcoef_min": True,
+                    "surface_nrmse_max": True,
+                    "psa_nrmse_max": True,
+                    "pga_pct_diff_abs_max": True,
+                    "profile_nrmse_max": True,
+                    "hysteresis_stress_nrmse_max": True,
+                    "hysteresis_energy_pct_diff_abs_max": True,
+                },
+            }
+        ],
+    }
+    (campaign_dir / "benchmark_release-signoff.json").write_text(
+        json.dumps(benchmark_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "verify_batch_report.json").write_text(
+        json.dumps(verify_batch_report, indent=2),
+        encoding="utf-8",
+    )
+    (campaign_dir / "deepsoil_compare_batch.json").write_text(
+        json.dumps(deepsoil_compare_report, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli_main,
+        "_load_release_signoff_policy",
+        lambda: {
+            "component_suites": list(cli_main.CORE_RELEASE_SIGNOFF_SUITES),
+            "require_runs": 18,
+            "min_execution_coverage": 1.0,
+            "fail_on_skip": True,
+            "require_explicit_checks": True,
+            "require_opensees": True,
+            "opensees_fingerprint": policy_sha,
+            "require_deepsoil_compare": True,
+            "require_deepsoil_profile": True,
+            "require_deepsoil_hysteresis": True,
+            "policy_path": str(campaign_dir / "mock_policy.yml"),
+        },
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "summarize",
+            "--input",
+            str(campaign_dir),
+            "--strict-signoff",
+        ],
+    )
+    assert result.exit_code == 0
+    summary = json.loads((campaign_dir / "campaign_summary.json").read_text(encoding="utf-8"))
+    signoff = summary.get("signoff", {})
+    assert signoff.get("passed") is True
+    conditions = signoff.get("conditions", {})
+    assert conditions.get("deepsoil_compare_present") is True
+    assert conditions.get("deepsoil_profile_required_ok") is True
+    assert conditions.get("deepsoil_hysteresis_required_ok") is True
 
 
 def test_cli_campaign_core_es_writes_all_reports(tmp_path: Path) -> None:

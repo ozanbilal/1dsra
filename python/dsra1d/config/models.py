@@ -6,6 +6,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, field_validator, model_validator
 
+from dsra1d.calibration import (
+    DEFAULT_ATMOSPHERIC_PRESSURE_KPA,
+    calibrate_gqh_from_darendeli,
+    calibrate_mkz_from_darendeli,
+)
 from dsra1d.units import normalize_accel_unit
 
 
@@ -41,6 +46,28 @@ class OutputConfig(BaseModel):
     parquet_export: bool = False
 
 
+class DarendeliCalibration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["darendeli"] = "darendeli"
+    plasticity_index: float = Field(default=0.0, ge=0.0)
+    ocr: PositiveFloat = 1.0
+    mean_effective_stress_kpa: PositiveFloat
+    frequency_hz: PositiveFloat = 1.0
+    num_cycles: PositiveFloat = 10.0
+    atmospheric_pressure_kpa: PositiveFloat = DEFAULT_ATMOSPHERIC_PRESSURE_KPA
+    strain_min: PositiveFloat = 1.0e-6
+    strain_max: PositiveFloat = 1.0e-1
+    n_points: int = Field(default=60, ge=12, le=400)
+    reload_factor: PositiveFloat | None = None
+
+    @model_validator(mode="after")
+    def validate_strain_range(self) -> DarendeliCalibration:
+        if self.strain_max <= self.strain_min:
+            raise ValueError("Darendeli calibration requires strain_max > strain_min.")
+        return self
+
+
 class MotionConfig(BaseModel):
     units: str = "m/s2"
     baseline: BaselineMode = BaselineMode.REMOVE_MEAN
@@ -67,6 +94,7 @@ class AnalysisControl(BaseModel):
     t_end: PositiveFloat | None = None
     f_max: PositiveFloat = 25.0
     solver_backend: Literal["opensees", "mock", "linear", "eql", "nonlinear"] = "opensees"
+    nonlinear_substeps: int = Field(default=4, ge=1, le=128)
     pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
     damping_mode: Literal["frequency_independent", "rayleigh"] = "frequency_independent"
     rayleigh_mode_1_hz: PositiveFloat = 1.0
@@ -94,26 +122,80 @@ class Layer(BaseModel):
     material: MaterialType
     material_params: dict[str, float] = Field(default_factory=dict)
     material_optional_args: list[float] = Field(default_factory=list)
+    calibration: DarendeliCalibration | None = None
 
     @model_validator(mode="after")
     def validate_material_params(self) -> Layer:
         allowed: set[str]
+        effective_params = dict(self.material_params)
+        if self.calibration is not None:
+            if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
+                raise ValueError(
+                    "Layer calibration is currently supported only for MKZ/GQH materials."
+                )
+            default_gmax = (
+                (float(self.unit_weight_kn_m3) / 9.81)
+                * float(self.vs_m_s)
+                * float(self.vs_m_s)
+            )
+            gmax_seed = float(
+                effective_params.get(
+                    "gmax",
+                    default_gmax,
+                )
+            )
+            reload_factor_seed = (
+                effective_params.get("reload_factor")
+                or self.calibration.reload_factor
+                or (2.0 if self.material == MaterialType.MKZ else 1.6)
+            )
+            if self.material == MaterialType.MKZ:
+                calibrated = calibrate_mkz_from_darendeli(
+                    gmax=gmax_seed,
+                    plasticity_index=self.calibration.plasticity_index,
+                    ocr=self.calibration.ocr,
+                    mean_effective_stress_kpa=self.calibration.mean_effective_stress_kpa,
+                    frequency_hz=self.calibration.frequency_hz,
+                    num_cycles=self.calibration.num_cycles,
+                    atmospheric_pressure_kpa=self.calibration.atmospheric_pressure_kpa,
+                    strain_min=self.calibration.strain_min,
+                    strain_max=self.calibration.strain_max,
+                    n_points=self.calibration.n_points,
+                    reload_factor=float(reload_factor_seed),
+                )
+            else:
+                calibrated = calibrate_gqh_from_darendeli(
+                    gmax=gmax_seed,
+                    plasticity_index=self.calibration.plasticity_index,
+                    ocr=self.calibration.ocr,
+                    mean_effective_stress_kpa=self.calibration.mean_effective_stress_kpa,
+                    frequency_hz=self.calibration.frequency_hz,
+                    num_cycles=self.calibration.num_cycles,
+                    atmospheric_pressure_kpa=self.calibration.atmospheric_pressure_kpa,
+                    strain_min=self.calibration.strain_min,
+                    strain_max=self.calibration.strain_max,
+                    n_points=self.calibration.n_points,
+                    reload_factor=float(reload_factor_seed),
+                )
+            effective_params = {**calibrated.material_params, **effective_params}
+            self.material_params = effective_params
+
         if self.material == MaterialType.PM4SAND:
             allowed = {"Dr", "G0", "hpo"}
-            dr = self.material_params.get("Dr")
+            dr = effective_params.get("Dr")
             if dr is not None and not (0.0 < dr <= 1.0):
                 raise ValueError("PM4Sand parameter 'Dr' must be in (0, 1].")
             for key in ("G0", "hpo"):
-                val = self.material_params.get(key)
+                val = effective_params.get(key)
                 if val is not None and val <= 0.0:
                     raise ValueError(f"PM4Sand parameter '{key}' must be > 0.")
         elif self.material == MaterialType.PM4SILT:
             allowed = {"Su", "Su_Rat", "G_o", "h_po"}
-            su_rat = self.material_params.get("Su_Rat")
+            su_rat = effective_params.get("Su_Rat")
             if su_rat is not None and not (0.0 < su_rat <= 1.0):
                 raise ValueError("PM4Silt parameter 'Su_Rat' must be in (0, 1].")
             for key in ("Su", "G_o", "h_po"):
-                val = self.material_params.get(key)
+                val = effective_params.get(key)
                 if val is not None and val <= 0.0:
                     raise ValueError(f"PM4Silt parameter '{key}' must be > 0.")
         elif self.material == MaterialType.MKZ:
@@ -125,25 +207,25 @@ class Layer(BaseModel):
                 "damping_max",
                 "reload_factor",
             }
-            gmax = self.material_params.get("gmax")
-            gamma_ref = self.material_params.get("gamma_ref")
+            gmax = effective_params.get("gmax")
+            gamma_ref = effective_params.get("gamma_ref")
             if gmax is None or gmax <= 0.0:
                 raise ValueError("MKZ parameter 'gmax' is required and must be > 0.")
             if gamma_ref is None or gamma_ref <= 0.0:
                 raise ValueError("MKZ parameter 'gamma_ref' is required and must be > 0.")
-            tau_max = self.material_params.get("tau_max")
+            tau_max = effective_params.get("tau_max")
             if tau_max is not None and tau_max <= 0.0:
                 raise ValueError("MKZ parameter 'tau_max' must be > 0 when provided.")
-            d_min = self.material_params.get("damping_min")
-            d_max = self.material_params.get("damping_max")
+            d_min = effective_params.get("damping_min")
+            d_max = effective_params.get("damping_max")
             if d_min is not None and not (0.0 <= d_min <= 0.5):
                 raise ValueError("MKZ parameter 'damping_min' must be in [0, 0.5].")
             if d_max is not None and not (0.0 <= d_max <= 0.5):
                 raise ValueError("MKZ parameter 'damping_max' must be in [0, 0.5].")
             if d_min is not None and d_max is not None and d_min > d_max:
                 raise ValueError("MKZ requires damping_min <= damping_max.")
-            reload_factor = self.material_params.get("reload_factor")
-            if reload_factor is not None and reload_factor <= 0.0:
+            reload_factor_value = effective_params.get("reload_factor")
+            if reload_factor_value is not None and reload_factor_value <= 0.0:
                 raise ValueError("MKZ parameter 'reload_factor' must be > 0 when provided.")
         elif self.material == MaterialType.GQH:
             allowed = {
@@ -157,42 +239,42 @@ class Layer(BaseModel):
                 "damping_max",
                 "reload_factor",
             }
-            gmax = self.material_params.get("gmax")
-            gamma_ref = self.material_params.get("gamma_ref")
+            gmax = effective_params.get("gmax")
+            gamma_ref = effective_params.get("gamma_ref")
             if gmax is None or gmax <= 0.0:
                 raise ValueError("GQH parameter 'gmax' is required and must be > 0.")
             if gamma_ref is None or gamma_ref <= 0.0:
                 raise ValueError("GQH parameter 'gamma_ref' is required and must be > 0.")
             for key in ("a1", "a2", "m"):
-                val = self.material_params.get(key)
+                val = effective_params.get(key)
                 if val is not None and val <= 0.0:
                     raise ValueError(f"GQH parameter '{key}' must be > 0 when provided.")
-            tau_max = self.material_params.get("tau_max")
+            tau_max = effective_params.get("tau_max")
             if tau_max is not None and tau_max <= 0.0:
                 raise ValueError("GQH parameter 'tau_max' must be > 0 when provided.")
-            d_min = self.material_params.get("damping_min")
-            d_max = self.material_params.get("damping_max")
+            d_min = effective_params.get("damping_min")
+            d_max = effective_params.get("damping_max")
             if d_min is not None and not (0.0 <= d_min <= 0.5):
                 raise ValueError("GQH parameter 'damping_min' must be in [0, 0.5].")
             if d_max is not None and not (0.0 <= d_max <= 0.5):
                 raise ValueError("GQH parameter 'damping_max' must be in [0, 0.5].")
             if d_min is not None and d_max is not None and d_min > d_max:
                 raise ValueError("GQH requires damping_min <= damping_max.")
-            reload_factor = self.material_params.get("reload_factor")
-            if reload_factor is not None and reload_factor <= 0.0:
+            reload_factor_value = effective_params.get("reload_factor")
+            if reload_factor_value is not None and reload_factor_value <= 0.0:
                 raise ValueError("GQH parameter 'reload_factor' must be > 0 when provided.")
         else:
             allowed = {"nu"}
-            nu = self.material_params.get("nu")
+            nu = effective_params.get("nu")
             if nu is not None and not (0.0 < nu < 0.5):
                 raise ValueError("Elastic parameter 'nu' must be in (0, 0.5).")
 
-        unknown = set(self.material_params) - allowed
+        unknown = set(effective_params) - allowed
         if unknown:
             raise ValueError(
                 f"Unknown material_params for {self.material.value}: {sorted(unknown)}"
             )
-        for key, value in self.material_params.items():
+        for key, value in effective_params.items():
             if not math.isfinite(value):
                 raise ValueError(f"Material parameter '{key}' must be finite.")
         for idx, value in enumerate(self.material_optional_args):

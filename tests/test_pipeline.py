@@ -317,6 +317,7 @@ analysis:
 
 def test_run_analysis_eql_persists_hdf5_and_sqlite_summary(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/mkz_gqh_eql.yml"))
+    cfg.analysis.solver_backend = "eql"
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
 
@@ -341,3 +342,52 @@ def test_run_analysis_eql_persists_hdf5_and_sqlite_summary(tmp_path: Path) -> No
     assert eql_summary_rows == 1
     assert eql_layers_rows >= 1
     assert eql_metrics_rows == 2
+
+
+def test_run_analysis_nonlinear_nonfinite_response_raises_clear_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    def _fake_solver(config, motion_obj, **kwargs):
+        _ = (config, motion_obj, kwargs)
+        t = np.arange(4, dtype=np.float64) * dt
+        surface = np.array([0.0, np.nan, 1.0, 2.0], dtype=np.float64)
+        return t, surface
+
+    monkeypatch.setattr(pipeline_mod, "solve_nonlinear_sh_response", _fake_solver)
+
+    try:
+        run_analysis(cfg, motion, output_dir=tmp_path / "nonfinite-out")
+    except ValueError as exc:
+        assert "Nonlinear solver produced non-finite surface acceleration" in str(exc)
+    else:
+        raise AssertionError("Expected run_analysis to raise a clear non-finite solver error.")
+
+
+def test_run_analysis_nonlinear_forwards_configured_substeps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.analysis.nonlinear_substeps = 12
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    seen: dict[str, int] = {}
+
+    def _fake_solver(config, motion_obj, **kwargs):
+        _ = (config, motion_obj)
+        seen["substeps"] = int(kwargs["substeps"])
+        t = np.arange(motion.acc.size, dtype=np.float64) * dt
+        return t, 0.5 * motion.acc
+
+    monkeypatch.setattr(pipeline_mod, "solve_nonlinear_sh_response", _fake_solver)
+
+    result = run_analysis(cfg, motion, output_dir=tmp_path / "nonlinear-substeps")
+    assert result.status == "ok"
+    assert seen["substeps"] == 12
+    run_meta = json.loads((result.output_dir / "run_meta.json").read_text(encoding="utf-8"))
+    assert int(run_meta.get("nonlinear_substeps", 0)) == 12

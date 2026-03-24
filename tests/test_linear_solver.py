@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from dsra1d.config import load_project_config
+from dsra1d.config import BoundaryCondition, load_project_config
 from dsra1d.linear import solve_equivalent_linear_sh_response, solve_linear_sh_response
 from dsra1d.motion import load_motion
 from dsra1d.pipeline import load_result, run_analysis
@@ -64,6 +64,24 @@ def test_linear_solver_rayleigh_mode_changes_response() -> None:
     assert not np.allclose(surface_default, surface_rayleigh)
 
 
+def test_linear_solver_elastic_halfspace_changes_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_mock.yml"))
+    cfg.analysis.solver_backend = "linear"
+    cfg.boundary_condition = BoundaryCondition.RIGID
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    _, surface_rigid = solve_linear_sh_response(cfg, motion)
+
+    cfg_halfspace = cfg.model_copy(deep=True)
+    cfg_halfspace.boundary_condition = BoundaryCondition.ELASTIC_HALFSPACE
+    _, surface_halfspace = solve_linear_sh_response(cfg_halfspace, motion)
+
+    assert surface_rigid.shape == surface_halfspace.shape
+    assert np.all(np.isfinite(surface_halfspace))
+    assert not np.allclose(surface_rigid, surface_halfspace)
+
+
 def test_run_analysis_eql_backend_writes_summary_artifact(tmp_path: Path) -> None:
     cfg = load_project_config(Path("examples/configs/mkz_gqh_mock.yml"))
     cfg.analysis.solver_backend = "eql"
@@ -78,3 +96,14 @@ def test_run_analysis_eql_backend_writes_summary_artifact(tmp_path: Path) -> Non
     assert store.eql_converged is not None
     assert store.eql_layer_idx.size >= 1
     assert store.eql_layer_vs_m_s.size == store.eql_layer_idx.size
+
+
+def test_eql_solver_accepts_darendeli_calibrated_config() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_darendeli.yml"))
+    cfg.analysis.solver_backend = "eql"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    eql = solve_equivalent_linear_sh_response(cfg, motion)
+    assert eql.response.time.shape == eql.response.surface_acc.shape
+    assert np.all(np.isfinite(eql.response.surface_acc))
+    assert eql.iterations >= 1

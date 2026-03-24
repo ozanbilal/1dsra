@@ -1,0 +1,63 @@
+project_name: sample-mkz-gqh-darendeli
+seed: 20260307
+profile:
+  layers:
+    - name: Darendeli-MKZ
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.2
+      vs_m_s: 190.0
+      material: mkz
+      material_params:
+        tau_max: 80.0
+      calibration:
+        source: darendeli
+        plasticity_index: 20.0
+        ocr: 1.5
+        mean_effective_stress_kpa: 80.0
+        frequency_hz: 1.0
+        num_cycles: 10.0
+        reload_factor: 2.0
+    - name: Darendeli-GQH
+      thickness_m: 10.0
+      unit_weight_kN_m3: 19.0
+      vs_m_s: 280.0
+      material: gqh
+      calibration:
+        source: darendeli
+        plasticity_index: 8.0
+        ocr: 1.0
+        mean_effective_stress_kpa: 150.0
+        frequency_hz: 1.0
+        num_cycles: 10.0
+        reload_factor: 1.6
+boundary_condition: elastic_halfspace
+analysis:
+  dt: 0.0025
+  t_end: null
+  f_max: 25.0
+  solver_backend: nonlinear
+  pm4_validation_profile: basic
+  timeout_s: 180
+  retries: 1
+motion:
+  units: m/s2
+  baseline: remove_mean
+  scale_mode: none
+  scale_factor: null
+  target_pga: null
+output:
+  write_hdf5: true
+  write_sqlite: true
+  parquet_export: false
+opensees:
+  executable: OpenSees
+  extra_args: []
+  require_version_regex: null
+  require_binary_sha256: null
+  column_width_m: 1.0
+  thickness_m: 1.0
+  fluid_bulk_modulus: 2200000.0
+  fluid_mass_density: 1.0
+  h_perm: 1.0e-05
+  v_perm: 1.0e-05
+  gravity_steps: 20

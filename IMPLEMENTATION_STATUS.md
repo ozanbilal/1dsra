@@ -1,13 +1,56 @@
 # StrataWave Implementation Status
 
-Last updated: 2026-03-06
+Last updated: 2026-03-23
 
 ## 1. Summary
 
 This file tracks implementation progress against the original v1.0 plan.
 Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
 
-Recent updates (2026-03-05):
+Recent updates (2026-03-23):
+- Native nonlinear solver now accepts configurable `analysis.nonlinear_substeps`; this is wired through runtime metadata and can be used for tighter parity studies without code edits.
+- Iterated DEEPSOIL `Example_5A` rigid-base parity on the native MKZ path:
+  - sweep evidence saved under `output/pdf/validation/deepsoil_examples/reload_sweep*/`
+  - tuned case (`reload_factor=1.45`, `nonlinear_substeps=16`) is now the best current native parity artifact
+  - best current report case improved from `PSA NRMSE≈0.2007` to `PSA NRMSE≈0.1939`
+- Regenerated focused DEEPSOIL example parity report with the tuned best case under
+  `output/pdf/validation/deepsoil_examples/report/`
+- Added focused DEEPSOIL example parity reporting outside product runtime:
+  - `scripts/build_deepsoil_example_parity_report.py`
+  - writes `JSON + Markdown + PDF` under `output/pdf/validation/deepsoil_examples/report/`
+  - uses actual local DEEPSOIL batch-reference runs and native StrataWave compare artifacts
+  - explicitly reports current best case, partial parity level, and solver-model caveats instead of overstating DEEPSOIL equivalence
+- Native linear/nonlinear solvers now honor `boundary_condition: elastic_halfspace` with base impedance damping derived from the deepest layer.
+- Native linear/nonlinear solvers now use incident-wave style base forcing for `elastic_halfspace` runs in addition to base impedance damping.
+- DEEPSOIL parity iteration extended with native elastic-halfspace runs for `Example_5A` at `dt=0.005` and `dt=0.0025`; these improved the original elastic-halfspace mismatch substantially, but still did not beat the current best rigid-base reduced-`dt` case on PSA parity.
+- The `Example_5A` native elastic-halfspace case at `dt=0.02` remains numerically unstable; pipeline now reports this as an explicit non-finite solver failure instead of a downstream SQLite integrity error.
+- Native pipeline now rejects non-finite linear/eql/nonlinear surface responses before result-store writes, producing explicit solver-level errors instead of downstream SQLite integrity failures.
+- Added external parity-prep helper `scripts/scaffold_deepsoil_compare_manifest.py` to seed
+  `compare-deepsoil-batch` manifests from existing `run-*` folders without hand-writing JSON.
+- Added initial DEEPSOIL side-by-side comparison tooling for StrataWave run folders:
+  `compare-deepsoil` writes JSON/Markdown parity artifacts with PGA, surface correlation/RMSE, and PSA mismatch metrics from DEEPSOIL-exported CSVs.
+- Added manifest-driven DEEPSOIL parity campaigns:
+  `compare-deepsoil-batch` evaluates multiple StrataWave-vs-DEEPSOIL cases against configurable tolerances and emits batch pass/fail artifacts.
+- `summarize` now accepts a DEEPSOIL batch parity report (`--deepsoil-compare-report`) and merges it into `campaign_summary.json/.md`.
+- DEEPSOIL compare scope now extends beyond surface response:
+  optional profile CSV and hysteresis CSV inputs are supported in `compare-deepsoil`, with profile/hysteresis metrics propagated into batch parity and campaign summaries.
+- Strict signoff policy can now explicitly require DEEPSOIL parity coverage through
+  `require_deepsoil_compare`, `require_deepsoil_profile`, and `require_deepsoil_hysteresis`
+  in `benchmarks/policies/release_signoff.yml`.
+- Release workflow now includes a policy-aware DEEPSOIL parity stage via
+  `scripts/run_release_deepsoil_compare.py`; it writes `deepsoil_compare_batch.json/.md`
+  into `out/release-signoff` when `benchmarks/policies/release_signoff_deepsoil_manifest.json`
+  is present.
+- Web API/UI now surface latest DEEPSOIL batch parity directly:
+  - `GET /api/parity/deepsoil/latest`
+  - `GET /api/parity/deepsoil/release-manifest`
+  - `GET /api/parity/deepsoil/release-manifest/editor`
+  - `POST /api/parity/deepsoil/release-manifest/save`
+  - React `Deepsoil Parity` card with case-level pass/fail, failed checks, compact metric summaries, release-manifest/policy visibility, and editable release manifest studio
+- Native MKZ/GQH path now supports Darendeli-style calibration directly in config via `layer.calibration`.
+- New calibration module derives MKZ/GQH `material_params` from Darendeli modulus-reduction/damping targets during config validation/load.
+- Added `mkz-gqh-darendeli` template plus example config `examples/configs/mkz_gqh_darendeli.yml`.
+- Darendeli-calibrated MKZ/GQH configs are now regression-tested through native `eql` and `nonlinear` solvers.
 - Results Frame now includes a dedicated `Runtime Diagnostics` panel in the analysis canvas: backend, run status, warning/failure counters, timeout recovery, and issue lists are visible without switching to the raw `Convergence` tab.
 - Release quality card is now context-aware in React Web Studio: ordinary run workspaces without parity/signoff artifacts render as `not-evaluated` instead of false `no-go`, while real runtime failures still surface as blockers.
 - OpenSees backend readiness presentation now filters the prompt-only `OpenSees >` line and shows the actual executable banner/version text.
@@ -50,6 +93,10 @@ Implemented:
 - Web motion-process path now supports explicit/fallback `dt` handling for one-column motions (prevents implicit `dt=1.0` PSA bias)
 - Material-level parameter validation for PM4Sand/PM4Silt/elastic (`material_params`)
 - Material-level parameter validation for MKZ/GQH (required params + damping bounds)
+- Darendeli calibration schema for MKZ/GQH:
+  - config-level `calibration` block on layer
+  - auto-derived `gmax/gamma_ref/damping/reload_factor`
+  - GQH shape fit (`a1/a2/m`) from Darendeli target curves
 - Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
 - Backend-aware guard: OpenSees backend rejects MKZ/GQH in v1 pipeline
 - PM4 validation profiles: `basic` and `strict` (strict adds conservative range checks)
@@ -59,7 +106,7 @@ Implemented:
 
 Notes:
 - Input validation works for current config model.
-- Extended schema (full PM4 calibration catalog, richer constraints) is still pending.
+- Extended schema (full PM4 calibration catalog, richer constraints, additional curve families such as Vucetic-Dobry/Menq) is still pending.
 
 ### Phase 2 - OpenSees Adapter Core
 Status: **Completed (functional) / Partial (production depth)**
@@ -147,6 +194,7 @@ Implemented:
 - Added `core-hyst` benchmark suite for MKZ/GQH native nonlinear regression coverage (3-case matrix)
 - Added `core-linear` benchmark suite for native linear SH backend coverage (3-case matrix)
 - Added `core-eql` benchmark suite for native equivalent-linear backend coverage (3-case matrix)
+- Added Darendeli-calibrated config coverage in unit/regression tests for native `eql` and `nonlinear` MKZ/GQH paths
 - `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
 - OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
 - OpenSees parity suite expanded to 6-case matrix (`parity01`..`parity06`) with explicit-check golden envelopes
@@ -184,6 +232,9 @@ Implemented:
 Not completed:
 - Broad benchmark library (multiple soil profiles, strong-motion sets, edge cases)
 - Strict published reference matching (DEEPSOIL/OpenSees parity matrix)
+- Deepened automated DEEPSOIL parity harness for MKZ/GQH + Darendeli-calibrated cases
+  (current compare utility now covers surface/PSA/profile/hysteresis and is wired into strict signoff;
+  missing piece is reference campaign population and evidence quality, not CLI coupling)
 
 ### Phase 6 - v1.0 Hardening and Release
 Status: **In progress (mid)**
@@ -199,14 +250,31 @@ Missing:
 ## 3. What Is Working Today
 
 - CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `lock-golden`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
+- CLI command `calibrate-darendeli` now exports fitted MKZ/GQH params plus target/fitted curve CSV for calibration review
 - `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
 - `init` now supports `effective-stress`, `effective-stress-strict-plus`, `pm4sand-calibration`, `pm4silt-calibration`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
+- `init` now also supports `mkz-gqh-darendeli` for config-driven Darendeli calibration into native MKZ/GQH runs
 - `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
 - `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql|nonlinear`
 - `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
 - `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
 - `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
 - `--backend nonlinear` now enables native MKZ/GQH stateful hysteretic time-domain analysis without OpenSees dependency
+- Native MKZ/GQH runs can now be calibrated from Darendeli-style curves without manual `gamma_ref/a1/a2/m` entry
+- `compare-deepsoil` now lets you compare a StrataWave run folder against DEEPSOIL-exported surface acceleration
+  and optional PSA CSVs, producing parity artifacts for fast MKZ/GQH iteration
+- `compare-deepsoil-batch` now lets you run a manifest-driven DEEPSOIL parity campaign with case-level pass/fail checks
+- `scripts/scaffold_deepsoil_compare_manifest.py` now lets you bootstrap a batch parity manifest from completed run folders before attaching DEEPSOIL-exported reference CSVs
+- `summarize` can now fold benchmark, verify, and DEEPSOIL batch parity into one campaign summary for MKZ/GQH iteration tracking
+- `compare-deepsoil` now also supports:
+  - `--profile-csv` for layer/depth mismatch metrics
+  - `--hysteresis-csv` + `--hysteresis-layer` for loop-path and loop-energy mismatch metrics
+- `summarize --strict-signoff` now emits explicit DEEPSOIL release conditions:
+  - `deepsoil_compare_present`
+  - `deepsoil_compare_passed`
+  - `deepsoil_profile_required_ok`
+  - `deepsoil_hysteresis_required_ok`
+- React `Soil Profile` step now includes a two-column `Layer Properties` studio with focused layer QA, Darendeli calibration controls for MKZ/GQH, and live target-vs-fit curve preview (`G/Gmax`, damping, single-element loop)
 - EQL convergence diagnostics are now stored and verifiable across HDF5/SQLite/report outputs
 - `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
 - `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
@@ -222,6 +290,8 @@ Missing:
 - Strict signoff now also enforces `backend_probe_not_assumed` (probe timeout-assumption is treated as release blocker)
 - Release/manual dedicated runner gates now run `scripts/check_fingerprint_alignment.py` so CI variable, policy fingerprint, and matrix fingerprint must match before parity execution
 - CI/release workflows now run `scripts/check_release_policy_consistency.py` to prevent `release_signoff.yml` drift from benchmark suite/case matrix
+- Release policy consistency checks now also validate that DEEPSOIL profile/hysteresis gates cannot be enabled without `require_deepsoil_compare`
+- Release workflow now executes DEEPSOIL batch parity before `summarize --strict-signoff`, so strict signoff can consume release parity artifacts without manual staging
 - Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
 - Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
 - CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
@@ -392,10 +462,23 @@ Tracking rule for continuation:
 | Auto Profile Builder (`f_max`, points/wavelength, min slice, max sublayers) | Done | Stochastic/randomized auto-profile realizations | Pending |
 | Results tab yapısı (`Time Histories`, `Spectral`, `Profile`, `Convergence`) | Partial | Advanced mobilized strength and convergence diagnostics parity | Pending |
 | Run tree (`project -> motion -> run`) | Done | DEEPSOIL-style batch navigator parity (full) | Pending |
+| Advanced Table View parity (multi-column layer grid) | Partial | Layer/material library persistence (`Save Materials`, external files) | Pending |
+| Layer Properties parity (current properties + curve fit plots) | Partial | Full Single Element Test parity with strain-path controls / cyclic history presets | Pending |
+| Motion Viewer parity (multi-motion overlay + metrics/tools) | Partial | Tripartite graph / timestep reduction / kappa estimator parity | Pending |
+| Results tabs parity (`Stress-Strain`, `Mobilized Strength`) | Partial | `Response Spectra Summary` and `Displacement Animation` parity | Pending |
+| Options/Preferences parity (working dir, units, graph theme, multicore) | Pending | Full database browser / export parity | Pending |
 
 Notes:
 - Wave-1 UI parity is orchestration-focused; numerik çekirdek değişiklikleri bu dalgada hedeflenmez.
 - `Stress-Strain` ve `Mobilized Strength` tabları mevcut, fakat detay veri kanalı için ek recorder/çıktı şeması gereklidir.
+- Manual check baseline: [DEEPSOIL_User_Manual_v7.pdf](C:/Program Files/University of Illinois at Urbana-Champaign/DEEPSOIL%207.0/DEEPSOIL_User_Manual_v7.pdf), especially UI flow pages 21-61 and examples 107-161.
+
+### Manual-Derived Gaps
+
+- `Program Organization` (manual pp. 21-26): DEEPSOIL has top-level `Analysis`, `Motions`, `Profiles` tabs plus an `Options` window for working directory, units, language, multicore, and graph styling. StrataWave currently covers the main workflow but not the preferences surface.
+- `Motion Viewer` (manual pp. 23-26, 47-49): DEEPSOIL exposes multi-motion compare, single-motion view, scaling, baseline correction, FAS smoothing, multiple response-spectrum methods, data tables, timestep reduction, tripartite graph, and kappa tools. StrataWave covers import/baseline/scale/preview, but not the full tool matrix.
+- `Soil Profile Definition` (manual pp. 40-46): DEEPSOIL combines `Layer Properties`, `Advanced Table View`, curve-fit plots, implied strength profile, maximum-frequency checks, halfspace editor, and `Single Element Test`. StrataWave now has layer table/cards and auto-profile slicing, but implied-strength QA and single-element calibration review are still missing.
+- `Results` (manual pp. 55-61): DEEPSOIL separates `Time History`, `Stress-Strain`, `Spectral`, `Profile`, `Mobilized Strength`, `Displacement Animation`, `Response Spectra Summary`, and `Check Convergence`. StrataWave has the core tabs and focused Results Frame, but still lacks full spectra-summary/animation parity and denser convergence QA presentation.
 
 ## 8. Scientific Confidence Matrix
 
@@ -403,3 +486,16 @@ Notes:
 - Update rule: when benchmark tolerances/reference-basis change, update confidence matrix in the same commit.
 - Release rule: `opensees-parity.binary_fingerprint` must match both policy fingerprint (`benchmarks/policies/release_signoff.yml`) and strict-signoff observed backend SHA256.
 
+## 9. Example Smoke Pack
+
+- A ready-to-run DEEPSOIL-equivalent example pack now exists under `examples/deepsoil_equivalent/`.
+- It includes linear, EQL, nonlinear MKZ/GQH, and effective-stress reference configs.
+- Smoke validation was completed on 2026-03-19 using the repo CLI:
+  - linear reference: `run` completed successfully
+  - EQL reference: `run` completed successfully
+  - nonlinear reference: `run` completed successfully
+  - effective-stress reference: `run` completed successfully with the configured OpenSees binary
+- This pack is meant as a reproducible sanity-check path for users who want to confirm the software runs before building parity campaigns.
+Recent updates (2026-03-23):
+- Added an external validation pack generator under `scripts/build_validation_pack.py`.
+- Generated shareable technical validation artifacts under `output/pdf/validation/` from existing smoke, benchmark, parity, and confidence evidence.

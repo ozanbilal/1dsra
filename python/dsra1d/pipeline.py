@@ -136,6 +136,8 @@ def _write_linear_outputs(
     motion: Motion,
 ) -> None:
     t, surface = solve_linear_sh_response(config, motion)
+    if not np.all(np.isfinite(surface)):
+        raise ValueError("Linear solver produced non-finite surface acceleration.")
     np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
     ru = np.zeros_like(t)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
@@ -146,7 +148,16 @@ def _write_nonlinear_outputs(
     config: ProjectConfig,
     motion: Motion,
 ) -> None:
-    t, surface = solve_nonlinear_sh_response(config, motion)
+    t, surface = solve_nonlinear_sh_response(
+        config,
+        motion,
+        substeps=int(config.analysis.nonlinear_substeps),
+    )
+    if not np.all(np.isfinite(surface)):
+        raise ValueError(
+            "Nonlinear solver produced non-finite surface acceleration. "
+            "Try a smaller dt or inspect constitutive/boundary settings."
+        )
     np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
     ru = np.zeros_like(t)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
@@ -160,6 +171,8 @@ def _write_eql_outputs(
     response = solve_equivalent_linear_sh_response(config, motion)
     t = response.response.time
     surface = response.response.surface_acc
+    if not np.all(np.isfinite(surface)):
+        raise ValueError("Equivalent-linear solver produced non-finite surface acceleration.")
     np.savetxt(run_dir / "surface_acc.out", np.column_stack([t, surface]))
     ru = np.zeros_like(t)
     np.savetxt(run_dir / "pwp_ru.out", np.column_stack([t, ru]))
@@ -655,6 +668,7 @@ def run_analysis(
         "run_id": run_id,
         "timestamp_utc": datetime.now(UTC).isoformat(),
         "solver_backend": config.analysis.solver_backend,
+        "nonlinear_substeps": int(config.analysis.nonlinear_substeps),
         "timeout_s_configured": configured_timeout_s,
         "timeout_s_effective": effective_timeout_s,
         "dt_s": float(dt_series),

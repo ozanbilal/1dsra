@@ -83,6 +83,137 @@ def test_web_runs_endpoint_returns_list() -> None:
     assert isinstance(payload, list)
 
 
+def test_web_deepsoil_parity_latest_endpoint(tmp_path) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    out_dir = tmp_path / "parity"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path = out_dir / "deepsoil_compare_batch.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "manifest_path": str(tmp_path / "manifest.json"),
+                "total_cases": 2,
+                "passed_cases": 1,
+                "failed_cases": 1,
+                "policy": {
+                    "surface_corrcoef_min": 0.95,
+                    "profile_nrmse_max": 0.25,
+                },
+                "cases": [
+                    {
+                        "name": "case-fail",
+                        "passed": False,
+                        "run": "out/case-fail",
+                        "surface_csv": "refs/fail_surface.csv",
+                        "profile_csv": "refs/fail_profile.csv",
+                        "checks": {"surface_nrmse_max": False, "profile_nrmse_max": True},
+                        "metrics": {"surface_corrcoef": 0.91},
+                    },
+                    {
+                        "name": "case-pass",
+                        "passed": True,
+                        "run": "out/case-pass",
+                        "surface_csv": "refs/pass_surface.csv",
+                        "checks": {"surface_nrmse_max": True},
+                        "metrics": {"surface_corrcoef": 0.99},
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app())
+    resp = client.get("/api/parity/deepsoil/latest", params={"output_root": str(tmp_path)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["found"] is True
+    assert payload["total_cases"] == 2
+    assert payload["failed_cases"] == 1
+    assert payload["cases"][0]["name"] == "case-fail"
+    assert payload["cases"][0]["passed"] is False
+    assert payload["cases"][1]["name"] == "case-pass"
+
+
+def test_web_deepsoil_release_manifest_endpoint() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.get("/api/parity/deepsoil/release-manifest")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["policy_path"].endswith("release_signoff.yml")
+    assert payload["manifest_path"].endswith("release_signoff_deepsoil_manifest.json")
+    assert payload["sample_manifest_path"].endswith("release_signoff_deepsoil_manifest.sample.json")
+    assert "require_deepsoil_compare" in payload
+
+
+def test_web_deepsoil_release_manifest_editor_and_save_endpoint(tmp_path, monkeypatch) -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    repo_root = tmp_path / "repo"
+    policy_dir = repo_root / "benchmarks" / "policies"
+    policy_dir.mkdir(parents=True, exist_ok=True)
+    (policy_dir / "release_signoff.yml").write_text(
+        "require_deepsoil_compare: true\n",
+        encoding="utf-8",
+    )
+    (policy_dir / "release_signoff_deepsoil_manifest.sample.json").write_text(
+        json.dumps(
+            {
+                "defaults": {"surface_corrcoef_min": 0.95},
+                "cases": [{"name": "sample-case", "run": "out/sample"}],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    import dsra1d.web.app as web_app_mod
+
+    monkeypatch.setattr(web_app_mod, "_repo_root", lambda: repo_root)
+
+    client = TestClient(create_app())
+    resp = client.get("/api/parity/deepsoil/release-manifest/editor")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["loaded_from"] == "sample"
+    assert payload["exists"] is False
+    assert payload["cases"][0]["name"] == "sample-case"
+
+    save_resp = client.post(
+        "/api/parity/deepsoil/release-manifest/save",
+        json={
+            "defaults": {"surface_corrcoef_min": 0.97, "profile_nrmse_max": 0.22},
+            "cases": [
+                {
+                    "name": "case-01",
+                    "run": "out/release/case01",
+                    "surface_csv": "refs/case01_surface.csv",
+                    "psa_csv": "",
+                    "profile_csv": "refs/case01_profile.csv",
+                    "hysteresis_csv": "",
+                    "hysteresis_layer": 0,
+                }
+            ],
+        },
+    )
+    assert save_resp.status_code == 200
+    saved = save_resp.json()
+    assert saved["status"] == "ok"
+    assert saved["case_count"] == 1
+    manifest_path = policy_dir / "release_signoff_deepsoil_manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["defaults"]["surface_corrcoef_min"] == 0.97
+    assert manifest["cases"][0]["name"] == "case-01"
+
+
 def test_web_runs_endpoint_includes_health_summary(tmp_path) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
@@ -256,7 +387,11 @@ def test_web_wizard_schema_endpoint() -> None:
     assert "deepsoil_bap_like" in payload["enum_options"]["baseline"]
     assert "pm4sand-calibration" in payload["config_templates"]
     assert "pm4silt-calibration" in payload["config_templates"]
+    assert "mkz-gqh-darendeli" in payload["config_templates"]
     assert "pm4sand-calibration" in payload["template_defaults"]
+    darendeli_defaults = payload["template_defaults"]["mkz-gqh-darendeli"]["profile_step"]["layers"]
+    assert darendeli_defaults[0]["calibration"]["source"] == "darendeli"
+    assert darendeli_defaults[0]["material"] == "mkz"
 
 
 def test_web_config_from_wizard_endpoint(tmp_path) -> None:
@@ -314,6 +449,149 @@ def test_web_config_from_wizard_endpoint(tmp_path) -> None:
     cfg_path = Path(payload["config_path"])
     assert cfg_path.exists()
     _ = load_project_config(cfg_path)
+
+
+def test_web_config_from_wizard_preserves_darendeli_calibration(tmp_path) -> None:
+    from dsra1d.config import load_project_config
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/config/from-wizard",
+        json={
+            "analysis_step": {
+                "project_name": "wizard-darendeli-case",
+                "boundary_condition": "elastic_halfspace",
+                "solver_backend": "nonlinear",
+                "pm4_validation_profile": "basic",
+            },
+            "profile_step": {
+                "layers": [
+                    {
+                        "name": "Clay-1",
+                        "thickness_m": 6.0,
+                        "unit_weight_kN_m3": 18.2,
+                        "vs_m_s": 190.0,
+                        "material": "mkz",
+                        "material_params": {"tau_max": 82.0},
+                        "material_optional_args": [],
+                        "calibration": {
+                            "source": "darendeli",
+                            "plasticity_index": 20.0,
+                            "ocr": 1.5,
+                            "mean_effective_stress_kpa": 80.0,
+                            "frequency_hz": 1.0,
+                            "num_cycles": 10.0,
+                            "reload_factor": 2.0,
+                        },
+                    }
+                ]
+            },
+            "motion_step": {
+                "motion_path": "examples/motions/sample_motion.csv",
+                "units": "m/s2",
+                "baseline": "remove_mean",
+                "scale_mode": "none",
+            },
+            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
+            "control_step": {
+                "f_max": 25.0,
+                "timeout_s": 120,
+                "retries": 1,
+                "write_hdf5": True,
+                "write_sqlite": True,
+                "parquet_export": False,
+                "opensees_executable": "OpenSees",
+                "output_dir": str(tmp_path / "out"),
+                "config_output_dir": str(tmp_path),
+                "config_file_name": "wizard_darendeli.yml",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    cfg_path = Path(payload["config_path"])
+    cfg = load_project_config(cfg_path)
+    layer = cfg.profile.layers[0]
+    assert layer.calibration is not None
+    assert layer.calibration.source == "darendeli"
+    assert layer.calibration.mean_effective_stress_kpa == pytest.approx(80.0)
+
+
+def test_web_layer_calibration_preview_endpoint_with_darendeli_target() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/wizard/layer-calibration-preview",
+        json={
+            "layer": {
+                "name": "Clay-1",
+                "thickness_m": 6.0,
+                "unit_weight_kN_m3": 18.2,
+                "vs_m_s": 190.0,
+                "material": "mkz",
+                "material_params": {"tau_max": 82.0},
+                "material_optional_args": [],
+                "calibration": {
+                    "source": "darendeli",
+                    "plasticity_index": 20.0,
+                    "ocr": 1.5,
+                    "mean_effective_stress_kpa": 80.0,
+                    "frequency_hz": 1.0,
+                    "num_cycles": 10.0,
+                    "reload_factor": 2.0,
+                },
+            }
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["available"] is True
+    assert payload["target_available"] is True
+    assert payload["source"] == "darendeli"
+    assert len(payload["strain"]) >= 12
+    assert len(payload["fitted_modulus_reduction"]) == len(payload["strain"])
+    assert len(payload["target_damping_ratio"]) == len(payload["strain"])
+
+
+def test_web_layer_calibration_preview_endpoint_manual_gqh() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/wizard/layer-calibration-preview",
+        json={
+            "layer": {
+                "name": "GQH-1",
+                "thickness_m": 8.0,
+                "unit_weight_kN_m3": 19.0,
+                "vs_m_s": 240.0,
+                "material": "gqh",
+                "material_params": {
+                    "gmax": 95000.0,
+                    "gamma_ref": 0.001,
+                    "a1": 1.0,
+                    "a2": 0.45,
+                    "m": 2.0,
+                    "damping_min": 0.01,
+                    "damping_max": 0.12,
+                    "reload_factor": 1.6,
+                },
+                "material_optional_args": [],
+                "calibration": None,
+            }
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["available"] is True
+    assert payload["target_available"] is False
+    assert payload["source"] == "manual"
+    assert len(payload["fitted_modulus_reduction"]) == len(payload["strain"])
 
 
 def test_web_config_from_wizard_wires_rayleigh_damping(tmp_path) -> None:

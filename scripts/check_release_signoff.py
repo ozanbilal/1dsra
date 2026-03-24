@@ -122,6 +122,8 @@ def main() -> int:
     _require(bool(signoff.get("passed", False)), "signoff.passed must be true.")
     conditions_obj = signoff.get("conditions")
     conditions = conditions_obj if isinstance(conditions_obj, dict) else {}
+    signoff_policy_obj = signoff.get("policy")
+    signoff_policy = signoff_policy_obj if isinstance(signoff_policy_obj, dict) else {}
     _require(
         bool(conditions.get("backend_probe_not_assumed", False)),
         "signoff.conditions.backend_probe_not_assumed must be true.",
@@ -132,6 +134,25 @@ def main() -> int:
         not bool(observed.get("backend_probe_assumed_available", False)),
         "signoff.observed.backend_probe_assumed_available must be false.",
     )
+    if bool(signoff_policy.get("require_deepsoil_compare", False)):
+        _require(
+            bool(conditions.get("deepsoil_compare_present", False)),
+            "signoff.conditions.deepsoil_compare_present must be true.",
+        )
+        _require(
+            bool(conditions.get("deepsoil_compare_passed", False)),
+            "signoff.conditions.deepsoil_compare_passed must be true.",
+        )
+    if bool(signoff_policy.get("require_deepsoil_profile", False)):
+        _require(
+            bool(conditions.get("deepsoil_profile_required_ok", False)),
+            "signoff.conditions.deepsoil_profile_required_ok must be true.",
+        )
+    if bool(signoff_policy.get("require_deepsoil_hysteresis", False)):
+        _require(
+            bool(conditions.get("deepsoil_hysteresis_required_ok", False)),
+            "signoff.conditions.deepsoil_hysteresis_required_ok must be true.",
+        )
 
     if args.require_fingerprint:
         observed_sha = _normalize_sha256(str(observed.get("backend_probe_sha256", "")))
@@ -153,6 +174,7 @@ def main() -> int:
             parity_row = row
             break
     _require(parity_row is not None, "Matrix must include opensees-parity row.")
+    assert parity_row is not None
 
     for key in (
         "reference_basis",

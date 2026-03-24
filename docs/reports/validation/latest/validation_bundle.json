@@ -1,0 +1,1528 @@
+{
+  "generated_utc": "2026-03-23T11:49:42.156789+00:00",
+  "repo_root": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA",
+  "out_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest",
+  "technical_position": "DEEPSOIL-benzeri is akisina, OpenSees destekli effective-stress dogrulamasina ve native MKZ/GQH cekirdegine sahip hibrit analiz platformu",
+  "key_claims": [
+    "Ana analiz yollari calisiyor.",
+    "OpenSees adaptoru ile effective-stress kosulari alinabiliyor.",
+    "Native MKZ/GQH yollari mevcut.",
+    "Ornek paketler ve smoke/validation ciktilari var."
+  ],
+  "excluded_claims": [
+    "Tam DEEPSOIL parity saglandi.",
+    "Bilimsel olarak tum published-reference case'ler kapandi.",
+    "Native effective-stress solver tamamlandi."
+  ],
+  "assumptions": [
+    "Bu bundle mevcut repo ciktilarina dayanir; eksik artifactler yeniden uretilmeden partial olarak raporlanir.",
+    "UI screenshot'lari opsiyoneldir; source klasorunde PNG yoksa rapor bunu acikca belirtir.",
+    "OpenSees parity icin dedicated runner ciktilari bu local bundle'da mevcut olmayabilir."
+  ],
+  "evidence": {
+    "smoke": {
+      "label": "Example smoke summary",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.json",
+      "status": "done",
+      "note": "4/4 example cases passed",
+      "payload": {
+        "timestamp_utc": "2026-03-19T10:33:43.395468+00:00",
+        "output_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke",
+        "motion_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\motions\\sample_motion.csv",
+        "total_cases": 4,
+        "passed_cases": 4,
+        "failed_cases": 0,
+        "cases": [
+          {
+            "name": "linear",
+            "config_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\linear_reference.yml",
+            "run_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\linear\\run-b9c700c79253",
+            "run_id": "run-b9c700c79253",
+            "status": "ok",
+            "message": "completed",
+            "passed": true
+          },
+          {
+            "name": "eql",
+            "config_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\eql_reference.yml",
+            "run_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\eql\\run-289038c33fe9",
+            "run_id": "run-289038c33fe9",
+            "status": "ok",
+            "message": "completed",
+            "passed": true
+          },
+          {
+            "name": "nonlinear",
+            "config_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\nonlinear_reference.yml",
+            "run_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\nonlinear\\run-ce262e88ed9d",
+            "run_id": "run-ce262e88ed9d",
+            "status": "ok",
+            "message": "completed",
+            "passed": true
+          },
+          {
+            "name": "effective_stress",
+            "config_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\effective_stress_reference.yml",
+            "run_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\effective_stress\\run-485b214d64ad",
+            "run_id": "run-485b214d64ad",
+            "status": "ok",
+            "message": "completed",
+            "passed": true
+          }
+        ],
+        "summary_json_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.json",
+        "summary_md_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.md",
+        "passed": true
+      }
+    },
+    "core_es": {
+      "label": "core-es campaign",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\campaign\\core-es\\campaign_summary.json",
+      "status": "done",
+      "note": "Local campaign summary discovered",
+      "payload": {
+        "generated_utc": "2026-03-18T07:53:08.753235+00:00",
+        "suite": "core-es",
+        "benchmark": {
+          "all_passed": true,
+          "skipped": 0,
+          "ran": 3,
+          "total_cases": 3,
+          "skipped_backend": 0,
+          "backend_ready": true,
+          "execution_coverage": 1.0,
+          "backend_missing_cases": [],
+          "backend_fingerprint_ok": true,
+          "classification_counts": {
+            "passed": 3
+          },
+          "failed_or_nonpass_cases": []
+        },
+        "policy": {
+          "benchmark": {
+            "fail_on_skip": false,
+            "require_runs": 0,
+            "require_opensees": false,
+            "min_execution_coverage": 0.0,
+            "require_backend_version_regex": "",
+            "require_backend_sha256": "",
+            "conditions": {
+              "all_passed": true,
+              "fail_on_skip_ok": true,
+              "require_runs_ok": true,
+              "require_opensees_ok": true,
+              "min_execution_coverage_ok": true,
+              "backend_fingerprint_ok": true
+            },
+            "passed": true
+          },
+          "verify_batch": {
+            "require_runs": 3,
+            "conditions": {
+              "verify_ok": true,
+              "no_failed_runs": true,
+              "require_runs_ok": true,
+              "path_exists": true,
+              "is_directory": true,
+              "verify_require_runs_ok": true
+            },
+            "passed": true
+          },
+          "campaign": {
+            "passed": true
+          }
+        },
+        "verify_batch": {
+          "ok": true,
+          "total_runs": 12,
+          "passed_runs": 12,
+          "failed_runs": 0,
+          "classification_counts": {
+            "passed": 12
+          },
+          "failed_or_nonpass_runs": []
+        }
+      }
+    },
+    "core_hyst": {
+      "label": "core-hyst campaign",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ci_bench_core_hyst_local\\campaign_summary.json",
+      "status": "done",
+      "note": "Local campaign summary discovered",
+      "payload": {
+        "generated_utc": "2026-03-01T19:02:43.879283+00:00",
+        "suite": "core-hyst",
+        "benchmark": {
+          "all_passed": true,
+          "skipped": 0,
+          "ran": 3,
+          "total_cases": 3,
+          "skipped_backend": 0,
+          "backend_ready": true,
+          "execution_coverage": 1.0,
+          "backend_missing_cases": [],
+          "classification_counts": {
+            "passed": 3
+          },
+          "failed_or_nonpass_cases": []
+        },
+        "policy": {
+          "benchmark": {
+            "fail_on_skip": false,
+            "require_runs": 3,
+            "require_opensees": false,
+            "min_execution_coverage": 1.0,
+            "conditions": {
+              "all_passed": true,
+              "fail_on_skip_ok": true,
+              "require_runs_ok": true,
+              "require_opensees_ok": true,
+              "min_execution_coverage_ok": true
+            },
+            "passed": true
+          },
+          "verify_batch": {
+            "require_runs": 3,
+            "conditions": {
+              "verify_ok": true,
+              "no_failed_runs": true,
+              "require_runs_ok": true,
+              "path_exists": true,
+              "is_directory": true,
+              "verify_require_runs_ok": true
+            },
+            "passed": true
+          },
+          "campaign": {
+            "passed": true
+          }
+        },
+        "verify_batch": {
+          "ok": true,
+          "total_runs": 6,
+          "passed_runs": 6,
+          "failed_runs": 0,
+          "classification_counts": {
+            "passed": 6
+          },
+          "failed_or_nonpass_runs": []
+        }
+      }
+    },
+    "core_linear": {
+      "label": "core-linear campaign",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ci_bench_core_linear_local\\campaign_summary.json",
+      "status": "done",
+      "note": "Local campaign summary discovered",
+      "payload": {
+        "generated_utc": "2026-03-01T19:03:37.579165+00:00",
+        "suite": "core-linear",
+        "benchmark": {
+          "all_passed": true,
+          "skipped": 0,
+          "ran": 3,
+          "total_cases": 3,
+          "skipped_backend": 0,
+          "backend_ready": true,
+          "execution_coverage": 1.0,
+          "backend_missing_cases": [],
+          "classification_counts": {
+            "passed": 3
+          },
+          "failed_or_nonpass_cases": []
+        },
+        "policy": {
+          "benchmark": {
+            "fail_on_skip": false,
+            "require_runs": 3,
+            "require_opensees": false,
+            "min_execution_coverage": 1.0,
+            "conditions": {
+              "all_passed": true,
+              "fail_on_skip_ok": true,
+              "require_runs_ok": true,
+              "require_opensees_ok": true,
+              "min_execution_coverage_ok": true
+            },
+            "passed": true
+          },
+          "verify_batch": {
+            "require_runs": 3,
+            "conditions": {
+              "verify_ok": true,
+              "no_failed_runs": true,
+              "require_runs_ok": true,
+              "path_exists": true,
+              "is_directory": true,
+              "verify_require_runs_ok": true
+            },
+            "passed": true
+          },
+          "campaign": {
+            "passed": true
+          }
+        },
+        "verify_batch": {
+          "ok": true,
+          "total_runs": 6,
+          "passed_runs": 6,
+          "failed_runs": 0,
+          "classification_counts": {
+            "passed": 6
+          },
+          "failed_or_nonpass_runs": []
+        }
+      }
+    },
+    "core_eql": {
+      "label": "core-eql campaign",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ci_bench_core_eql_local\\campaign_summary.json",
+      "status": "done",
+      "note": "Local campaign summary discovered",
+      "payload": {
+        "generated_utc": "2026-03-01T19:03:46.396330+00:00",
+        "suite": "core-eql",
+        "benchmark": {
+          "all_passed": true,
+          "skipped": 0,
+          "ran": 3,
+          "total_cases": 3,
+          "skipped_backend": 0,
+          "backend_ready": true,
+          "execution_coverage": 1.0,
+          "backend_missing_cases": [],
+          "classification_counts": {
+            "passed": 3
+          },
+          "failed_or_nonpass_cases": []
+        },
+        "policy": {
+          "benchmark": {
+            "fail_on_skip": false,
+            "require_runs": 3,
+            "require_opensees": false,
+            "min_execution_coverage": 1.0,
+            "conditions": {
+              "all_passed": true,
+              "fail_on_skip_ok": true,
+              "require_runs_ok": true,
+              "require_opensees_ok": true,
+              "min_execution_coverage_ok": true
+            },
+            "passed": true
+          },
+          "verify_batch": {
+            "require_runs": 3,
+            "conditions": {
+              "verify_ok": true,
+              "no_failed_runs": true,
+              "require_runs_ok": true,
+              "path_exists": true,
+              "is_directory": true,
+              "verify_require_runs_ok": true
+            },
+            "passed": true
+          },
+          "campaign": {
+            "passed": true
+          }
+        },
+        "verify_batch": {
+          "ok": true,
+          "total_runs": 6,
+          "passed_runs": 6,
+          "failed_runs": 0,
+          "classification_counts": {
+            "passed": 6
+          },
+          "failed_or_nonpass_runs": []
+        }
+      }
+    },
+    "opensees_parity": {
+      "label": "OpenSees parity benchmark",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\benchmarks_parity_quality_gate2\\benchmark_opensees-parity.json",
+      "status": "partial",
+      "note": "Parity benchmark exists but may be skipped or partial",
+      "payload": {
+        "suite": "opensees-parity",
+        "cases": [
+          {
+            "name": "parity01",
+            "run_id": "run-31045811cc32",
+            "status": "ok",
+            "actual": {
+              "pga": 0.0200028,
+              "ru_max": 1.1403304347826088e-14,
+              "ru_min": 2.359878260869565e-16,
+              "delta_u_max": -4.07079e-14,
+              "sigma_v_eff_min": 172.50000000000003,
+              "transfer_abs_max": 1.1271860769206146,
+              "transfer_peak_freq_hz": 74.99999999999993,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 76.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 0.0200028,
+                  "abs_tol": 0.00300042,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 1.1403304347826088e-14,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": -4.07079e-14,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 172.50000000000003,
+                  "abs_tol": 25.875000000000004,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 1.1271860769206146,
+                  "abs_tol": 0.16907791153809218,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 74.99999999999993,
+                  "abs_tol": 11.24999999999999,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 0.0200028,
+                "expected": 0.0200028,
+                "diff": 0.0,
+                "abs_tol": 0.00300042,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 1.1403304347826088e-14,
+                "expected": 1.1403304347826088e-14,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": -4.07079e-14,
+                "expected": -4.07079e-14,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 172.50000000000003,
+                "expected": 172.50000000000003,
+                "diff": 0.0,
+                "abs_tol": 25.875000000000004,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 1.1271860769206146,
+                "expected": 1.1271860769206146,
+                "diff": 0.0,
+                "abs_tol": 0.16907791153809218,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 74.99999999999993,
+                "expected": 74.99999999999993,
+                "diff": 0.0,
+                "abs_tol": 11.24999999999999,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -1.96707e-12,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 172.50000000000003,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "cae9c3ac65fdefca508bf829408da671d6a8e187",
+              "signature_repeat": "cae9c3ac65fdefca508bf829408da671d6a8e187"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 3.3358425668476364,
+              "mean_relative_psa_diff": 1.9633209190951633,
+              "min_period_used_s": 0.05285179612138927,
+              "points_used": 79.0,
+              "base_dt": 0.005,
+              "half_dt": 0.0025,
+              "half_run_id": "run-c790d8f852f9"
+            },
+            "passed": true
+          },
+          {
+            "name": "parity02",
+            "run_id": "run-b4793e2143a9",
+            "status": "ok",
+            "actual": {
+              "pga": 3.43233,
+              "ru_max": 2.23683111459149e-16,
+              "ru_min": 1.1298251109370921e-17,
+              "delta_u_max": -2.16418e-15,
+              "sigma_v_eff_min": 191.55,
+              "transfer_abs_max": 1.1272001974720134,
+              "transfer_peak_freq_hz": 93.74999999999991,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 100.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 3.43233,
+                  "abs_tol": 0.5148495,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 2.23683111459149e-16,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": -2.16418e-15,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 191.55,
+                  "abs_tol": 28.7325,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 1.1272001974720134,
+                  "abs_tol": 0.169080029620802,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 93.74999999999991,
+                  "abs_tol": 14.062499999999988,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 3.43233,
+                "expected": 3.43233,
+                "diff": 0.0,
+                "abs_tol": 0.5148495,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 2.23683111459149e-16,
+                "expected": 2.23683111459149e-16,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": -2.16418e-15,
+                "expected": -2.16418e-15,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 191.55,
+                "expected": 191.55,
+                "diff": 0.0,
+                "abs_tol": 28.7325,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 1.1272001974720134,
+                "expected": 1.1272001974720134,
+                "diff": 0.0,
+                "abs_tol": 0.169080029620802,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 93.74999999999991,
+                "expected": 93.74999999999991,
+                "diff": 0.0,
+                "abs_tol": 14.062499999999988,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -4.28465e-14,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 191.55,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "cfe2f2c1b12a2a9c05e421932d69cf896adfd5d6",
+              "signature_repeat": "cfe2f2c1b12a2a9c05e421932d69cf896adfd5d6"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 2.9444621289264132,
+              "mean_relative_psa_diff": 1.9751776500270282,
+              "min_period_used_s": 0.049999999999999996,
+              "points_used": 80.0,
+              "base_dt": 0.004,
+              "half_dt": 0.002,
+              "half_run_id": "run-da8af65b2194"
+            },
+            "passed": true
+          },
+          {
+            "name": "parity03",
+            "run_id": "run-001581a97023",
+            "status": "ok",
+            "actual": {
+              "pga": 0.0798345,
+              "ru_max": 6.748554913294798e-16,
+              "ru_min": 1.1532543352601157e-17,
+              "delta_u_max": -1.99513e-15,
+              "sigma_v_eff_min": 173.0,
+              "transfer_abs_max": 2.4937533275990797,
+              "transfer_peak_freq_hz": 64.99999999999994,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 76.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 0.0798345,
+                  "abs_tol": 0.011975175,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 6.748554913294798e-16,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": -1.99513e-15,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 173.0,
+                  "abs_tol": 25.95,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 2.4937533275990797,
+                  "abs_tol": 0.37406299913986196,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 64.99999999999994,
+                  "abs_tol": 9.749999999999991,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 0.0798345,
+                "expected": 0.0798345,
+                "diff": 0.0,
+                "abs_tol": 0.011975175,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 6.748554913294798e-16,
+                "expected": 6.748554913294798e-16,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": -1.99513e-15,
+                "expected": -1.99513e-15,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 173.0,
+                "expected": 173.0,
+                "diff": 0.0,
+                "abs_tol": 25.95,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 2.4937533275990797,
+                "expected": 2.4937533275990797,
+                "diff": 0.0,
+                "abs_tol": 0.37406299913986196,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 64.99999999999994,
+                "expected": 64.99999999999994,
+                "diff": 0.0,
+                "abs_tol": 9.749999999999991,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -1.1675e-13,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 173.0,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "00eb54b1f7f1fe28068e2622eadc2d6a05173b2b",
+              "signature_repeat": "00eb54b1f7f1fe28068e2622eadc2d6a05173b2b"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 4.856715346216664,
+              "mean_relative_psa_diff": 2.942239930906306,
+              "min_period_used_s": 0.05285179612138927,
+              "points_used": 79.0,
+              "base_dt": 0.005,
+              "half_dt": 0.0025,
+              "half_run_id": "run-596e4a592533"
+            },
+            "passed": true
+          },
+          {
+            "name": "parity04",
+            "run_id": "run-d6495c28e795",
+            "status": "ok",
+            "actual": {
+              "pga": 0.0303607,
+              "ru_max": 9.285320145757419e-18,
+              "ru_min": 0.0,
+              "delta_u_max": 1.30271e-14,
+              "sigma_v_eff_min": 192.10000000000002,
+              "transfer_abs_max": 9.171391354711485,
+              "transfer_peak_freq_hz": 112.5,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 108.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 0.0303607,
+                  "abs_tol": 0.004554105,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 9.285320145757419e-18,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": 1.30271e-14,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 192.10000000000002,
+                  "abs_tol": 28.815,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 9.171391354711485,
+                  "abs_tol": 1.3757087032067228,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 112.5,
+                  "abs_tol": 16.875,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 0.0303607,
+                "expected": 0.0303607,
+                "diff": 0.0,
+                "abs_tol": 0.004554105,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 9.285320145757419e-18,
+                "expected": 9.285320145757419e-18,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": 1.30271e-14,
+                "expected": 1.30271e-14,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 192.10000000000002,
+                "expected": 192.10000000000002,
+                "diff": 0.0,
+                "abs_tol": 28.815,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 9.171391354711485,
+                "expected": 9.171391354711485,
+                "diff": 0.0,
+                "abs_tol": 1.3757087032067228,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 112.5,
+                "expected": 112.5,
+                "diff": 0.0,
+                "abs_tol": 16.875,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -1.78371e-15,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 192.10000000000002,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "57351fc2f61478c6180ae9546117dcb364e30109",
+              "signature_repeat": "57351fc2f61478c6180ae9546117dcb364e30109"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 5.003837815230435,
+              "mean_relative_psa_diff": 3.109399444682687,
+              "min_period_used_s": 0.049999999999999996,
+              "points_used": 80.0,
+              "base_dt": 0.004,
+              "half_dt": 0.002,
+              "half_run_id": "run-1fbd04330239"
+            },
+            "passed": true
+          },
+          {
+            "name": "parity05",
+            "run_id": "run-60c2bc5aab19",
+            "status": "ok",
+            "actual": {
+              "pga": 2.45166,
+              "ru_max": 1.1187955729166668e-15,
+              "ru_min": 0.0,
+              "delta_u_max": 3.00846e-14,
+              "sigma_v_eff_min": 153.59999999999997,
+              "transfer_abs_max": 3.849960971402072,
+              "transfer_peak_freq_hz": 99.99999999999999,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 72.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 2.45166,
+                  "abs_tol": 0.367749,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 1.1187955729166668e-15,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": 3.00846e-14,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 153.59999999999997,
+                  "abs_tol": 23.039999999999996,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 3.849960971402072,
+                  "abs_tol": 0.5774941457103108,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 99.99999999999999,
+                  "abs_tol": 14.999999999999996,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 2.45166,
+                "expected": 2.45166,
+                "diff": 0.0,
+                "abs_tol": 0.367749,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 1.1187955729166668e-15,
+                "expected": 1.1187955729166668e-15,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": 3.00846e-14,
+                "expected": 3.00846e-14,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 153.59999999999997,
+                "expected": 153.59999999999997,
+                "diff": 0.0,
+                "abs_tol": 23.039999999999996,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 3.849960971402072,
+                "expected": 3.849960971402072,
+                "diff": 0.0,
+                "abs_tol": 0.5774941457103108,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 99.99999999999999,
+                "expected": 99.99999999999999,
+                "diff": 0.0,
+                "abs_tol": 14.999999999999996,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -1.71847e-13,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 153.59999999999997,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "f690fbcbc433fb974a6046b718df536dacbbdbf4",
+              "signature_repeat": "f690fbcbc433fb974a6046b718df536dacbbdbf4"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 5.019028416713861,
+              "mean_relative_psa_diff": 3.1224293460217467,
+              "min_period_used_s": 0.05285179612138927,
+              "points_used": 79.0,
+              "base_dt": 0.005,
+              "half_dt": 0.0025,
+              "half_run_id": "run-5e2b512eed55"
+            },
+            "passed": true
+          },
+          {
+            "name": "parity06",
+            "run_id": "run-718dd93a7670",
+            "status": "ok",
+            "actual": {
+              "pga": 0.0792006,
+              "ru_max": 7.855407750144592e-18,
+              "ru_min": 0.0,
+              "delta_u_max": 1.01825e-15,
+              "sigma_v_eff_min": 172.9,
+              "transfer_abs_max": 9.171530844920909,
+              "transfer_peak_freq_hz": 128.57142857142856,
+              "solver_warning_count": 0.0,
+              "solver_failed_converge_count": 0.0,
+              "solver_analyze_failed_count": 0.0,
+              "solver_divide_by_zero_count": 0.0,
+              "solver_dynamic_fallback_failed": 0.0,
+              "solver_pm4_initialize_count": 112.0
+            },
+            "expected": {
+              "checks": {
+                "pga": {
+                  "expected": 0.0792006,
+                  "abs_tol": 0.01188009,
+                  "rel_tol": 0.0
+                },
+                "ru_max": {
+                  "expected": 7.855407750144592e-18,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "delta_u_max": {
+                  "expected": 1.01825e-15,
+                  "abs_tol": 1e-08,
+                  "rel_tol": 0.0
+                },
+                "sigma_v_eff_min": {
+                  "expected": 172.9,
+                  "abs_tol": 25.935,
+                  "rel_tol": 0.0
+                },
+                "transfer_abs_max": {
+                  "expected": 9.171530844920909,
+                  "abs_tol": 1.3757296267381363,
+                  "rel_tol": 0.0
+                },
+                "transfer_peak_freq_hz": {
+                  "expected": 128.57142857142856,
+                  "abs_tol": 19.28571428571428,
+                  "rel_tol": 0.0
+                }
+              },
+              "constraints": {
+                "ru_min": 0.0,
+                "ru_max": 1.0,
+                "delta_u_min": -1000000.0,
+                "sigma_v_eff_min": -1000000.0,
+                "pga_min": 0.0,
+                "pga_max": 1000.0,
+                "solver_warning_max": 0.0,
+                "solver_failed_converge_max": 0.0,
+                "solver_analyze_failed_max": 0.0,
+                "solver_divide_by_zero_max": 0.0,
+                "solver_dynamic_fallback_failed_max": 0.0
+              },
+              "deterministic": true,
+              "dt_sensitivity": {
+                "threshold": 6.0
+              }
+            },
+            "checks_explicit": true,
+            "checks": {
+              "pga": {
+                "actual": 0.0792006,
+                "expected": 0.0792006,
+                "diff": 0.0,
+                "abs_tol": 0.01188009,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "ru_max": {
+                "actual": 7.855407750144592e-18,
+                "expected": 7.855407750144592e-18,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "delta_u_max": {
+                "actual": 1.01825e-15,
+                "expected": 1.01825e-15,
+                "diff": 0.0,
+                "abs_tol": 1e-08,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "sigma_v_eff_min": {
+                "actual": 172.9,
+                "expected": 172.9,
+                "diff": 0.0,
+                "abs_tol": 25.935,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_abs_max": {
+                "actual": 9.171530844920909,
+                "expected": 9.171530844920909,
+                "diff": 0.0,
+                "abs_tol": 1.3757296267381363,
+                "rel_tol": 0.0,
+                "passed": true
+              },
+              "transfer_peak_freq_hz": {
+                "actual": 128.57142857142856,
+                "expected": 128.57142857142856,
+                "diff": 0.0,
+                "abs_tol": 19.28571428571428,
+                "rel_tol": 0.0,
+                "passed": true
+              }
+            },
+            "constraints": {
+              "ru_min_limit": 0.0,
+              "ru_max_limit": 1.0,
+              "ru_bounds_ok": true,
+              "delta_u_min_limit": -1000000.0,
+              "delta_u_min_actual": -1.3582e-15,
+              "delta_u_min_ok": true,
+              "sigma_v_eff_min_limit": -1000000.0,
+              "sigma_v_eff_min_actual": 172.9,
+              "sigma_v_eff_min_ok": true,
+              "pga_min_limit": 0.0,
+              "pga_max_limit": 1000.0,
+              "pga_bounds_ok": true,
+              "ru_monotonic_requested": false,
+              "ru_monotonic_ok": true,
+              "solver_warning_max": 0.0,
+              "solver_warning_actual": 0.0,
+              "solver_warning_ok": true,
+              "solver_failed_converge_max": 0.0,
+              "solver_failed_converge_actual": 0.0,
+              "solver_failed_converge_ok": true,
+              "solver_analyze_failed_max": 0.0,
+              "solver_analyze_failed_actual": 0.0,
+              "solver_analyze_failed_ok": true,
+              "solver_divide_by_zero_max": 0.0,
+              "solver_divide_by_zero_actual": 0.0,
+              "solver_divide_by_zero_ok": true,
+              "solver_dynamic_fallback_failed_max": 0.0,
+              "solver_dynamic_fallback_failed_actual": 0.0,
+              "solver_dynamic_fallback_failed_ok": true
+            },
+            "deterministic": {
+              "enabled": true,
+              "ok": true,
+              "signature": "620ef9f21a7c2f26a6f2cc479ffedb22cf1ba251",
+              "signature_repeat": "620ef9f21a7c2f26a6f2cc479ffedb22cf1ba251"
+            },
+            "dt_sensitivity": {
+              "enabled": true,
+              "passed": true,
+              "threshold": 6.0,
+              "max_relative_psa_diff": 5.0027834565067835,
+              "mean_relative_psa_diff": 3.146333975227105,
+              "min_period_used_s": 0.049999999999999996,
+              "points_used": 80.0,
+              "base_dt": 0.0035,
+              "half_dt": 0.00175,
+              "half_run_id": "run-1b013a5ec27a"
+            },
+            "passed": true
+          }
+        ],
+        "all_passed": true,
+        "backend_probe": {
+          "requested": "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.exe",
+          "extra_args": [],
+          "available": true,
+          "resolved": "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.exe",
+          "version": "OpenSees >",
+          "command": [
+            "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.exe",
+            "-version"
+          ],
+          "binary_sha256": "5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d",
+          "requirements": {
+            "require_version_regex": "",
+            "require_binary_sha256": "",
+            "ok": true,
+            "errors": []
+          }
+        },
+        "skipped": 0,
+        "ran": 6,
+        "total_cases": 6,
+        "skipped_backend": 0,
+        "backend_ready": true,
+        "backend_fingerprint_ok": true,
+        "execution_coverage": 1.0,
+        "checks_explicit_runs": 6,
+        "backend_missing_cases": [],
+        "policy": {
+          "fail_on_skip": false,
+          "require_runs": 0,
+          "require_opensees": true,
+          "min_execution_coverage": 1.0,
+          "require_explicit_checks": true,
+          "require_backend_version_regex": "",
+          "require_backend_sha256": ""
+        }
+      }
+    },
+    "deepsoil_compare": {
+      "label": "DEEPSOIL compare batch",
+      "path": null,
+      "status": "missing",
+      "note": "No DEEPSOIL compare batch artifact found",
+      "payload": null
+    },
+    "confidence": {
+      "label": "Scientific confidence matrix",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\SCIENTIFIC_CONFIDENCE_MATRIX.md",
+      "status": "done",
+      "note": "Repository scientific confidence matrix",
+      "payload": null
+    },
+    "pm4": {
+      "label": "PM4 guide",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\PM4_CALIBRATION_VALIDATION.md",
+      "status": "done",
+      "note": "PM4 calibration validation notes",
+      "payload": null
+    },
+    "release": {
+      "label": "Release checklist",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\RELEASE_SIGNOFF_CHECKLIST.md",
+      "status": "done",
+      "note": "Release gate checklist",
+      "payload": null
+    },
+    "darendeli": {
+      "label": "Darendeli calibration",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\darendeli_smoke\\run-b5eb901d41b6",
+      "status": "done",
+      "note": "Calibration config plus local run evidence at run-b5eb901d41b6",
+      "payload": {
+        "run_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\darendeli_smoke\\run-b5eb901d41b6"
+      }
+    },
+    "ui": {
+      "label": "UI screenshots",
+      "path": null,
+      "status": "missing",
+      "note": "Optional screenshot source folder for report assets",
+      "payload": {
+        "png_count": 0
+      }
+    }
+  },
+  "status_matrix": [
+    {
+      "component": "Native linear solver path",
+      "status": "done",
+      "evidence": "Linear example pack run plus local campaign summary",
+      "notes": "Smoke pack and local campaign outputs are used as evidence."
+    },
+    {
+      "component": "Native equivalent-linear solver path",
+      "status": "done",
+      "evidence": "EQL example pack run plus local campaign summary",
+      "notes": "EQL behavior is evidenced by the reference pack and local campaign outputs."
+    },
+    {
+      "component": "Native nonlinear MKZ/GQH path",
+      "status": "done",
+      "evidence": "Nonlinear example pack run plus core-hyst campaign",
+      "notes": "This is native total-stress nonlinear behavior, not native effective-stress FE."
+    },
+    {
+      "component": "OpenSees effective-stress adapter",
+      "status": "done",
+      "evidence": "Effective-stress reference run in the example pack",
+      "notes": "The adapter path is proven by local run artifacts; native effective-stress solver is still absent."
+    },
+    {
+      "component": "Darendeli calibration workflow",
+      "status": "done",
+      "evidence": "Calibration config plus local run evidence at run-b5eb901d41b6",
+      "notes": "Calibration inputs and a local run exist; published-reference calibration closure is still pending."
+    },
+    {
+      "component": "DEEPSOIL parity tooling",
+      "status": "done",
+      "evidence": "Parity benchmark JSON and DEEPSOIL compare artifacts",
+      "notes": "Local parity benchmark currently reports ran=6, skipped=0; full dedicated-runner parity is still pending."
+    },
+    {
+      "component": "React/FastAPI DEEPSOIL-like UI",
+      "status": "partial",
+      "evidence": "UI source, wizard/results/parity panels, optional screenshot source folder",
+      "notes": "Workflow parity exists, but full DEEPSOIL UI parity is not claimed."
+    },
+    {
+      "component": "Release signoff and scientific confidence",
+      "status": "done",
+      "evidence": "Scientific confidence matrix plus release checklist",
+      "notes": "Scientific confidence exists as a repo artifact; it is not equivalent to full external publication validation."
+    }
+  ],
+  "generated_assets": [
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\assets\\linear_overview.png",
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\assets\\nonlinear_overview.png",
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\assets\\effective_stress_overview.png",
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\assets\\darendeli_overview.png"
+  ],
+  "bundle_json_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\validation_bundle.json",
+  "bundle_md_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\validation_report.md",
+  "bundle_pdf_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\reports\\validation\\latest\\validation_report.pdf"
+}

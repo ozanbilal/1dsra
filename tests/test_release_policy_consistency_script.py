@@ -24,6 +24,9 @@ def _write_policy(
     fail_on_skip: bool = True,
     require_explicit_checks: bool = True,
     require_opensees: bool = True,
+    require_deepsoil_compare: bool = False,
+    require_deepsoil_profile: bool = False,
+    require_deepsoil_hysteresis: bool = False,
 ) -> Path:
     path = repo_root / "benchmarks" / "policies" / "release_signoff.yml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,6 +41,12 @@ def _write_policy(
             f"fail_on_skip: {'true' if fail_on_skip else 'false'}",
             f"require_explicit_checks: {'true' if require_explicit_checks else 'false'}",
             f"require_opensees: {'true' if require_opensees else 'false'}",
+            f"require_deepsoil_compare: {'true' if require_deepsoil_compare else 'false'}",
+            f"require_deepsoil_profile: {'true' if require_deepsoil_profile else 'false'}",
+            (
+                "require_deepsoil_hysteresis: "
+                f"{'true' if require_deepsoil_hysteresis else 'false'}"
+            ),
             "",
         ]
     )
@@ -90,3 +99,22 @@ def test_release_policy_consistency_script_fails_on_require_runs_mismatch(tmp_pa
     result = _run(tmp_path, policy_path)
     assert result.returncode != 0
     assert "require_runs mismatch" in (result.stderr + result.stdout)
+
+
+def test_release_policy_consistency_script_requires_deepsoil_compare_for_profile_flags(
+    tmp_path: Path,
+) -> None:
+    suites = list(CORE_RELEASE_SIGNOFF_SUITES)
+    for suite in suites:
+        _write_case_list(tmp_path, suite, 1)
+    policy_path = _write_policy(
+        tmp_path,
+        suites=suites,
+        require_runs=len(suites),
+        require_deepsoil_compare=False,
+        require_deepsoil_profile=True,
+    )
+
+    result = _run(tmp_path, policy_path)
+    assert result.returncode != 0
+    assert "require_deepsoil_compare must be true" in (result.stderr + result.stdout)

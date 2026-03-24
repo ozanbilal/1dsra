@@ -10,6 +10,10 @@ Current package version is `0.1.0`; the v1.0 roadmap focuses on effective-stress
 - Native linear SH backend (lumped shear-beam, Newmark integration) for immediate baseline analysis
 - Native equivalent-linear backend (`eql`) with iterative MKZ/GQH strain-compatible update loop
 - Native nonlinear MKZ/GQH time-domain backend with stateful Masing/non-Masing branch updates
+- Native `rigid` and `elastic_halfspace` boundary handling for linear/nonlinear shear-beam backends
+- Darendeli-style calibration path for native MKZ/GQH backends (config-driven parameter derivation)
+- Configurable native nonlinear accuracy control via `analysis.nonlinear_substeps`
+- DEEPSOIL side-by-side comparison utility for surface acceleration + PSA parity checks
 - HDF5 + SQLite result stores
 - HTML/PDF reports including effective-stress summary metrics (`ru_max`, `delta_u_max`, `sigma_v_eff_min`)
 - Benchmark and regression workflow (multi-case metrics, ru bounds, deterministic and dt-sensitivity checks)
@@ -32,6 +36,8 @@ StrataWave init --template pm4silt-calibration --out examples/configs/pm4silt_ca
 StrataWave init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
 StrataWave init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
 StrataWave init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
+StrataWave init --template mkz-gqh-darendeli --out examples/configs/mkz_gqh_darendeli.yml
+StrataWave calibrate-darendeli --material gqh --out out/darendeli_gqh --plasticity-index 12 --ocr 1.2 --mean-effective-stress-kpa 120 --vs-m-s 220 --unit-weight-kN-m3 18.5
 StrataWave quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
 StrataWave validate --config examples/configs/effective_stress.yml
 StrataWave validate --config examples/configs/effective_stress.yml --check-backend
@@ -42,7 +48,11 @@ StrataWave run --config examples/configs/effective_stress_strict_plus.yml --moti
 StrataWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
 StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
 StrataWave run --config examples/configs/mkz_gqh_nonlinear.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_nl --backend nonlinear
+StrataWave run --config examples/configs/mkz_gqh_darendeli.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_darendeli --backend nonlinear
 StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
+StrataWave compare-deepsoil --run out/mkz_gqh_darendeli/run-xxxxxxxxxxxx --surface-csv path/to/deepsoil_surface.csv --psa-csv path/to/deepsoil_psa.csv --profile-csv path/to/deepsoil_profile.csv --hysteresis-csv path/to/deepsoil_hysteresis.csv --hysteresis-layer 0 --out out/deepsoil_compare
+StrataWave compare-deepsoil-batch --manifest path/to/deepsoil_manifest.json --out out/deepsoil_compare_batch
+StrataWave summarize --benchmark-report out/benchmarks_hyst/benchmark_core-hyst.json --deepsoil-compare-report out/deepsoil_compare_batch/deepsoil_compare_batch.json --out out/hyst_summary
 StrataWave dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
 StrataWave benchmark --suite core-es --out out/benchmarks
 StrataWave benchmark --suite core-hyst --out out/benchmarks_hyst
@@ -76,7 +86,7 @@ StrataWave ui --host 127.0.0.1 --port 8501
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
 UI also includes a campaign panel (`core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`) with inline benchmark+verify summaries.
-UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, `mkz-gqh-nonlinear`) for quick switching.
+UI sidebar includes config presets (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, `mkz-gqh-nonlinear`, `mkz-gqh-darendeli`) for quick switching.
 UI run panel includes backend mode selection (`config/auto/opensees/mock/linear/eql/nonlinear`) and optional run-level OpenSees executable override.
 UI includes a `Render Tcl` action with inline `model.tcl` preview and direct download for `model.tcl` + `motion_processed.csv`.
 UI includes MKZ/GQH curve inspector plots (`G/Gmax` and damping proxy vs strain) for quick parameter sanity checks.
@@ -105,6 +115,7 @@ DEEPSOIL-style 5-step wizard is available:
 `Soil Profile` step now supports DEEPSOIL-style bulk editing:
 - `Table` mode for fast multi-layer entry and model-aware parameter editing (`pm4sand`, `pm4silt`, `mkz`, `gqh`, `elastic`)
 - `Cards` mode for per-layer detailed edits
+- `Layer Properties` studio: focused layer selector, curve-mode status, Darendeli calibration inputs for MKZ/GQH, fitted-vs-target `G/Gmax` and damping plots, plus single-element loop preview
 - Layer utilities: `duplicate`, `up/down reorder`, `CSV import/export`
 - Starter builders: `5-Layer Starter` quick button + preset loader (`five-main-layers`, `soft-over-stiff`)
 - `Automatic Profile Builder`: define main layers, then auto-slice with:
@@ -169,6 +180,8 @@ Included API endpoints:
 - `POST /api/motion/process`
 - `POST /api/run` (run analysis from config + motion paths; response includes normalized `output_root`)
 - `GET /api/parity/latest?output_root=<path>`
+- `GET /api/parity/deepsoil/latest?output_root=<path>`
+- `GET /api/parity/deepsoil/release-manifest`
 - `GET /api/science/confidence`
 - `GET /api/release/signoff/latest?output_root=<path>`
 
@@ -193,6 +206,60 @@ When `analysis.solver_backend: opensees` is selected, PM4 layers must include
 their required `material_params` keys (PM4Sand: `Dr/G0/hpo`, PM4Silt: `Su/Su_Rat/G_o/h_po`).
 MKZ/GQH are intentionally rejected for `opensees` backend in v1 pipeline.
 Use native `eql` / `nonlinear` backends for MKZ/GQH runs.
+Darendeli calibration can now be declared directly on MKZ/GQH layers; the loader derives
+native `material_params` automatically for `eql` / `nonlinear` runs.
+Native nonlinear runs also accept `analysis.nonlinear_substeps` for tighter constitutive integration
+when running parity studies or difficult strong-motion cases.
+For DEEPSOIL side-by-side review, `compare-deepsoil` consumes a StrataWave run folder plus
+DEEPSOIL-exported surface acceleration CSV and optional PSA/profile/hysteresis CSVs, then writes
+`deepsoil_compare.json` + `deepsoil_compare.md` with PGA, correlation, RMSE, PSA mismatch,
+layer-profile mismatch, and hysteresis-loop mismatch metrics.
+For campaign-level review, `compare-deepsoil-batch` consumes a JSON manifest of cases and
+writes `deepsoil_compare_batch.json` + `deepsoil_compare_batch.md` with pass/fail parity checks.
+You can start from `examples/parity/deepsoil_compare_manifest.sample.json`
+and replace the placeholder run/reference paths with your own exported cases.
+If you already have many `run-*` folders, use the external helper
+`scripts/scaffold_deepsoil_compare_manifest.py` to generate a starter manifest automatically.
+The helper is documented in `examples/parity/README.md` and is intended for evidence/parity
+prep work rather than product runtime.
+`summarize` also accepts `--deepsoil-compare-report` so benchmark/verify/deepsoil parity can be merged into one campaign summary.
+For a shareable external handoff focused only on the local DEEPSOIL example campaign,
+run `python scripts/build_deepsoil_example_parity_report.py`.
+It writes a standalone `JSON + Markdown + PDF` bundle under
+`output/pdf/validation/deepsoil_examples/report/`.
+That report now includes both rigid-base and native elastic-halfspace native parity iterations
+for the DEEPSOIL `Example_5A` family.
+Current best local parity case is still the rigid-base reduced-`dt` nonlinear run; the native
+elastic-halfspace iterations improved substantially after incident-wave forcing was added, but do
+not yet outperform the best rigid reduced-`dt` case at PSA level.
+For release signoff, keep the real manifest at
+`benchmarks/policies/release_signoff_deepsoil_manifest.json`; a starter template lives at
+`benchmarks/policies/release_signoff_deepsoil_manifest.sample.json`.
+Strict signoff policy can now optionally require:
+- a DEEPSOIL batch parity report to be present
+- profile parity coverage for every case
+- hysteresis parity coverage for every case
+These switches live in `benchmarks/policies/release_signoff.yml` as
+`require_deepsoil_compare`, `require_deepsoil_profile`, and `require_deepsoil_hysteresis`.
+
+Example:
+```yaml
+profile:
+  layers:
+    - name: Clay-1
+      thickness_m: 6.0
+      unit_weight_kN_m3: 18.2
+      vs_m_s: 190.0
+      material: mkz
+      calibration:
+        source: darendeli
+        plasticity_index: 20.0
+        ocr: 1.5
+        mean_effective_stress_kpa: 80.0
+        frequency_hz: 1.0
+        num_cycles: 10.0
+```
+If `gmax` is not supplied explicitly, StrataWave seeds it from `Vs` and unit weight.
 For calibration-ready experiments, you can pass extra positional PM4 arguments with:
 - `layer.material_optional_args: [ ... ]`
 These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line in order.
@@ -258,7 +325,12 @@ Apache-2.0
 - Tag-based release workflow: `.github/workflows/release.yml` (push `v*` tags)
 - CI workflow enforces matrix quality gates (`ruff`, `mypy`, `pytest`) and native suite campaign gates (`core-es`, `core-hyst`, `core-linear`, `core-eql`).
 - Dedicated OpenSees runner gate is mandatory in `release.yml` and manual parity workflow, not on every `push` CI run.
+- Release workflow now runs `scripts/run_release_deepsoil_compare.py` before strict summary; it skips cleanly when no release manifest is configured and policy does not require DEEPSOIL parity.
 - Release workflow enforces strict signoff (`1dsra summarize --strict-signoff`) and machine checks (`scripts/check_release_signoff.py`).
+- Strict signoff can now elevate DEEPSOIL parity to a release blocker through `benchmarks/policies/release_signoff.yml`.
+- React Web Studio now exposes latest DEEPSOIL batch parity as a case-level `Deepsoil Parity` panel under the results quality rail.
+- That panel now also surfaces release-manifest configuration state, starter template path, and policy gate flags.
+- The same panel now includes an editable `Release Manifest Studio` table for release DEEPSOIL parity cases and tolerance defaults.
 - Before tagging a release, set `opensees-parity` fingerprint in `SCIENTIFIC_CONFIDENCE_MATRIX.md` to the exact 64-hex sha256 observed on dedicated signoff run.
 - Version bump helper: `python scripts/release_bump.py --version 0.1.0`
 - Release tag guard: `python scripts/check_release_tag.py --tag v0.1.0`
@@ -342,3 +414,26 @@ Use `verify` to validate post-run integrity:
 Use `verify-batch` for folder-level checks over multiple run directories.
 Use `summarize` to aggregate benchmark + verify outputs into campaign-level JSON/Markdown artifacts.
 
+## Example Packs
+
+The repository now includes a ready-to-run DEEPSOIL-equivalent example pack:
+- `examples/deepsoil_equivalent/linear_reference.yml`
+- `examples/deepsoil_equivalent/eql_reference.yml`
+- `examples/deepsoil_equivalent/nonlinear_reference.yml`
+- `examples/deepsoil_equivalent/effective_stress_reference.yml`
+
+The pack was smoke-tested on 2026-03-19 with the following commands:
+```bash
+python -m dsra1d.cli.main run --config examples/deepsoil_equivalent/linear_reference.yml --motion examples/motions/sample_motion.csv --out examples/output/deepsoil_equivalent/linear_smoke
+python -m dsra1d.cli.main run --config examples/deepsoil_equivalent/eql_reference.yml --motion examples/motions/sample_motion.csv --out examples/output/deepsoil_equivalent/eql_smoke
+python -m dsra1d.cli.main run --config examples/deepsoil_equivalent/nonlinear_reference.yml --motion examples/motions/sample_motion.csv --out examples/output/deepsoil_equivalent/nonlinear_smoke
+python -m dsra1d.cli.main run --config examples/deepsoil_equivalent/effective_stress_reference.yml --motion examples/motions/sample_motion.csv --out examples/output/deepsoil_equivalent/effective_smoke
+```
+This pack is intended for validation and demonstration runs, not as a product feature.
+## Validation Pack
+External technical validation artifacts are generated under `output/pdf/validation/`.
+The focused DEEPSOIL example parity report currently identifies
+`nonlinear_5a_rigid_dt0025_tuned` as the best native Example 5A case with
+`PSA NRMSE ~= 0.1939`, which is still classified as partial parity rather than full equivalence.
+The pack includes a Markdown manifest, a JSON manifest, and a PDF report built from
+existing smoke, benchmark, parity, and confidence evidence in the repository.

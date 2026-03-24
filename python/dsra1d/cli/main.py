@@ -17,7 +17,12 @@ import yaml
 from rich import print
 
 from dsra1d.benchmark import CORE_RELEASE_SIGNOFF_SUITES, run_benchmark_suite
+from dsra1d.calibration import (
+    calibrate_gqh_from_darendeli,
+    calibrate_mkz_from_darendeli,
+)
 from dsra1d.config import ProjectConfig, load_project_config, write_config_template
+from dsra1d.deepsoil_compare import compare_deepsoil_manifest, compare_deepsoil_run
 from dsra1d.interop.opensees import (
     probe_opensees_executable,
     render_tcl,
@@ -55,6 +60,9 @@ def _load_release_signoff_policy() -> dict[str, object]:
         "require_explicit_checks": True,
         "require_opensees": True,
         "opensees_fingerprint": "",
+        "require_deepsoil_compare": False,
+        "require_deepsoil_profile": False,
+        "require_deepsoil_hysteresis": False,
     }
     policy_path = _release_signoff_policy_path()
     if not policy_path.exists():
@@ -78,6 +86,9 @@ def _load_release_signoff_policy() -> dict[str, object]:
         "require_explicit_checks",
         "require_opensees",
         "opensees_fingerprint",
+        "require_deepsoil_compare",
+        "require_deepsoil_profile",
+        "require_deepsoil_hysteresis",
     ):
         if key in raw:
             merged[key] = raw[key]
@@ -119,6 +130,33 @@ def _as_float(value: object, fallback: float) -> float:
 
 def _as_mapping(value: object) -> dict[str, object]:
     return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _has_nonempty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _count_deepsoil_case_artifacts(
+    deepsoil_compare_report: dict[str, object] | None,
+) -> tuple[int, int, int, int]:
+    if not isinstance(deepsoil_compare_report, dict):
+        return 0, 0, 0, 0
+
+    cases_raw = deepsoil_compare_report.get("cases")
+    cases = (
+        [item for item in cases_raw if isinstance(item, dict)]
+        if isinstance(cases_raw, list)
+        else []
+    )
+    total_cases = _as_int(deepsoil_compare_report.get("total_cases", len(cases)), len(cases))
+    profile_cases = 0
+    hysteresis_cases = 0
+    for case in cases:
+        if _has_nonempty_string(case.get("profile_csv")):
+            profile_cases += 1
+        if _has_nonempty_string(case.get("hysteresis_csv")):
+            hysteresis_cases += 1
+    return total_cases, len(cases), profile_cases, hysteresis_cases
 
 
 def _resolve_release_signoff_flags(
@@ -271,6 +309,32 @@ def _resolve_web_port(host: str, requested_port: int, *, scan_limit: int = 20) -
         f"Requested={requested_port}, scanned=+{max_scan}."
     )
     raise typer.Exit(code=6)
+
+
+def _write_calibration_curve_csv(
+    path: Path,
+    *,
+    strain: np.ndarray,
+    target_modulus_reduction: np.ndarray,
+    target_damping_ratio: np.ndarray,
+    fitted_modulus_reduction: np.ndarray,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write("strain,target_g_reduction,target_damping_ratio,fitted_g_reduction\n")
+        n = min(
+            int(strain.size),
+            int(target_modulus_reduction.size),
+            int(target_damping_ratio.size),
+            int(fitted_modulus_reduction.size),
+        )
+        for i in range(n):
+            f.write(
+                f"{float(strain[i]):.10e},"
+                f"{float(target_modulus_reduction[i]):.10e},"
+                f"{float(target_damping_ratio[i]):.10e},"
+                f"{float(fitted_modulus_reduction[i]):.10e}\n"
+            )
 
 
 def _enforce_benchmark_strict_policy(
@@ -656,6 +720,107 @@ def init_config(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     print(f"[green]Template written:[/green] {path}")
+
+
+@app.command("calibrate-darendeli")
+def calibrate_darendeli(
+    material: Literal["mkz", "gqh"] = typer.Option(..., "--material"),
+    out: Path = typer.Option(..., "--out"),
+    plasticity_index: float = typer.Option(0.0, "--plasticity-index", min=0.0),
+    ocr: float = typer.Option(1.0, "--ocr", min=1.0e-9),
+    mean_effective_stress_kpa: float = typer.Option(
+        ...,
+        "--mean-effective-stress-kpa",
+        min=1.0e-9,
+    ),
+    frequency_hz: float = typer.Option(1.0, "--frequency-hz", min=1.0e-9),
+    num_cycles: float = typer.Option(10.0, "--num-cycles", min=1.0e-9),
+    gmax: float | None = typer.Option(None, "--gmax", min=1.0e-9),
+    vs_m_s: float | None = typer.Option(None, "--vs-m-s", min=1.0e-9),
+    unit_weight_kn_m3: float | None = typer.Option(
+        None,
+        "--unit-weight-kN-m3",
+        min=1.0e-9,
+    ),
+    strain_min: float = typer.Option(1.0e-6, "--strain-min", min=1.0e-12),
+    strain_max: float = typer.Option(1.0e-1, "--strain-max", min=1.0e-12),
+    n_points: int = typer.Option(60, "--n-points", min=12),
+    reload_factor: float | None = typer.Option(None, "--reload-factor", min=1.0e-9),
+) -> None:
+    if gmax is not None:
+        gmax_value = float(gmax)
+    else:
+        if vs_m_s is None or unit_weight_kn_m3 is None:
+            raise typer.BadParameter(
+                "Provide --gmax or both --vs-m-s and --unit-weight-kN-m3."
+            )
+        gmax_value = (float(unit_weight_kn_m3) / 9.81) * float(vs_m_s) * float(vs_m_s)
+
+    if reload_factor is not None:
+        reload = float(reload_factor)
+    else:
+        reload = 2.0 if material == "mkz" else 1.6
+    if material == "mkz":
+        result = calibrate_mkz_from_darendeli(
+            gmax=gmax_value,
+            plasticity_index=plasticity_index,
+            ocr=ocr,
+            mean_effective_stress_kpa=mean_effective_stress_kpa,
+            frequency_hz=frequency_hz,
+            num_cycles=num_cycles,
+            strain_min=strain_min,
+            strain_max=strain_max,
+            n_points=n_points,
+            reload_factor=reload,
+        )
+    else:
+        result = calibrate_gqh_from_darendeli(
+            gmax=gmax_value,
+            plasticity_index=plasticity_index,
+            ocr=ocr,
+            mean_effective_stress_kpa=mean_effective_stress_kpa,
+            frequency_hz=frequency_hz,
+            num_cycles=num_cycles,
+            strain_min=strain_min,
+            strain_max=strain_max,
+            n_points=n_points,
+            reload_factor=reload,
+        )
+
+    out.mkdir(parents=True, exist_ok=True)
+    params_path = out / f"darendeli_{material}_params.json"
+    curves_path = out / f"darendeli_{material}_curves.csv"
+    payload = {
+        "material": result.material,
+        "source": result.source,
+        "fit_rmse": result.fit_rmse,
+        "material_params": result.material_params,
+        "inputs": {
+            "plasticity_index": plasticity_index,
+            "ocr": ocr,
+            "mean_effective_stress_kpa": mean_effective_stress_kpa,
+            "frequency_hz": frequency_hz,
+            "num_cycles": num_cycles,
+            "gmax": gmax_value,
+            "strain_min": strain_min,
+            "strain_max": strain_max,
+            "n_points": n_points,
+            "reload_factor": reload,
+        },
+    }
+    params_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _write_calibration_curve_csv(
+        curves_path,
+        strain=result.strain,
+        target_modulus_reduction=result.target_modulus_reduction,
+        target_damping_ratio=result.target_damping_ratio,
+        fitted_modulus_reduction=result.fitted_modulus_reduction,
+    )
+
+    print(f"[green]Darendeli calibration exported:[/green] {params_path}")
+    print(f"[green]Curve CSV exported:[/green] {curves_path}")
+    print(f"[cyan]Material:[/cyan] {result.material}")
+    print(f"[cyan]fit_rmse:[/cyan] {result.fit_rmse:.6f}")
 
 
 @app.command("validate")
@@ -1071,12 +1236,14 @@ def campaign(
 def summarize(
     benchmark_report: Path | None = typer.Option(None, "--benchmark-report"),
     verify_batch_report: Path | None = typer.Option(None, "--verify-batch-report"),
+    deepsoil_compare_report: Path | None = typer.Option(None, "--deepsoil-compare-report"),
     input: Path | None = typer.Option(None, "--input"),
     out: Path | None = typer.Option(None, "--out"),
     strict_signoff: bool = typer.Option(False, "--strict-signoff"),
 ) -> None:
     benchmark_path = benchmark_report
     verify_path = verify_batch_report
+    deepsoil_compare_path = deepsoil_compare_report
     if input is not None:
         if not input.exists() or not input.is_dir():
             raise typer.BadParameter(f"--input must be an existing directory: {input}")
@@ -1095,6 +1262,10 @@ def summarize(
             cand_verify = input / "verify_batch_report.json"
             if cand_verify.exists():
                 verify_path = cand_verify
+        if deepsoil_compare_path is None:
+            cand_deepsoil = input / "deepsoil_compare_batch.json"
+            if cand_deepsoil.exists():
+                deepsoil_compare_path = cand_deepsoil
 
     if benchmark_path is None:
         raise typer.BadParameter(
@@ -1103,7 +1274,12 @@ def summarize(
 
     benchmark_data = _load_json_mapping(benchmark_path)
     verify_data = _load_json_mapping(verify_path) if verify_path is not None else None
-    summary = summarize_campaign(benchmark_data, verify_data)
+    deepsoil_compare_data = (
+        _load_json_mapping(deepsoil_compare_path)
+        if deepsoil_compare_path is not None
+        else None
+    )
+    summary = summarize_campaign(benchmark_data, verify_data, deepsoil_compare_data)
     out_dir = out or input or Path("out/summary")
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "campaign_summary.json"
@@ -1118,6 +1294,7 @@ def summarize(
         campaign_policy_obj = _as_mapping(policy_obj.get("campaign"))
         bench_policy_obj = _as_mapping(policy_obj.get("benchmark"))
         verify_policy_obj = _as_mapping(policy_obj.get("verify_batch"))
+        deepsoil_policy_obj = _as_mapping(policy_obj.get("deepsoil_compare"))
         report_probe = _as_mapping(benchmark_data.get("backend_probe"))
         report_probe_sha = str(report_probe.get("binary_sha256", "")).strip().lower()
         report_probe_assumed = bool(report_probe.get("assumed_available", False))
@@ -1135,7 +1312,20 @@ def summarize(
         policy_min_cov = _as_float(policy.get("min_execution_coverage", 1.0), 1.0)
         policy_fail_on_skip = bool(policy.get("fail_on_skip", True))
         policy_require_explicit = bool(policy.get("require_explicit_checks", True))
+        policy_require_deepsoil = bool(policy.get("require_deepsoil_compare", False))
+        policy_require_deepsoil_profile = bool(policy.get("require_deepsoil_profile", False))
+        policy_require_deepsoil_hysteresis = bool(
+            policy.get("require_deepsoil_hysteresis", False)
+        )
         policy_path = str(policy.get("policy_path", _release_signoff_policy_path()))
+        (
+            deepsoil_total_cases,
+            deepsoil_manifest_cases,
+            deepsoil_profile_cases,
+            deepsoil_hysteresis_cases,
+        ) = _count_deepsoil_case_artifacts(deepsoil_compare_data)
+        deepsoil_compare_present = deepsoil_compare_data is not None and deepsoil_total_cases > 0
+        deepsoil_compare_passed = bool(deepsoil_policy_obj.get("passed", False))
 
         conditions = {
             "suite_release_signoff": suite_name == "release-signoff",
@@ -1148,6 +1338,20 @@ def summarize(
             "backend_fingerprint_ok": backend_fingerprint_ok,
             "fingerprint_match": (not policy_sha) or (report_probe_sha == policy_sha),
             "backend_probe_not_assumed": not report_probe_assumed,
+            "deepsoil_compare_present": (not policy_require_deepsoil) or deepsoil_compare_present,
+            "deepsoil_compare_passed": (not policy_require_deepsoil) or deepsoil_compare_passed,
+            "deepsoil_profile_required_ok": (not policy_require_deepsoil_profile)
+            or (
+                deepsoil_compare_present
+                and deepsoil_manifest_cases > 0
+                and deepsoil_profile_cases >= deepsoil_manifest_cases
+            ),
+            "deepsoil_hysteresis_required_ok": (not policy_require_deepsoil_hysteresis)
+            or (
+                deepsoil_compare_present
+                and deepsoil_manifest_cases > 0
+                and deepsoil_hysteresis_cases >= deepsoil_manifest_cases
+            ),
         }
         signoff_passed = all(bool(v) for v in conditions.values())
         summary["signoff"] = {
@@ -1159,6 +1363,9 @@ def summarize(
                 "fail_on_skip": policy_fail_on_skip,
                 "require_explicit_checks": policy_require_explicit,
                 "opensees_fingerprint": policy_sha,
+                "require_deepsoil_compare": policy_require_deepsoil,
+                "require_deepsoil_profile": policy_require_deepsoil_profile,
+                "require_deepsoil_hysteresis": policy_require_deepsoil_hysteresis,
             },
             "observed": {
                 "ran": ran,
@@ -1166,6 +1373,10 @@ def summarize(
                 "execution_coverage": coverage,
                 "backend_probe_sha256": report_probe_sha,
                 "backend_probe_assumed_available": report_probe_assumed,
+                "deepsoil_compare_total_cases": deepsoil_total_cases,
+                "deepsoil_manifest_cases": deepsoil_manifest_cases,
+                "deepsoil_profile_cases": deepsoil_profile_cases,
+                "deepsoil_hysteresis_cases": deepsoil_hysteresis_cases,
                 "benchmark_require_backend_sha256": str(
                     bench_policy_obj.get("require_backend_sha256", "")
                 ).strip().lower(),
@@ -1250,6 +1461,65 @@ def report(
     print("[green]Report files:[/green]")
     for p in written:
         print(f"- {p}")
+
+
+@app.command("compare-deepsoil")
+def compare_deepsoil(
+    run_dir: Path = typer.Option(..., "--run"),
+    surface_csv: Path = typer.Option(..., "--surface-csv"),
+    out: Path | None = typer.Option(None, "--out"),
+    psa_csv: Path | None = typer.Option(None, "--psa-csv"),
+    profile_csv: Path | None = typer.Option(None, "--profile-csv"),
+    hysteresis_csv: Path | None = typer.Option(None, "--hysteresis-csv"),
+    hysteresis_layer: int = typer.Option(0, "--hysteresis-layer"),
+    surface_dt_override: float | None = typer.Option(None, "--surface-dt-override"),
+    damping: float = typer.Option(0.05, "--damping"),
+) -> None:
+    out_dir = out or (run_dir / "deepsoil_compare")
+    result = compare_deepsoil_run(
+        run_dir,
+        surface_csv=surface_csv,
+        psa_csv=psa_csv,
+        profile_csv=profile_csv,
+        hysteresis_csv=hysteresis_csv,
+        hysteresis_layer=hysteresis_layer,
+        out_dir=out_dir,
+        surface_dt_override=surface_dt_override,
+        damping=damping,
+    )
+    print(f"[green]DEEPSOIL comparison ready:[/green] {result.run_id}")
+    print(
+        "PGA ratio="
+        f"{result.pga_ratio:.4f}, "
+        f"surface_corr={result.surface_corrcoef:.4f}, "
+        f"PSA_NRMSE={result.psa_nrmse:.4f}"
+    )
+    if result.warnings:
+        print("[yellow]Warnings:[/yellow]")
+        for warning in result.warnings:
+            print(f"- {warning}")
+    if result.artifacts is not None:
+        print(f"[cyan]JSON:[/cyan] {result.artifacts.json_path}")
+        print(f"[cyan]Markdown:[/cyan] {result.artifacts.markdown_path}")
+
+
+@app.command("compare-deepsoil-batch")
+def compare_deepsoil_batch(
+    manifest: Path = typer.Option(..., "--manifest"),
+    out: Path | None = typer.Option(None, "--out"),
+    damping: float = typer.Option(0.05, "--damping"),
+) -> None:
+    out_dir = out or (manifest.parent / "deepsoil_compare_batch")
+    result = compare_deepsoil_manifest(manifest, out_dir=out_dir, damping=damping)
+    print(
+        "[green]DEEPSOIL batch comparison ready:[/green] "
+        f"passed={result.passed_cases}/{result.total_cases}"
+    )
+    if result.artifacts is not None:
+        print(f"[cyan]JSON:[/cyan] {result.artifacts.json_path}")
+        print(f"[cyan]Markdown:[/cyan] {result.artifacts.markdown_path}")
+    if result.failed_cases > 0:
+        raise typer.Exit(code=8)
 
 
 @app.command("dt-check")

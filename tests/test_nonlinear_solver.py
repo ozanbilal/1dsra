@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from dsra1d.config import load_project_config
+from dsra1d.config import BoundaryCondition, load_project_config
 from dsra1d.motion import load_motion
 from dsra1d.nonlinear import solve_nonlinear_sh_response
 from dsra1d.pipeline import run_analysis
@@ -55,6 +55,33 @@ def test_nonlinear_solver_rayleigh_update_matrix_returns_finite_response() -> No
     cfg.analysis.rayleigh_mode_1_hz = 1.0
     cfg.analysis.rayleigh_mode_2_hz = 10.0
     cfg.analysis.rayleigh_update_matrix = True
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    time, surface = solve_nonlinear_sh_response(cfg, motion)
+    assert time.shape == surface.shape
+    assert np.all(np.isfinite(surface))
+    assert float(np.std(surface)) > 0.0
+
+
+def test_nonlinear_solver_elastic_halfspace_changes_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.boundary_condition = BoundaryCondition.RIGID
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    _, surface_rigid = solve_nonlinear_sh_response(cfg, motion)
+
+    cfg_halfspace = cfg.model_copy(deep=True)
+    cfg_halfspace.boundary_condition = BoundaryCondition.ELASTIC_HALFSPACE
+    _, surface_halfspace = solve_nonlinear_sh_response(cfg_halfspace, motion)
+
+    assert surface_rigid.shape == surface_halfspace.shape
+    assert np.all(np.isfinite(surface_halfspace))
+    assert not np.allclose(surface_rigid, surface_halfspace)
+
+
+def test_nonlinear_solver_accepts_darendeli_calibrated_config() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_darendeli.yml"))
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
     motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
     time, surface = solve_nonlinear_sh_response(cfg, motion)

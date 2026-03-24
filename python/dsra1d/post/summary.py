@@ -90,6 +90,29 @@ def _classify_verify_run(report: dict[str, object]) -> str:
     return "failed_other"
 
 
+def _classify_deepsoil_case(case: dict[str, object]) -> str:
+    if bool(case.get("passed", False)):
+        return "passed"
+    checks = _as_dict(case.get("checks"))
+    if not checks:
+        return "failed_other"
+    if not _as_bool(checks.get("surface_corrcoef_min"), default=True):
+        return "surface_corrcoef_fail"
+    if not _as_bool(checks.get("surface_nrmse_max"), default=True):
+        return "surface_nrmse_fail"
+    if not _as_bool(checks.get("psa_nrmse_max"), default=True):
+        return "psa_nrmse_fail"
+    if not _as_bool(checks.get("pga_pct_diff_abs_max"), default=True):
+        return "pga_pct_diff_fail"
+    if not _as_bool(checks.get("profile_nrmse_max"), default=True):
+        return "profile_nrmse_fail"
+    if not _as_bool(checks.get("hysteresis_stress_nrmse_max"), default=True):
+        return "hysteresis_stress_nrmse_fail"
+    if not _as_bool(checks.get("hysteresis_energy_pct_diff_abs_max"), default=True):
+        return "hysteresis_energy_pct_diff_fail"
+    return "failed_other"
+
+
 def _as_int(value: object) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -135,6 +158,7 @@ def _as_bool(value: object, default: bool = False) -> bool:
 def summarize_campaign(
     benchmark_report: dict[str, object],
     verify_batch_report: dict[str, object] | None = None,
+    deepsoil_compare_report: dict[str, object] | None = None,
 ) -> dict[str, object]:
     cases_raw = _as_list(benchmark_report.get("cases"))
     benchmark_classes: Counter[str] = Counter()
@@ -156,6 +180,17 @@ def summarize_campaign(
             verify_classes[cls] += 1
             if cls != "passed":
                 failed_runs.append(str(run_name))
+
+    deepsoil_classes: Counter[str] = Counter()
+    failed_deepsoil_cases: list[str] = []
+    if deepsoil_compare_report is not None:
+        deepsoil_cases = _as_list(deepsoil_compare_report.get("cases"))
+        for case_obj in deepsoil_cases:
+            case = _as_dict(case_obj)
+            cls = _classify_deepsoil_case(case)
+            deepsoil_classes[cls] += 1
+            if cls != "passed":
+                failed_deepsoil_cases.append(str(case.get("name", "unknown")))
 
     benchmark_total_cases = _as_int(benchmark_report.get("total_cases", len(cases_raw)))
     benchmark_ran = _as_int(benchmark_report.get("ran", 0))
@@ -260,6 +295,64 @@ def summarize_campaign(
             "passed": benchmark_policy_passed and verify_policy_passed,
         }
         summary["policy"] = summary_policy
+    if deepsoil_compare_report is not None:
+        deepsoil_cases_raw = _as_list(deepsoil_compare_report.get("cases"))
+        deepsoil_total_cases = _as_int(
+            deepsoil_compare_report.get("total_cases", len(deepsoil_cases_raw))
+        )
+        deepsoil_passed_cases = _as_int(deepsoil_compare_report.get("passed_cases", 0))
+        deepsoil_failed_cases = _as_int(deepsoil_compare_report.get("failed_cases", 0))
+        deepsoil_policy_raw = _as_dict(deepsoil_compare_report.get("policy"))
+        deepsoil_policy = {
+            "surface_corrcoef_min": _as_float(
+                deepsoil_policy_raw.get("surface_corrcoef_min"),
+                0.95,
+            ),
+            "surface_nrmse_max": _as_float(
+                deepsoil_policy_raw.get("surface_nrmse_max"),
+                0.20,
+            ),
+            "psa_nrmse_max": _as_float(
+                deepsoil_policy_raw.get("psa_nrmse_max"),
+                0.20,
+            ),
+            "pga_pct_diff_abs_max": _as_float(
+                deepsoil_policy_raw.get("pga_pct_diff_abs_max"),
+                20.0,
+            ),
+            "profile_nrmse_max": deepsoil_policy_raw.get("profile_nrmse_max"),
+            "hysteresis_stress_nrmse_max": deepsoil_policy_raw.get(
+                "hysteresis_stress_nrmse_max"
+            ),
+            "hysteresis_energy_pct_diff_abs_max": deepsoil_policy_raw.get(
+                "hysteresis_energy_pct_diff_abs_max"
+            ),
+        }
+        deepsoil_policy_passed = (
+            deepsoil_failed_cases == 0
+            and deepsoil_passed_cases == deepsoil_total_cases
+        )
+        summary["deepsoil_compare"] = {
+            "total_cases": deepsoil_total_cases,
+            "passed_cases": deepsoil_passed_cases,
+            "failed_cases": deepsoil_failed_cases,
+            "classification_counts": dict(deepsoil_classes),
+            "failed_or_nonpass_cases": failed_deepsoil_cases,
+        }
+        summary_policy = _as_dict(summary.get("policy"))
+        summary_policy["deepsoil_compare"] = {
+            **deepsoil_policy,
+            "passed": deepsoil_policy_passed,
+        }
+        campaign_policy = _as_dict(summary_policy.get("campaign"))
+        if campaign_policy:
+            campaign_policy["passed"] = bool(
+                campaign_policy.get("passed", False)
+            ) and deepsoil_policy_passed
+        else:
+            campaign_policy = {"passed": benchmark_policy_passed and deepsoil_policy_passed}
+        summary_policy["campaign"] = campaign_policy
+        summary["policy"] = summary_policy
     return summary
 
 
@@ -326,6 +419,34 @@ def render_summary_markdown(summary: dict[str, object]) -> str:
                 "- Verify policy: "
                 f"passed={verify_policy.get('passed')} "
                 f"require_runs={verify_policy.get('require_runs')}"
+            )
+    deepsoil_compare = _as_dict(summary.get("deepsoil_compare"))
+    if deepsoil_compare:
+        lines.append(
+            "- DEEPSOIL compare: "
+            f"total_cases={deepsoil_compare.get('total_cases')} "
+            f"passed_cases={deepsoil_compare.get('passed_cases')} "
+            f"failed_cases={deepsoil_compare.get('failed_cases')}"
+        )
+        deepsoil_counts = _as_dict(deepsoil_compare.get("classification_counts"))
+        if deepsoil_counts:
+            lines.append("- DEEPSOIL compare classifications:")
+            for key in sorted(deepsoil_counts):
+                lines.append(f"  - `{key}`: {deepsoil_counts[key]}")
+        deepsoil_policy = _as_dict(policy.get("deepsoil_compare"))
+        if deepsoil_policy:
+            lines.append(
+                "- DEEPSOIL compare policy: "
+                f"passed={deepsoil_policy.get('passed')} "
+                f"surface_corrcoef_min={deepsoil_policy.get('surface_corrcoef_min')} "
+                f"surface_nrmse_max={deepsoil_policy.get('surface_nrmse_max')} "
+                f"psa_nrmse_max={deepsoil_policy.get('psa_nrmse_max')} "
+                f"pga_pct_diff_abs_max={deepsoil_policy.get('pga_pct_diff_abs_max')} "
+                f"profile_nrmse_max={deepsoil_policy.get('profile_nrmse_max')} "
+                "hysteresis_stress_nrmse_max="
+                f"{deepsoil_policy.get('hysteresis_stress_nrmse_max')} "
+                "hysteresis_energy_pct_diff_abs_max="
+                f"{deepsoil_policy.get('hysteresis_energy_pct_diff_abs_max')}"
             )
     campaign_policy = _as_dict(policy.get("campaign"))
     if campaign_policy:

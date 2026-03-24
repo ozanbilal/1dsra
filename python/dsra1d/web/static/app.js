@@ -54,6 +54,8 @@ const TEMPLATE_DESCRIPTIONS = {
     "Native equivalent-linear (EQL) MKZ/GQH template for strain-compatible iteration runs.",
   "mkz-gqh-nonlinear":
     "Native nonlinear time-domain MKZ/GQH template with stateful hysteretic branch updates.",
+  "mkz-gqh-darendeli":
+    "Darendeli-calibrated MKZ/GQH starter for target-curve fitting and native hysteretic runs.",
 };
 
 const MATERIAL_PARAM_PRESETS = {
@@ -85,6 +87,38 @@ function materialParamDefaults(material) {
   const key = String(material || "pm4sand").toLowerCase();
   const base = MATERIAL_PARAM_PRESETS[key] || {};
   return { ...base };
+}
+
+function isHystereticMaterial(material) {
+  const key = String(material || "").toLowerCase();
+  return key === "mkz" || key === "gqh";
+}
+
+function layerGmaxSeed(layer) {
+  const uw = Math.max(Number(layer?.unit_weight_kN_m3) || 0, 0.001);
+  const vs = Math.max(Number(layer?.vs_m_s) || 0, 1.0);
+  return (uw / 9.81) * vs * vs;
+}
+
+function darendeliCalibrationDefaults(layer = {}, materialOverride = "") {
+  const material = String(materialOverride || layer?.material || "mkz").toLowerCase();
+  const stressSeed = Math.max(
+    ((Number(layer?.unit_weight_kN_m3) || 18.0) * Math.max(Number(layer?.thickness_m) || 5.0, 0.5)) / 2.0,
+    25.0
+  );
+  return {
+    source: "darendeli",
+    plasticity_index: material === "mkz" ? 20.0 : 8.0,
+    ocr: 1.0,
+    mean_effective_stress_kpa: Number(stressSeed.toFixed(3)),
+    frequency_hz: 1.0,
+    num_cycles: 10.0,
+    atmospheric_pressure_kpa: 101.3,
+    strain_min: 1.0e-6,
+    strain_max: 1.0e-1,
+    n_points: 60,
+    reload_factor: material === "mkz" ? 2.0 : 1.6,
+  };
 }
 
 function materialColor(material) {
@@ -203,6 +237,26 @@ function buildWizardValidation(wizard) {
     }
     if (!isPositive(layer?.vs_m_s)) {
       issues.profile_step.push(`${label}: Vs must be > 0.`);
+    }
+    if (layer?.calibration && isHystereticMaterial(layer?.material)) {
+      const calibration = layer.calibration;
+      if (!isPositive(calibration?.ocr)) {
+        issues.profile_step.push(`${label}: Darendeli OCR must be > 0.`);
+      }
+      if (!isPositive(calibration?.mean_effective_stress_kpa)) {
+        issues.profile_step.push(`${label}: Darendeli mean effective stress must be > 0.`);
+      }
+      if (!isPositive(calibration?.frequency_hz)) {
+        issues.profile_step.push(`${label}: Darendeli frequency must be > 0.`);
+      }
+      if (!isPositive(calibration?.num_cycles)) {
+        issues.profile_step.push(`${label}: Darendeli num_cycles must be > 0.`);
+      }
+      if (!isPositive(calibration?.strain_min) || !isPositive(calibration?.strain_max)) {
+        issues.profile_step.push(`${label}: Darendeli strain window must be > 0.`);
+      } else if (Number(calibration.strain_max) <= Number(calibration.strain_min)) {
+        issues.profile_step.push(`${label}: Darendeli strain_max must be greater than strain_min.`);
+      }
     }
   });
 
@@ -789,6 +843,52 @@ function releaseHealthHeadline(releaseHealth) {
     return "Release gate is not evaluated for this run workspace.";
   }
   return "Release is blocked by one or more critical checks.";
+}
+
+function deepsoilParityFailureLabels(caseRow) {
+  const checks = caseRow && typeof caseRow === "object" ? caseRow.checks || {} : {};
+  return Object.entries(checks)
+    .filter(([, ok]) => ok === false)
+    .map(([name]) => name);
+}
+
+function deepsoilParityMetricSummary(caseRow) {
+  const metrics = caseRow && typeof caseRow === "object" ? caseRow.metrics || {} : {};
+  const parts = [];
+  if (Number.isFinite(Number(metrics.surface_corrcoef))) {
+    parts.push(`corr=${fmt(Number(metrics.surface_corrcoef), 3)}`);
+  }
+  if (Number.isFinite(Number(metrics.surface_nrmse))) {
+    parts.push(`surf nrmse=${fmt(Number(metrics.surface_nrmse), 3)}`);
+  }
+  if (Number.isFinite(Number(metrics.psa_nrmse))) {
+    parts.push(`psa nrmse=${fmt(Number(metrics.psa_nrmse), 3)}`);
+  }
+  const profile = metrics.profile || {};
+  if (profile && typeof profile === "object" && Number.isFinite(Number(profile.gamma_max_nrmse))) {
+    parts.push(`profile=${fmt(Number(profile.gamma_max_nrmse), 3)}`);
+  }
+  const hysteresis = metrics.hysteresis || {};
+  if (
+    hysteresis &&
+    typeof hysteresis === "object" &&
+    Number.isFinite(Number(hysteresis.stress_path_nrmse))
+  ) {
+    parts.push(`loop=${fmt(Number(hysteresis.stress_path_nrmse), 3)}`);
+  }
+  return parts.join(" | ");
+}
+
+function emptyDeepsoilManifestCase() {
+  return {
+    name: "",
+    run: "",
+    surface_csv: "",
+    psa_csv: "",
+    profile_csv: "",
+    hysteresis_csv: "",
+    hysteresis_layer: 0,
+  };
 }
 
 function mini(text) {
@@ -1610,6 +1710,30 @@ function metricFromSignal(signal, key, reducer = "max_abs") {
   }, Math.abs(arr[0]));
 }
 
+const RUN_SIGNAL_EPSILON = 1e-6;
+
+function runSignalMagnitude(run) {
+  const pga = Number(run?.pga);
+  return Number.isFinite(pga) ? Math.abs(pga) : 0;
+}
+
+function isMeaningfulRun(run) {
+  return runSignalMagnitude(run) > RUN_SIGNAL_EPSILON;
+}
+
+function sortRunsForDisplay(a, b) {
+  const aMeaningful = isMeaningfulRun(a) ? 1 : 0;
+  const bMeaningful = isMeaningfulRun(b) ? 1 : 0;
+  if (aMeaningful !== bMeaningful) return bMeaningful - aMeaningful;
+  const aSignal = runSignalMagnitude(a);
+  const bSignal = runSignalMagnitude(b);
+  if (bSignal !== aSignal) return bSignal - aSignal;
+  const aStatus = String(a?.status || "");
+  const bStatus = String(b?.status || "");
+  if (aStatus !== bStatus) return aStatus.localeCompare(bStatus);
+  return String(a?.run_id || "").localeCompare(String(b?.run_id || ""));
+}
+
 function App() {
   const [status, setStatus] = useState("Loading wizard schema...");
   const [statusKind, setStatusKind] = useState("info");
@@ -1638,7 +1762,13 @@ function App() {
   const [compareReferenceId, setCompareReferenceId] = useState("");
   const [compareSignals, setCompareSignals] = useState({});
   const [compareLoading, setCompareLoading] = useState(false);
+  const [showDiagnosticRuns, setShowDiagnosticRuns] = useState(false);
   const [parityLatest, setParityLatest] = useState(null);
+  const [deepsoilParityLatest, setDeepsoilParityLatest] = useState(null);
+  const [deepsoilManifestStatus, setDeepsoilManifestStatus] = useState(null);
+  const [deepsoilManifestDraft, setDeepsoilManifestDraft] = useState(null);
+  const [deepsoilManifestDirty, setDeepsoilManifestDirty] = useState(false);
+  const [deepsoilManifestSaving, setDeepsoilManifestSaving] = useState(false);
   const [releaseSignoff, setReleaseSignoff] = useState(null);
   const [scienceConfidence, setScienceConfidence] = useState([]);
   const [scienceMatrixMeta, setScienceMatrixMeta] = useState({ source_path: "", last_updated: "" });
@@ -1653,6 +1783,10 @@ function App() {
   const motionCsvUploadRef = useRef(null);
   const motionAt2UploadRef = useRef(null);
   const [profileEditorMode, setProfileEditorMode] = useState("table");
+  const [profileSelectedLayerIndex, setProfileSelectedLayerIndex] = useState(0);
+  const [layerCalibrationPreview, setLayerCalibrationPreview] = useState(null);
+  const [layerCalibrationPreviewLoading, setLayerCalibrationPreviewLoading] = useState(false);
+  const [layerCalibrationPreviewError, setLayerCalibrationPreviewError] = useState("");
   const [profilePresetKey, setProfilePresetKey] = useState("five-main-layers");
   const [configTemplateKey, setConfigTemplateKey] = useState("effective-stress");
   const [autoProfile, setAutoProfile] = useState({
@@ -1690,12 +1824,95 @@ function App() {
     });
   }
 
+  function updateDeepsoilManifestDefault(key, value) {
+    setDeepsoilManifestDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        defaults: {
+          ...(prev.defaults || {}),
+          [key]: value,
+        },
+      };
+    });
+    setDeepsoilManifestDirty(true);
+  }
+
+  function updateDeepsoilManifestCase(index, key, value) {
+    setDeepsoilManifestDraft((prev) => {
+      if (!prev) return prev;
+      const nextCases = (Array.isArray(prev.cases) ? prev.cases : []).map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row
+      );
+      return { ...prev, cases: nextCases };
+    });
+    setDeepsoilManifestDirty(true);
+  }
+
+  function addDeepsoilManifestCase() {
+    setDeepsoilManifestDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        cases: [...(Array.isArray(prev.cases) ? prev.cases : []), emptyDeepsoilManifestCase()],
+      };
+    });
+    setDeepsoilManifestDirty(true);
+  }
+
+  function addSelectedRunToDeepsoilManifest() {
+    if (!selectedRun) return;
+    const seedName =
+      String(selectedRun.project_name || "").trim() || String(selectedRun.run_id || "").trim() || "run-case";
+    const seedRun = String(selectedRun.output_dir || "").trim();
+    setDeepsoilManifestDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        cases: [
+          ...(Array.isArray(prev.cases) ? prev.cases : []),
+          {
+            ...emptyDeepsoilManifestCase(),
+            name: seedName,
+            run: seedRun,
+          },
+        ],
+      };
+    });
+    setDeepsoilManifestDirty(true);
+    setStatusKind("ok");
+    setStatus(`Manifest row added from selected run: ${seedName}`);
+  }
+
+  function removeDeepsoilManifestCase(index) {
+    setDeepsoilManifestDraft((prev) => {
+      if (!prev) return prev;
+      const nextCases = (Array.isArray(prev.cases) ? prev.cases : []).filter(
+        (_row, rowIndex) => rowIndex !== index
+      );
+      return { ...prev, cases: nextCases };
+    });
+    setDeepsoilManifestDirty(true);
+  }
+
   function setLayerMaterial(index, material) {
     const mat = String(material || "pm4sand").toLowerCase();
-    updateLayer(index, {
-      material: mat,
-      material_params: materialParamDefaults(mat),
-      material_optional_args: [],
+    setWizard((prev) => {
+      if (!prev) return prev;
+      const layers = [...(prev.profile_step.layers || [])];
+      const current = { ...(layers[index] || {}) };
+      const carryCalibration =
+        isHystereticMaterial(mat) && isHystereticMaterial(current.material) && current.calibration
+          ? cloneJson(current.calibration)
+          : null;
+      layers[index] = {
+        ...current,
+        material: mat,
+        material_params: materialParamDefaults(mat),
+        material_optional_args: [],
+        calibration: carryCalibration,
+      };
+      return { ...prev, profile_step: { ...prev.profile_step, layers } };
     });
   }
 
@@ -1717,6 +1934,41 @@ function App() {
     updateLayer(index, { material_optional_args: values });
   }
 
+  function setLayerCalibrationEnabled(index, enabled) {
+    setWizard((prev) => {
+      if (!prev) return prev;
+      const layers = [...(prev.profile_step.layers || [])];
+      const layer = { ...(layers[index] || {}) };
+      if (!isHystereticMaterial(layer.material)) {
+        layer.calibration = null;
+      } else if (enabled) {
+        layer.calibration = layer.calibration
+          ? { ...layer.calibration }
+          : darendeliCalibrationDefaults(layer, layer.material);
+      } else {
+        layer.calibration = null;
+      }
+      layers[index] = layer;
+      return { ...prev, profile_step: { ...prev.profile_step, layers } };
+    });
+  }
+
+  function setLayerCalibrationParam(index, key, value) {
+    setWizard((prev) => {
+      if (!prev) return prev;
+      const layers = [...(prev.profile_step.layers || [])];
+      const layer = { ...(layers[index] || {}) };
+      const current =
+        layer.calibration && typeof layer.calibration === "object"
+          ? { ...layer.calibration }
+          : darendeliCalibrationDefaults(layer, layer.material);
+      current[key] = value;
+      layer.calibration = current;
+      layers[index] = layer;
+      return { ...prev, profile_step: { ...prev.profile_step, layers } };
+    });
+  }
+
   function addLayer() {
     setWizard((prev) => {
       if (!prev) return prev;
@@ -1729,6 +1981,7 @@ function App() {
         material,
         material_params: materialParamDefaults(material),
         material_optional_args: [],
+        calibration: null,
       };
       const layers = [...(prev.profile_step.layers || []), layer];
       return { ...prev, profile_step: { ...prev.profile_step, layers } };
@@ -1747,6 +2000,7 @@ function App() {
         material,
         material_params: materialParamDefaults(material),
         material_optional_args: [],
+        calibration: layer.calibration && typeof layer.calibration === "object" ? cloneJson(layer.calibration) : null,
       };
     });
   }
@@ -1823,6 +2077,10 @@ function App() {
           thickness_m: Number(dz.toFixed(5)),
           material_params: { ...(layer.material_params || {}) },
           material_optional_args: [...(layer.material_optional_args || [])],
+          calibration:
+            layer.calibration && typeof layer.calibration === "object"
+              ? cloneJson(layer.calibration)
+              : null,
         });
       }
     });
@@ -1868,6 +2126,10 @@ function App() {
         name: `${src.name || `Layer-${idx + 1}`}-copy`,
         material_params: { ...(src.material_params || {}) },
         material_optional_args: [...(src.material_optional_args || [])],
+        calibration:
+          src.calibration && typeof src.calibration === "object"
+            ? cloneJson(src.calibration)
+            : null,
       };
       layers.splice(idx + 1, 0, copy);
       return { ...prev, profile_step: { ...prev.profile_step, layers } };
@@ -1987,6 +2249,7 @@ function App() {
           ? typedParams
           : materialParamDefaults(material),
         material_optional_args: parseOptionalArgs(optionalText),
+        calibration: null,
       });
     }
     if (!importedLayers.length) {
@@ -2080,7 +2343,11 @@ function App() {
       }
       const selectedExists = payload.some((run) => run.run_id === selectedRunId);
       if (!selectedExists) {
-        setSelectedRunId(payload[0].run_id);
+        const meaningfulRuns = payload.filter((run) => isMeaningfulRun(run)).sort(sortRunsForDisplay);
+        const preferredRun = meaningfulRuns[0] || payload[0];
+        if (preferredRun?.run_id) {
+          setSelectedRunId(preferredRun.run_id);
+        }
       }
       return payload;
     } catch (err) {
@@ -2112,6 +2379,76 @@ function App() {
     } catch {
       setParityLatest(null);
       return null;
+    }
+  }
+
+  async function loadDeepsoilParityLatest(rootOverride = outputRoot) {
+    const query = makeRunQuery(rootOverride);
+    try {
+      const payload = await requestJSON(`/api/parity/deepsoil/latest${query}`);
+      setDeepsoilParityLatest(payload);
+      return payload;
+    } catch {
+      setDeepsoilParityLatest(null);
+      return null;
+    }
+  }
+
+  async function loadDeepsoilManifestStatus() {
+    try {
+      const payload = await requestJSON("/api/parity/deepsoil/release-manifest");
+      setDeepsoilManifestStatus(payload);
+      return payload;
+    } catch {
+      setDeepsoilManifestStatus(null);
+      return null;
+    }
+  }
+
+  async function loadDeepsoilManifestEditor() {
+    try {
+      const payload = await requestJSON("/api/parity/deepsoil/release-manifest/editor");
+      setDeepsoilManifestDraft({
+        manifest_path: payload.manifest_path || "",
+        sample_manifest_path: payload.sample_manifest_path || "",
+        loaded_from: payload.loaded_from || "missing",
+        exists: Boolean(payload.exists),
+        defaults: { ...(payload.defaults || {}) },
+        cases: Array.isArray(payload.cases) ? payload.cases.map((row) => ({ ...row })) : [],
+      });
+      setDeepsoilManifestDirty(false);
+      return payload;
+    } catch {
+      setDeepsoilManifestDraft(null);
+      return null;
+    }
+  }
+
+  async function saveDeepsoilManifestEditor() {
+    if (!deepsoilManifestDraft) return null;
+    setDeepsoilManifestSaving(true);
+    try {
+      const payload = await requestJSON("/api/parity/deepsoil/release-manifest/save", {
+        method: "POST",
+        body: JSON.stringify({
+          defaults: deepsoilManifestDraft.defaults || {},
+          cases: Array.isArray(deepsoilManifestDraft.cases) ? deepsoilManifestDraft.cases : [],
+        }),
+      });
+      setDeepsoilManifestDirty(false);
+      setStatusKind("ok");
+      setStatus(`Release DEEPSOIL manifest saved: ${payload.case_count || 0} case(s).`);
+      await Promise.all([
+        loadDeepsoilManifestStatus().catch(() => {}),
+        loadDeepsoilManifestEditor().catch(() => {}),
+      ]);
+      return payload;
+    } catch (err) {
+      setStatusKind("err");
+      setStatus(`Manifest save failed: ${String(err)}`);
+      return null;
+    } finally {
+      setDeepsoilManifestSaving(false);
     }
   }
 
@@ -2567,6 +2904,9 @@ function App() {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
     loadParityLatest().catch(() => {});
+    loadDeepsoilParityLatest().catch(() => {});
+    loadDeepsoilManifestStatus().catch(() => {});
+    loadDeepsoilManifestEditor().catch(() => {});
     loadReleaseSignoff().catch(() => {});
     loadScienceConfidence().catch(() => {});
   }, []);
@@ -2580,6 +2920,7 @@ function App() {
     loadRuns().catch(() => {});
     loadRunsTree().catch(() => {});
     loadParityLatest().catch(() => {});
+    loadDeepsoilParityLatest().catch(() => {});
     loadReleaseSignoff().catch(() => {});
   }, [outputRoot]);
 
@@ -2611,9 +2952,155 @@ function App() {
     setCompareReferenceId(compareRunIds[0]);
   }, [compareRunIds, compareReferenceId]);
 
+  const layers = wizard?.profile_step?.layers || [];
+  const motionStep = wizard?.motion_step || {};
+  const dampingStep = wizard?.damping_step || {};
+  const controlStep = wizard?.control_step || {};
+  const analysisStep = wizard?.analysis_step || {};
+  const selectedProfileLayer = useMemo(() => {
+    if (!layers.length) return null;
+    const idx = Math.min(Math.max(Number(profileSelectedLayerIndex) || 0, 0), layers.length - 1);
+    return layers[idx] || null;
+  }, [layers, profileSelectedLayerIndex]);
+  const selectedProfileLayerMetrics = useMemo(() => {
+    if (!selectedProfileLayer) return null;
+    const params = selectedProfileLayer.material_params || {};
+    const gmax = Number.isFinite(Number(params.gmax)) ? Number(params.gmax) : layerGmaxSeed(selectedProfileLayer);
+    const gammaRef =
+      Number.isFinite(Number(params.gamma_ref)) && Number(params.gamma_ref) > 0
+        ? Number(params.gamma_ref)
+        : null;
+    return {
+      gmax,
+      gammaRef,
+      materialParamCount: Object.keys(params).length,
+      optionalArgsCount: Array.isArray(selectedProfileLayer.material_optional_args)
+        ? selectedProfileLayer.material_optional_args.length
+        : 0,
+      calibrationEnabled: Boolean(selectedProfileLayer.calibration),
+    };
+  }, [selectedProfileLayer]);
+  const selectedProfileCalibrationDraft = useMemo(() => {
+    if (!selectedProfileLayer || !isHystereticMaterial(selectedProfileLayer.material)) return null;
+    return selectedProfileLayer.calibration
+      ? cloneJson(selectedProfileLayer.calibration)
+      : darendeliCalibrationDefaults(selectedProfileLayer, selectedProfileLayer.material);
+  }, [selectedProfileLayer]);
+  const layerCalibrationCharts = useMemo(() => {
+    const preview = layerCalibrationPreview;
+    if (!preview || !preview.available) {
+      return {
+        modulus: [],
+        damping: [],
+        loop: [],
+      };
+    }
+    const strain = preview.strain || [];
+    const modulus = [];
+    if (Array.isArray(preview.target_modulus_reduction) && preview.target_modulus_reduction.length) {
+      modulus.push({
+        key: "target-mod",
+        name: "Darendeli target",
+        color: "var(--teal)",
+        x: strain,
+        y: preview.target_modulus_reduction,
+      });
+    }
+    modulus.push({
+      key: "fit-mod",
+      name: preview.target_available ? "Fitted backbone" : "Current backbone",
+      color: "var(--copper)",
+      x: strain,
+      y: preview.fitted_modulus_reduction || [],
+    });
+    const damping = [];
+    if (Array.isArray(preview.target_damping_ratio) && preview.target_damping_ratio.length) {
+      damping.push({
+        key: "target-damp",
+        name: "Darendeli target",
+        color: "var(--teal)",
+        x: strain,
+        y: preview.target_damping_ratio || [],
+      });
+    }
+    damping.push({
+      key: "fit-damp",
+      name: preview.target_available ? "Fitted damping" : "Current damping",
+      color: "var(--indigo)",
+      x: strain,
+      y: preview.fitted_damping_ratio || [],
+    });
+    const loop = Array.isArray(preview.loop_strain) && Array.isArray(preview.loop_stress) && preview.loop_strain.length
+      ? [
+          {
+            key: "loop",
+            name: "Masing loop",
+            color: "var(--stone)",
+            x: preview.loop_strain,
+            y: preview.loop_stress,
+          },
+        ]
+      : [];
+    return { modulus, damping, loop };
+  }, [layerCalibrationPreview]);
+
+  useEffect(() => {
+    if (!layers.length) {
+      setProfileSelectedLayerIndex(0);
+      return;
+    }
+    const idx = Number(profileSelectedLayerIndex);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= layers.length) {
+      setProfileSelectedLayerIndex(0);
+    }
+  }, [layers, profileSelectedLayerIndex]);
+
+  useEffect(() => {
+    const layer = selectedProfileLayer;
+    if (!layer || !isHystereticMaterial(layer.material)) {
+      setLayerCalibrationPreview(null);
+      setLayerCalibrationPreviewError("");
+      setLayerCalibrationPreviewLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLayerCalibrationPreviewLoading(true);
+      setLayerCalibrationPreviewError("");
+      try {
+        const payload = await requestJSON("/api/wizard/layer-calibration-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ layer }),
+        });
+        if (cancelled) return;
+        setLayerCalibrationPreview(payload);
+      } catch (err) {
+        if (cancelled) return;
+        setLayerCalibrationPreview(null);
+        setLayerCalibrationPreviewError(String(err));
+      } finally {
+        if (!cancelled) setLayerCalibrationPreviewLoading(false);
+      }
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [selectedProfileLayer ? JSON.stringify(selectedProfileLayer) : ""]);
+
   const selectedRun = useMemo(
     () => runs.find((r) => r.run_id === selectedRunId) || null,
     [runs, selectedRunId]
+  );
+  const sortedRuns = useMemo(() => [...runs].sort(sortRunsForDisplay), [runs]);
+  const meaningfulRuns = useMemo(
+    () => sortedRuns.filter((run) => isMeaningfulRun(run)),
+    [sortedRuns]
+  );
+  const diagnosticRuns = useMemo(
+    () => sortedRuns.filter((run) => !isMeaningfulRun(run)),
+    [sortedRuns]
   );
   const selectedRunRoot = useMemo(
     () => parentPath(selectedRun?.output_dir) || outputRoot,
@@ -2905,11 +3392,6 @@ function App() {
   const configTemplates = Array.isArray(schema?.config_templates)
     ? schema.config_templates
     : ["effective-stress"];
-  const layers = wizard?.profile_step?.layers || [];
-  const motionStep = wizard?.motion_step || {};
-  const dampingStep = wizard?.damping_step || {};
-  const controlStep = wizard?.control_step || {};
-  const analysisStep = wizard?.analysis_step || {};
   const wizardValidation = useMemo(() => buildWizardValidation(wizard), [wizard]);
   const activeStepId = WIZARD_STEPS[activeStepIdx]?.id || "analysis_step";
   const activeStepIssues = wizardValidation?.[activeStepId]?.issues || [];
@@ -2977,6 +3459,18 @@ function App() {
     const nonEmpty = parityPrimary.block_reasons.filter((v) => String(v || "").trim().length > 0);
     return nonEmpty.join(" | ");
   }, [parityPrimary]);
+  const deepsoilParityCases = useMemo(
+    () => (Array.isArray(deepsoilParityLatest?.cases) ? deepsoilParityLatest.cases : []),
+    [deepsoilParityLatest]
+  );
+  const deepsoilParityFailures = useMemo(
+    () => deepsoilParityCases.filter((row) => !row.passed),
+    [deepsoilParityCases]
+  );
+  const deepsoilManifestCases = useMemo(
+    () => (Array.isArray(deepsoilManifestDraft?.cases) ? deepsoilManifestDraft.cases : []),
+    [deepsoilManifestDraft]
+  );
   const backendProbeDetailError =
     backendProbe && (!backendProbe.available || backendProbe.assumed_available)
       ? String(backendProbe.error || "").trim()
@@ -3302,6 +3796,8 @@ function App() {
                 <div className="muted">Effective f_max: ${autoProfilePreview.fMaxUsed.toFixed(2)} Hz</div>
               </div>
 
+              <div className="profile-studio-grid">
+                <div className="profile-editor-column">
               ${layers.length === 0
                 ? html`<div className="muted">No layer defined yet. Add at least one layer.</div>`
                 : null}
@@ -3318,6 +3814,7 @@ function App() {
                             <th>Unit W. (kN/m^3)</th>
                             <th>Vs (m/s)</th>
                             <th>Material</th>
+                            <th>Curve Mode</th>
                             <th>Material Params</th>
                             <th>Optional Args</th>
                             <th>Actions</th>
@@ -3326,12 +3823,24 @@ function App() {
                         <tbody>
                           ${layers.map((layer, idx) => {
                             const rows = materialParamRows(layer.material, layer.material_params);
+                            const isSelected = idx === profileSelectedLayerIndex;
+                            const curveMode = !isHystereticMaterial(layer.material)
+                              ? "N/A"
+                              : layer.calibration
+                                ? "Darendeli fit"
+                                : "Manual curve";
                             return html`
-                              <tr key=${`layer-row-${idx}`}>
+                              <tr
+                                key=${`layer-row-${idx}`}
+                                className=${isSelected ? "layer-row-active" : ""}
+                                onClick=${() => setProfileSelectedLayerIndex(idx)}
+                                onFocus=${() => setProfileSelectedLayerIndex(idx)}
+                              >
                                 <td>${idx + 1}</td>
                                 <td>
                                   <input
                                     value=${layer.name || ""}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) => updateLayer(idx, { name: e.target.value })}
                                   />
                                 </td>
@@ -3341,6 +3850,7 @@ function App() {
                                     step="0.01"
                                     min="0.001"
                                     value=${layer.thickness_m ?? ""}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) =>
                                       updateLayer(idx, {
                                         thickness_m: Math.max(toNum(e.target.value, 1.0), 0.001),
@@ -3353,6 +3863,7 @@ function App() {
                                     step="0.01"
                                     min="0.001"
                                     value=${layer.unit_weight_kN_m3 ?? ""}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) =>
                                       updateLayer(idx, {
                                         unit_weight_kN_m3: Math.max(toNum(e.target.value, 18.0), 0.001),
@@ -3365,6 +3876,7 @@ function App() {
                                     step="1"
                                     min="1"
                                     value=${layer.vs_m_s ?? ""}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) =>
                                       updateLayer(idx, { vs_m_s: Math.max(toNum(e.target.value, 150.0), 1.0) })}
                                   />
@@ -3372,10 +3884,26 @@ function App() {
                                 <td>
                                   <select
                                     value=${layer.material || "pm4sand"}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) => setLayerMaterial(idx, e.target.value)}
                                   >
                                     ${(enums.material || []).map((v) => html`<option value=${v}>${v}</option>`)}
                                   </select>
+                                </td>
+                                <td>
+                                  <div className="chips layer-mode-chip-stack">
+                                    <span
+                                      className=${`chip ${
+                                        !isHystereticMaterial(layer.material)
+                                          ? "chip-neutral"
+                                          : layer.calibration
+                                            ? "chip-ok"
+                                            : "chip-warn"
+                                      }`}
+                                    >
+                                      ${curveMode}
+                                    </span>
+                                  </div>
                                 </td>
                                 <td>
                                   <div className="param-inline-grid">
@@ -3387,6 +3915,7 @@ function App() {
                                             type="number"
                                             step="0.0001"
                                             value=${row.value}
+                                            onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                             onInput=${(e) =>
                                               setLayerMaterialParam(idx, row.key, toNum(e.target.value, row.value))}
                                           />
@@ -3399,11 +3928,15 @@ function App() {
                                   <input
                                     placeholder="space-separated values"
                                     value=${(layer.material_optional_args || []).join(" ")}
+                                    onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                     onInput=${(e) => setLayerOptionalArgs(idx, e.target.value)}
                                   />
                                 </td>
                                 <td>
                                   <div className="layer-actions compact">
+                                    <button className="btn-min" onClick=${() => setProfileSelectedLayerIndex(idx)}>
+                                      Inspect
+                                    </button>
                                     <button className="btn-min" onClick=${() => moveLayer(idx, -1)}>Up</button>
                                     <button className="btn-min" onClick=${() => moveLayer(idx, 1)}>Down</button>
                                     <button className="btn-min" onClick=${() => duplicateLayer(idx)}>Dup</button>
@@ -3424,16 +3957,43 @@ function App() {
                     <div className="layer-list">
                       ${layers.map((layer, idx) => {
                         const rows = materialParamRows(layer.material, layer.material_params);
+                        const isSelected = idx === profileSelectedLayerIndex;
                         return html`
-                          <details className="layer-card" open>
-                            <summary>
+                          <details
+                            className=${`layer-card ${isSelected ? "layer-row-active" : ""}`}
+                            open=${isSelected}
+                            onToggle=${() => setProfileSelectedLayerIndex(idx)}
+                          >
+                            <summary onClick=${() => setProfileSelectedLayerIndex(idx)}>
                               <span className="layer-title">${layer.name || `Layer-${idx + 1}`}</span>
                             </summary>
+                            <div className="layer-card-meta">
+                              <span className="chip chip-neutral">${layer.material || "pm4sand"}</span>
+                              <span
+                                className=${`chip ${
+                                  !isHystereticMaterial(layer.material)
+                                    ? "chip-neutral"
+                                    : layer.calibration
+                                      ? "chip-ok"
+                                      : "chip-warn"
+                                }`}
+                              >
+                                ${!isHystereticMaterial(layer.material)
+                                  ? "No hysteretic preview"
+                                  : layer.calibration
+                                    ? "Darendeli active"
+                                    : "Manual curve"}
+                              </span>
+                              <button className="btn-min" onClick=${() => setProfileSelectedLayerIndex(idx)}>
+                                Inspect
+                              </button>
+                            </div>
                             <div className="row">
                               <div className="field">
                                 <label>Name</label>
                                 <input
                                   value=${layer.name || ""}
+                                  onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                   onInput=${(e) => updateLayer(idx, { name: e.target.value })}
                                 />
                               </div>
@@ -3441,6 +4001,7 @@ function App() {
                                 <label>Material</label>
                                 <select
                                   value=${layer.material || "pm4sand"}
+                                  onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                   onInput=${(e) => setLayerMaterial(idx, e.target.value)}
                                 >
                                   ${(enums.material || []).map((v) => html`<option value=${v}>${v}</option>`)}
@@ -3455,6 +4016,7 @@ function App() {
                                   type="number"
                                   step="0.01"
                                   value=${layer.thickness_m ?? ""}
+                                  onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                   onInput=${(e) =>
                                     updateLayer(idx, {
                                       thickness_m: Math.max(toNum(e.target.value, 1.0), 0.001),
@@ -3467,6 +4029,7 @@ function App() {
                                   type="number"
                                   step="0.01"
                                   value=${layer.unit_weight_kN_m3 ?? ""}
+                                  onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                   onInput=${(e) =>
                                     updateLayer(idx, {
                                       unit_weight_kN_m3: Math.max(toNum(e.target.value, 18.0), 0.001),
@@ -3479,6 +4042,7 @@ function App() {
                                   type="number"
                                   step="1"
                                   value=${layer.vs_m_s ?? ""}
+                                  onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                   onInput=${(e) =>
                                     updateLayer(idx, { vs_m_s: Math.max(toNum(e.target.value, 150.0), 1.0) })}
                                 />
@@ -3494,6 +4058,7 @@ function App() {
                                       type="number"
                                       step="0.0001"
                                       value=${row.value}
+                                      onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                       onInput=${(e) =>
                                         setLayerMaterialParam(idx, row.key, toNum(e.target.value, row.value))}
                                     />
@@ -3507,6 +4072,7 @@ function App() {
                               <input
                                 placeholder="space-separated values"
                                 value=${(layer.material_optional_args || []).join(" ")}
+                                onFocus=${() => setProfileSelectedLayerIndex(idx)}
                                 onInput=${(e) => setLayerOptionalArgs(idx, e.target.value)}
                               />
                             </div>
@@ -3523,6 +4089,238 @@ function App() {
                     </div>
                   `
                 : null}
+                </div>
+
+                <aside className="layer-properties-studio">
+                  <div className="layer-properties-head">
+                    <div>
+                      <h4>Layer Properties</h4>
+                      <p className="muted">
+                        Focused DEEPSOIL-style material, calibration and single-element preview workspace.
+                      </p>
+                    </div>
+                    <div className="field layer-focus-select">
+                      <label>Focused Layer</label>
+                      <select
+                        value=${String(profileSelectedLayerIndex)}
+                        onInput=${(e) => setProfileSelectedLayerIndex(Math.max(0, Number(e.target.value) || 0))}
+                      >
+                        ${layers.map(
+                          (layer, idx) =>
+                            html`<option value=${String(idx)}>${idx + 1}. ${layer.name || `Layer-${idx + 1}`}</option>`
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  ${selectedProfileLayer
+                    ? html`
+                        <div className="properties-panel-block">
+                          <div className="chips">
+                            <span className="chip chip-neutral">${selectedProfileLayer.material}</span>
+                            <span
+                              className=${`chip ${
+                                !isHystereticMaterial(selectedProfileLayer.material)
+                                  ? "chip-neutral"
+                                  : selectedProfileLayer.calibration
+                                    ? "chip-ok"
+                                    : "chip-warn"
+                              }`}
+                            >
+                              ${!isHystereticMaterial(selectedProfileLayer.material)
+                                ? "Non-native hysteretic"
+                                : selectedProfileLayer.calibration
+                                  ? "Darendeli target fit"
+                                  : "Manual MKZ/GQH"}
+                            </span>
+                            ${layerCalibrationPreview?.source
+                              ? html`<span className="chip chip-neutral">
+                                  Preview: ${layerCalibrationPreview.source}
+                                </span>`
+                              : null}
+                          </div>
+
+                          <div className="profile-grid">
+                            <div className="metric-card">
+                              <span>Gmax Seed</span>
+                              <b>${fmt(selectedProfileLayerMetrics?.gmax, 2)}</b>
+                            </div>
+                            <div className="metric-card">
+                              <span>gamma_ref</span>
+                              <b>${fmt(selectedProfileLayerMetrics?.gammaRef, 5)}</b>
+                            </div>
+                            <div className="metric-card">
+                              <span>Material Params</span>
+                              <b>${selectedProfileLayerMetrics?.materialParamCount ?? 0}</b>
+                            </div>
+                            <div className="metric-card">
+                              <span>Optional Args</span>
+                              <b>${selectedProfileLayerMetrics?.optionalArgsCount ?? 0}</b>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="properties-panel-block">
+                          <div className="row between">
+                            <strong>Curve Workflow</strong>
+                            ${isHystereticMaterial(selectedProfileLayer.material)
+                              ? html`
+                                  <label className="toggle-inline">
+                                    <input
+                                      type="checkbox"
+                                      checked=${Boolean(selectedProfileLayer.calibration)}
+                                      onChange=${(e) =>
+                                        setLayerCalibrationEnabled(
+                                          profileSelectedLayerIndex,
+                                          e.target.checked
+                                        )}
+                                    />
+                                    Use Darendeli target fitting
+                                  </label>
+                                `
+                              : html`<span className="muted">Preview disabled for ${selectedProfileLayer.material}</span>`}
+                          </div>
+
+                          ${isHystereticMaterial(selectedProfileLayer.material)
+                            ? html`
+                                <div className="hint-box">
+                                  ${selectedProfileLayer.calibration
+                                    ? "This layer will derive MKZ/GQH parameters from Darendeli target curves before native analysis."
+                                    : "This layer is using direct manual MKZ/GQH parameters. Enable target fitting to drive parameters from Darendeli curves."}
+                                </div>
+                              `
+                            : html`
+                                <div className="hint-box">
+                                  Darendeli target fitting is currently wired for native MKZ/GQH layers. PM4 and elastic layers stay on direct parameter input.
+                                </div>
+                              `}
+                        </div>
+
+                        ${isHystereticMaterial(selectedProfileLayer.material) && selectedProfileCalibrationDraft
+                          ? html`
+                              <div className="properties-panel-block">
+                                <div className="row between">
+                                  <strong>Darendeli Calibration Inputs</strong>
+                                  <span className="muted">Reference curve + fitted backbone QA</span>
+                                </div>
+                                <div className="calibration-grid">
+                                  <div className="field">
+                                    <label>Plasticity Index</label>
+                                    <input type="number" step="1" min="0" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.plasticity_index ?? 0} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "plasticity_index", Math.max(toNum(e.target.value, 0), 0))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>OCR</label>
+                                    <input type="number" step="0.1" min="0.1" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.ocr ?? 1} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "ocr", Math.max(toNum(e.target.value, 1), 0.1))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>Mean Effective Stress (kPa)</label>
+                                    <input type="number" step="1" min="1" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.mean_effective_stress_kpa ?? ""} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "mean_effective_stress_kpa", Math.max(toNum(e.target.value, 80), 1))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>Frequency (Hz)</label>
+                                    <input type="number" step="0.1" min="0.1" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.frequency_hz ?? 1} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "frequency_hz", Math.max(toNum(e.target.value, 1), 0.1))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>Cycles</label>
+                                    <input type="number" step="1" min="1" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.num_cycles ?? 10} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "num_cycles", Math.max(toNum(e.target.value, 10), 1))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>n_points</label>
+                                    <input type="number" step="1" min="12" max="400" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.n_points ?? 60} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "n_points", Math.min(Math.max(Math.round(toNum(e.target.value, 60)), 12), 400))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>strain_min</label>
+                                    <input type="number" step="0.000001" min="0.000001" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.strain_min ?? 0.000001} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "strain_min", Math.max(toNum(e.target.value, 0.000001), 0.000001))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>strain_max</label>
+                                    <input type="number" step="0.0001" min="0.0001" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.strain_max ?? 0.1} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "strain_max", Math.max(toNum(e.target.value, 0.1), 0.0001))} />
+                                  </div>
+                                  <div className="field">
+                                    <label>reload_factor</label>
+                                    <input type="number" step="0.01" min="0" disabled=${!selectedProfileLayer.calibration} value=${selectedProfileCalibrationDraft.reload_factor ?? ""} onInput=${(e) => setLayerCalibrationParam(profileSelectedLayerIndex, "reload_factor", e.target.value === "" ? null : Math.max(toNum(e.target.value, 1), 0))} />
+                                  </div>
+                                </div>
+                              </div>
+                            `
+                          : null}
+
+                        <div className="properties-panel-block">
+                          <div className="row between">
+                            <strong>Curve Preview</strong>
+                            ${layerCalibrationPreviewLoading
+                              ? html`<span className="chip chip-warn">refreshing</span>`
+                              : layerCalibrationPreview?.available
+                                ? html`<span className="chip chip-ok">ready</span>`
+                                : html`<span className="chip chip-neutral">pending</span>`}
+                          </div>
+                          ${layerCalibrationPreviewError
+                            ? html`<div className="warn-box">Preview error: ${layerCalibrationPreviewError}</div>`
+                            : null}
+                          ${Array.isArray(layerCalibrationPreview?.warnings) && layerCalibrationPreview.warnings.length
+                            ? html`<div className="hint-box">
+                                ${layerCalibrationPreview.warnings.map((warning) => html`<div key=${warning}>${warning}</div>`)}
+                              </div>`
+                            : null}
+
+                          <div className="properties-preview-grid">
+                            <${MultiSeriesChartCard}
+                              title="G/Gmax"
+                              subtitle=${layerCalibrationPreview?.target_available ? "Darendeli target vs fitted" : "Current backbone"}
+                              series=${layerCalibrationCharts.modulus}
+                              xLabel="Strain"
+                              yLabel="G/Gmax"
+                            />
+                            <${MultiSeriesChartCard}
+                              title="Damping Ratio"
+                              subtitle=${layerCalibrationPreview?.target_available ? "Reference vs achieved" : "Current damping proxy"}
+                              series=${layerCalibrationCharts.damping}
+                              xLabel="Strain"
+                              yLabel="Damping"
+                            />
+                            <${MultiSeriesChartCard}
+                              title="Single Element Loop"
+                              subtitle=${layerCalibrationPreview?.loop_strain_amplitude ? `gamma_a=${fmt(layerCalibrationPreview.loop_strain_amplitude, 5)}` : "Masing preview"}
+                              series=${layerCalibrationCharts.loop}
+                              xLabel="Strain"
+                              yLabel="Stress"
+                            />
+                          </div>
+
+                          <div className="profile-grid">
+                            <div className="metric-card"><span>Fit RMSE</span><b>${fmt(layerCalibrationPreview?.fit_rmse, 5)}</b></div>
+                            <div className="metric-card"><span>Loop Energy</span><b>${fmt(layerCalibrationPreview?.loop_energy, 5)}</b></div>
+                            <div className="metric-card"><span>Loop gamma_a</span><b>${fmt(layerCalibrationPreview?.loop_strain_amplitude, 5)}</b></div>
+                            <div className="metric-card"><span>Preview Source</span><b>${layerCalibrationPreview?.source || "n/a"}</b></div>
+                          </div>
+
+                          ${layerCalibrationPreview?.material_params && Object.keys(layerCalibrationPreview.material_params).length
+                            ? html`
+                                <details className="json-details">
+                                  <summary>Calibrated Material Parameters</summary>
+                                  <div className="properties-parameter-grid">
+                                    ${Object.entries(
+                                      layerCalibrationPreview.calibrated_material_params &&
+                                        Object.keys(layerCalibrationPreview.calibrated_material_params).length
+                                        ? layerCalibrationPreview.calibrated_material_params
+                                        : layerCalibrationPreview.material_params
+                                    ).map(
+                                      ([key, value]) => html`
+                                        <span key=${key}>
+                                          <small>${key}</small>
+                                          <strong>${fmt(value, 5)}</strong>
+                                        </span>
+                                      `
+                                    )}
+                                  </div>
+                                </details>
+                              `
+                            : null}
+                        </div>
+                      `
+                    : html`<div className="hint-box">Select a layer to edit its properties and preview.</div>`}
+                </aside>
+              </div>
             </div>
           `}
 
@@ -4034,33 +4832,97 @@ function App() {
                     </div>
 
                     <h3>Latest Runs</h3>
-                    <div className="cards">
-                      ${runs.map(
-                        (run) => html`
-                          <button
-                            className=${`run-card ${selectedRunId === run.run_id ? "active" : ""}`}
-                            onClick=${() => setSelectedRunId(run.run_id)}
-                          >
-                            <div className="run-id">${run.run_id}</div>
-                            <div className="muted">${mini(run.project_name || "")}</div>
-                            <div className="muted">${mini(run.motion_name || run.input_motion || "")}</div>
-                            <div className="chips">
-                              <span className=${`chip ${run.status === "ok" ? "chip-ok" : "chip-bad"}`}
-                                >${run.status}</span
+                    ${meaningfulRuns.length
+                      ? html`
+                          <div className="run-group">
+                            <div className="run-group-head">
+                              <div className="run-group-label">Meaningful runs</div>
+                              <button
+                                className="btn-min run-group-toggle"
+                                onClick=${() => setShowDiagnosticRuns((prev) => !prev)}
                               >
-                              <span className="chip chip-ok">${run.solver_backend}</span>
-                              <span className=${`chip ${runSeverityChipClass(run.convergence_severity)}`}>
-                                ${runSeverityLabel(run)}
-                              </span>
+                                ${showDiagnosticRuns
+                                  ? "Hide diagnostic runs"
+                                  : `Show diagnostic runs (${diagnosticRuns.length})`}
+                              </button>
                             </div>
-                            <div className="muted">PGA: ${fmt(run.pga)}</div>
-                            ${runWarningHint(run)
-                              ? html`<div className="muted">${runWarningHint(run)}</div>`
-                              : null}
-                          </button>
+                            <div className="cards">
+                              ${meaningfulRuns.map(
+                                (run) => html`
+                                  <button
+                                    className=${`run-card ${selectedRunId === run.run_id ? "active" : ""}`}
+                                    onClick=${() => setSelectedRunId(run.run_id)}
+                                  >
+                                    <div className="run-id">${run.run_id}</div>
+                                    <div className="muted">${mini(run.project_name || "")}</div>
+                                    <div className="muted">
+                                      ${mini(run.motion_name || run.input_motion || "")}
+                                    </div>
+                                    <div className="chips">
+                                      <span
+                                        className=${`chip ${run.status === "ok" ? "chip-ok" : "chip-bad"}`}
+                                        >${run.status}</span
+                                      >
+                                      <span className="chip chip-ok">${run.solver_backend}</span>
+                                      <span className=${`chip ${runSeverityChipClass(
+                                        run.convergence_severity
+                                      )}`}>
+                                        ${runSeverityLabel(run)}
+                                      </span>
+                                    </div>
+                                    <div className="muted">PGA: ${fmt(run.pga)}</div>
+                                    ${runWarningHint(run)
+                                      ? html`<div className="muted">${runWarningHint(run)}</div>`
+                                      : null}
+                                  </button>
+                                `
+                              )}
+                            </div>
+                          </div>
                         `
-                      )}
-                    </div>
+                      : null}
+                    ${showDiagnosticRuns && diagnosticRuns.length
+                      ? html`
+                          <div className="run-group">
+                            <div className="run-group-label">Zero / diagnostic runs</div>
+                            <div className="cards">
+                              ${diagnosticRuns.map(
+                                (run) => html`
+                                  <button
+                                    className=${`run-card run-card-muted ${
+                                      selectedRunId === run.run_id ? "active" : ""
+                                    }`}
+                                    onClick=${() => setSelectedRunId(run.run_id)}
+                                  >
+                                    <div className="run-id">${run.run_id}</div>
+                                    <div className="muted">${mini(run.project_name || "")}</div>
+                                    <div className="muted">
+                                      ${mini(run.motion_name || run.input_motion || "")}
+                                    </div>
+                                    <div className="chips">
+                                      <span
+                                        className=${`chip ${run.status === "ok" ? "chip-ok" : "chip-bad"}`}
+                                        >${run.status}</span
+                                      >
+                                      <span className="chip chip-neutral">${run.solver_backend}</span>
+                                      <span className=${`chip ${runSeverityChipClass(
+                                        run.convergence_severity
+                                      )}`}>
+                                        ${runSeverityLabel(run)}
+                                      </span>
+                                    </div>
+                                    <div className="muted">PGA: ${fmt(run.pga)}</div>
+                                    <div className="muted">No signal / diagnostic run</div>
+                                    ${runWarningHint(run)
+                                      ? html`<div className="muted">${runWarningHint(run)}</div>`
+                                      : null}
+                                  </button>
+                                `
+                              )}
+                            </div>
+                          </div>
+                        `
+                      : null}
                   </div>
                 `
               : html`
@@ -4110,13 +4972,36 @@ function App() {
                         onInput=${(e) => setSelectedRunId(e.target.value)}
                       >
                         <option value="">Select run</option>
-                        ${runs.map(
-                          (run) => html`
-                            <option value=${run.run_id}>
-                              ${run.run_id} | ${mini(run.motion_name || run.input_motion || "")}
-                            </option>
-                          `
-                        )}
+                        ${meaningfulRuns.length
+                          ? html`
+                              <optgroup label="Meaningful runs">
+                                ${meaningfulRuns.map(
+                                  (run) => html`
+                                    <option value=${run.run_id}>
+                                      ${run.run_id} | ${mini(
+                                        run.motion_name || run.input_motion || ""
+                                      )} | PGA ${fmt(run.pga)}
+                                    </option>
+                                  `
+                                )}
+                              </optgroup>
+                            `
+                          : null}
+                        ${diagnosticRuns.length
+                          ? html`
+                              <optgroup label="Zero / diagnostic runs">
+                                ${diagnosticRuns.map(
+                                  (run) => html`
+                                    <option value=${run.run_id}>
+                                      ${run.run_id} | ${mini(
+                                        run.motion_name || run.input_motion || ""
+                                      )} | PGA ${fmt(run.pga)}
+                                    </option>
+                                  `
+                                )}
+                              </optgroup>
+                            `
+                          : null}
                       </select>
                     </div>
                     <div className="field align-end">
@@ -4198,8 +5083,8 @@ function App() {
                   )}
                 </div>
 
-                <div className="quality-grid">
-              <section className="quality-card">
+                <div className="quality-grid quality-rail">
+              <section className="quality-card quality-card-parity">
                 <div className="row between">
                   <strong>Parity Health</strong>
                   <button
@@ -4280,7 +5165,296 @@ function App() {
                     `}
               </section>
 
-              <section className="quality-card">
+              <section className="quality-card quality-card-parity quality-card-manifest">
+                <div className="row between">
+                  <strong>Deepsoil Parity</strong>
+                  <button
+                    className="btn-min"
+                    onClick=${() => {
+                      loadDeepsoilParityLatest().catch(() => {});
+                      loadDeepsoilManifestStatus().catch(() => {});
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                ${deepsoilManifestStatus
+                  ? html`
+                      <div className="muted">
+                        release manifest=${deepsoilManifestStatus.manifest_exists ? "configured" : "missing"} |
+                        cases=${deepsoilManifestStatus.case_count || 0}
+                      </div>
+                      <div className="quality-list quality-list-compact">
+                        <div className="quality-list-row">
+                          <span><strong>Policy Flags</strong></span>
+                          <span className="muted">
+                            compare=${deepsoilManifestStatus.require_deepsoil_compare ? "on" : "off"} |
+                            profile=${deepsoilManifestStatus.require_deepsoil_profile ? "on" : "off"} |
+                            hyst=${deepsoilManifestStatus.require_deepsoil_hysteresis ? "on" : "off"}
+                          </span>
+                        </div>
+                        <div className="quality-list-row">
+                          <span><strong>Manifest</strong></span>
+                          <span className="muted">${mini(deepsoilManifestStatus.manifest_path || "")}</span>
+                        </div>
+                        <div className="quality-list-row">
+                          <span><strong>Starter</strong></span>
+                          <span className="muted">${mini(deepsoilManifestStatus.sample_manifest_path || "")}</span>
+                        </div>
+                      </div>
+                    `
+                  : null}
+                ${deepsoilManifestDraft
+                  ? html`
+                      <div className="quality-subtitle">Release Manifest Studio</div>
+                      <div className="manifest-studio">
+                        <div className="manifest-studio-head">
+                          <div className="muted">
+                            loaded_from=${deepsoilManifestDraft.loaded_from || "missing"} |
+                            target=${mini(deepsoilManifestDraft.manifest_path || "")}
+                          </div>
+                          <div className="row">
+                            <button
+                              className="btn-min"
+                              onClick=${() => loadDeepsoilManifestEditor().catch(() => {})}
+                            >
+                              Reload
+                            </button>
+                            <button className="btn-min" onClick=${addDeepsoilManifestCase}>Add Case</button>
+                            <button
+                              className="btn-min"
+                              onClick=${addSelectedRunToDeepsoilManifest}
+                              disabled=${!selectedRun}
+                            >
+                              Add Selected Run
+                            </button>
+                            <button
+                              className="btn-min"
+                              onClick=${saveDeepsoilManifestEditor}
+                              disabled=${deepsoilManifestSaving || !deepsoilManifestDirty}
+                            >
+                              ${deepsoilManifestSaving ? "Saving..." : deepsoilManifestDirty ? "Save Manifest" : "Saved"}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="manifest-defaults-grid">
+                          ${Object.entries(deepsoilManifestDraft.defaults || {}).map(
+                            ([key, value]) => html`
+                              <label>
+                                <span>${key}</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value=${value}
+                                  onInput=${(e) =>
+                                    updateDeepsoilManifestDefault(key, toNum(e.target.value, 0))}
+                                />
+                              </label>
+                            `
+                          )}
+                        </div>
+                        <div className="manifest-table-wrap">
+                          <table className="layer-table manifest-table">
+                            <thead>
+                              <tr>
+                                <th>Case</th>
+                                <th>Run</th>
+                                <th>Surface CSV</th>
+                                <th>PSA CSV</th>
+                                <th>Profile CSV</th>
+                                <th>Hysteresis CSV</th>
+                                <th>Layer</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${deepsoilManifestCases.length === 0
+                                ? html`
+                                    <tr>
+                                      <td colSpan="8">
+                                        <div className="muted">
+                                          No release parity case rows yet. Add at least one case before enabling DEEPSOIL release gates.
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  `
+                                : deepsoilManifestCases.map(
+                                    (row, rowIndex) => html`
+                                      <tr key=${`manifest-case-${rowIndex}`}>
+                                        <td>
+                                          <input
+                                            value=${row.name || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "name",
+                                                e.target.value
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            value=${row.run || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(rowIndex, "run", e.target.value)}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            value=${row.surface_csv || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "surface_csv",
+                                                e.target.value
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            value=${row.psa_csv || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "psa_csv",
+                                                e.target.value
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            value=${row.profile_csv || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "profile_csv",
+                                                e.target.value
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            value=${row.hysteresis_csv || ""}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "hysteresis_csv",
+                                                e.target.value
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value=${row.hysteresis_layer ?? 0}
+                                            onInput=${(e) =>
+                                              updateDeepsoilManifestCase(
+                                                rowIndex,
+                                                "hysteresis_layer",
+                                                Math.max(0, Math.round(toNum(e.target.value, 0)))
+                                              )}
+                                          />
+                                        </td>
+                                        <td>
+                                          <button
+                                            className="btn-min"
+                                            onClick=${() => removeDeepsoilManifestCase(rowIndex)}
+                                          >
+                                            Delete
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    `
+                                  )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    `
+                  : null}
+                ${!deepsoilParityLatest || !deepsoilParityLatest.found
+                  ? html`
+                      <div className="muted">
+                        No DEEPSOIL batch parity report found under current output root.
+                      </div>
+                    `
+                  : html`
+                      <div className="muted">Report: ${mini(deepsoilParityLatest.report_path || "")}</div>
+                      <div className="muted">
+                        Manifest: ${mini(deepsoilParityLatest.manifest_path || "n/a")}
+                      </div>
+                      <div className="metric-grid quality-metrics">
+                        <div className="metric-card">
+                          <span>Cases</span><b>${deepsoilParityLatest.total_cases || 0}</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Passed</span><b>${deepsoilParityLatest.passed_cases || 0}</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Failed</span><b>${deepsoilParityLatest.failed_cases || 0}</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Profile Gate</span>
+                          <b>${deepsoilParityLatest.policy?.profile_nrmse_max ?? "n/a"}</b>
+                        </div>
+                      </div>
+                      <div
+                        className=${`status ${
+                          Number(deepsoilParityLatest.failed_cases || 0) === 0 ? "status-ok" : "status-warn"
+                        }`}
+                      >
+                        <strong>
+                          ${Number(deepsoilParityLatest.failed_cases || 0) === 0
+                            ? "DEEPSOIL parity cases are passing"
+                            : "DEEPSOIL parity has failing cases"}
+                        </strong>
+                      </div>
+                      ${deepsoilParityCases.length > 0
+                        ? html`
+                            <div className="quality-list">
+                              ${deepsoilParityCases.slice(0, 6).map((row) => {
+                                const failures = deepsoilParityFailureLabels(row);
+                                const metricText = deepsoilParityMetricSummary(row);
+                                return html`
+                                  <div className=${`quality-case-row ${row.passed ? "" : "quality-list-row-err"}`}>
+                                    <div className="quality-case-main">
+                                      <div className="quality-case-head">
+                                        <strong>${row.name || "unnamed-case"}</strong>
+                                        <span className=${`chip ${row.passed ? "chip-ok" : "chip-bad"}`}>
+                                          ${row.passed ? "pass" : "fail"}
+                                        </span>
+                                      </div>
+                                      <div className="muted">${mini(row.run || "")}</div>
+                                      ${metricText
+                                        ? html`<div className="quality-case-meta">${metricText}</div>`
+                                        : null}
+                                      ${failures.length
+                                        ? html`
+                                            <div className="quality-case-meta">
+                                              failed checks: ${failures.join(", ")}
+                                            </div>
+                                          `
+                                        : null}
+                                    </div>
+                                  </div>
+                                `;
+                              })}
+                            </div>
+                          `
+                        : null}
+                      ${deepsoilParityFailures.length > 6
+                        ? html`
+                            <div className="muted">
+                              +${deepsoilParityFailures.length - 6} more failing case(s) in report.
+                            </div>
+                          `
+                        : null}
+                    `}
+              </section>
+
+              <section className="quality-card quality-card-confidence">
                 <div className="row between">
                   <strong>Scientific Confidence</strong>
                   <button className="btn-min" onClick=${() => loadScienceConfidence().catch(() => {})}>
@@ -4316,6 +5490,8 @@ function App() {
                       className="btn-min"
                       onClick=${() => {
                         loadParityLatest().catch(() => {});
+                        loadDeepsoilParityLatest().catch(() => {});
+                        loadDeepsoilManifestStatus().catch(() => {});
                         loadReleaseSignoff().catch(() => {});
                         loadScienceConfidence().catch(() => {});
                       }}
@@ -4405,7 +5581,7 @@ function App() {
                 </div>
               </div>
               <div className="compare-selector-grid">
-                ${runs.slice(0, 20).map(
+                ${sortedRuns.slice(0, 20).map(
                   (run) => html`
                     <label className="compare-pick">
                       <input
@@ -4714,91 +5890,111 @@ function App() {
 
             ${selectedRunId && activeResultTab === "Profile" && runSummary
               ? html`
-                  <div className="profile-grid">
-                    <div className="metric-card">
-                      <span>Project</span><b>${runSummary.project_name || "n/a"}</b>
-                    </div>
-                    <div className="metric-card">
-                      <span>Backend</span><b>${runSummary.solver_backend || "n/a"}</b>
-                    </div>
-                    <div className="metric-card">
-                      <span>Status</span><b>${runSummary.status || "n/a"}</b>
-                    </div>
-                    <div className="metric-card">
-                      <span>Layers</span><b title=${(runSummary.output_layers || []).join(", ")}>${outputLayerSummary}</b>
-                    </div>
-                  </div>
-                  <div className=${`status ${convergenceSeverityClass(convergenceView.severity)}`}>
-                    <div className="row between">
-                      <strong>Solver Health</strong>
-                      <span className=${`diag-chip ${convergenceSeverityClass(convergenceView.severity)}`}>
-                        ${String(convergenceView.severity || "neutral").toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="muted">${convergenceView.subtitle || "No diagnostics."}</div>
-                  </div>
-                  ${profileHealthCards.length > 0
-                    ? html`
-                        <div className="metric-grid profile-health-grid">
-                          ${profileHealthCards.map(
-                            (item) => html`
-                              <div key=${`profile-health-${item.label}`} className="metric-card">
-                                <span>${item.label}</span>
-                                <b>${item.value}</b>
+                  <div className="profile-shell">
+                    <aside className="profile-sidebar">
+                      <section className="profile-summary-card">
+                        <div className="results-kicker">Profile Overview</div>
+                        <div className="profile-grid profile-grid-tight">
+                          <div className="metric-card">
+                            <span>Project</span><b>${runSummary.project_name || "n/a"}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>Backend</span><b>${runSummary.solver_backend || "n/a"}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>Status</span><b>${runSummary.status || "n/a"}</b>
+                          </div>
+                          <div className="metric-card">
+                            <span>Layers</span><b title=${(runSummary.output_layers || []).join(", ")}>${outputLayerSummary}</b>
+                          </div>
+                        </div>
+                      </section>
+                      <section className="profile-summary-card">
+                        <div className=${`status ${convergenceSeverityClass(convergenceView.severity)}`}>
+                          <div className="row between">
+                            <strong>Solver Health</strong>
+                            <span className=${`diag-chip ${convergenceSeverityClass(convergenceView.severity)}`}>
+                              ${String(convergenceView.severity || "neutral").toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="muted">${convergenceView.subtitle || "No diagnostics."}</div>
+                        </div>
+                      </section>
+                      ${profileHealthCards.length > 0
+                        ? html`
+                            <section className="profile-summary-card">
+                              <div className="results-kicker">Health Cards</div>
+                              <div className="metric-grid profile-health-grid profile-grid-tight">
+                                ${profileHealthCards.map(
+                                  (item) => html`
+                                    <div key=${`profile-health-${item.label}`} className="metric-card">
+                                      <span>${item.label}</span>
+                                      <b>${item.value}</b>
+                                    </div>
+                                  `
+                                )}
                               </div>
-                            `
-                          )}
-                        </div>
-                      `
-                    : null}
-                  ${runProfileSummary && Array.isArray(runProfileSummary.layers)
-                    ? html`
-                        <div className="metric-grid">
-                          <div className="metric-card">
-                            <span>Layer Count</span>
-                            <b>${runProfileSummary.layer_count ?? runProfileSummary.layers.length}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>Total Thickness (m)</span>
-                            <b>${fmt(runProfileSummary.total_thickness_m, 3)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>ru_max</span>
-                            <b>${fmt(runProfileSummary.ru_max, 4)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>delta_u_max</span>
-                            <b>${fmt(runProfileSummary.delta_u_max, 4)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>sigma_v_eff_min</span>
-                            <b>${fmt(runProfileSummary.sigma_v_eff_min, 4)}</b>
-                          </div>
-                        </div>
-                        <div className="metric-grid profile-kpi-grid">
-                          <div className="metric-card">
-                            <span>gamma_metric max</span>
-                            <b>${fmt(profileAtlasMetrics.gammaMax, 6)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>tau_peak max</span>
-                            <b>${fmt(profileAtlasMetrics.tauPeakMax, 4)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>layer ru_max</span>
-                            <b>${fmt(profileAtlasMetrics.ruLayerMax, 4)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>layer delta_u max</span>
-                            <b>${fmt(profileAtlasMetrics.deltaUMax, 4)}</b>
-                          </div>
-                          <div className="metric-card">
-                            <span>layer sigma'_v,min</span>
-                            <b>${fmt(profileAtlasMetrics.sigmaVEffMin, 4)}</b>
-                          </div>
-                        </div>
-                        <${LayerRibbonAtlas} layers=${profileDerivedLayers} />
-                        <div className="profile-atlas">
+                            </section>
+                          `
+                        : null}
+                      ${runProfileSummary && Array.isArray(runProfileSummary.layers)
+                        ? html`
+                            <section className="profile-summary-card">
+                              <div className="results-kicker">Layer Totals</div>
+                              <div className="metric-grid profile-grid-tight">
+                                <div className="metric-card">
+                                  <span>Layer Count</span>
+                                  <b>${runProfileSummary.layer_count ?? runProfileSummary.layers.length}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>Total Thickness (m)</span>
+                                  <b>${fmt(runProfileSummary.total_thickness_m, 3)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>ru_max</span>
+                                  <b>${fmt(runProfileSummary.ru_max, 4)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>delta_u_max</span>
+                                  <b>${fmt(runProfileSummary.delta_u_max, 4)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>sigma_v_eff_min</span>
+                                  <b>${fmt(runProfileSummary.sigma_v_eff_min, 4)}</b>
+                                </div>
+                              </div>
+                            </section>
+                            <section className="profile-summary-card">
+                              <div className="results-kicker">Atlas KPIs</div>
+                              <div className="metric-grid profile-kpi-grid profile-grid-tight">
+                                <div className="metric-card">
+                                  <span>gamma_metric max</span>
+                                  <b>${fmt(profileAtlasMetrics.gammaMax, 6)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>tau_peak max</span>
+                                  <b>${fmt(profileAtlasMetrics.tauPeakMax, 4)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>layer ru_max</span>
+                                  <b>${fmt(profileAtlasMetrics.ruLayerMax, 4)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>layer delta_u max</span>
+                                  <b>${fmt(profileAtlasMetrics.deltaUMax, 4)}</b>
+                                </div>
+                                <div className="metric-card">
+                                  <span>layer sigma'_v,min</span>
+                                  <b>${fmt(profileAtlasMetrics.sigmaVEffMin, 4)}</b>
+                                </div>
+                              </div>
+                            </section>
+                          `
+                        : null}
+                    </aside>
+                    <div className="profile-main">
+                      <${LayerRibbonAtlas} layers=${profileDerivedLayers} />
+                      <div className="profile-atlas">
                           <div className="profile-atlas-head">
                             <strong>Profile Atlas</strong>
                             <span className="muted">
@@ -4832,8 +6028,8 @@ function App() {
                               xLabel="n_sub"
                             />
                           </div>
-                        </div>
-                        <div className="profile-atlas">
+                      </div>
+                      <div className="profile-atlas">
                           <div className="profile-atlas-head">
                             <strong>Layer Response Atlas</strong>
                             <span className="muted">
@@ -4874,8 +6070,8 @@ function App() {
                               xLabel="kPa"
                             />
                           </div>
-                        </div>
-                        <div className="profile-atlas">
+                      </div>
+                      <div className="profile-atlas">
                           <div className="profile-atlas-head">
                             <strong>Effective Stress Atlas</strong>
                             <span className="muted">
@@ -4916,7 +6112,9 @@ function App() {
                               xLabel="kPa"
                             />
                           </div>
-                        </div>
+                      </div>
+                      <details className="profile-table-details">
+                        <summary>Layer Ledger</summary>
                         <div className="layer-table-wrap profile-summary-wrap">
                           <table className="layer-table profile-summary-table">
                             <thead>
@@ -4969,6 +6167,9 @@ function App() {
                             </tbody>
                           </table>
                         </div>
+                      </details>
+                    </div>
+                  </div>
                       `
                     : null}
                   <div className="muted">

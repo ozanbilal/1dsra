@@ -5,12 +5,20 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from dsra1d.config import MaterialType, ProjectConfig
+from dsra1d.config import BoundaryCondition, MaterialType, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials import gqh_backbone_stress, mkz_backbone_stress
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
+
+
+def _integrate_acc_to_velocity(acc: FloatArray, dt: float) -> FloatArray:
+    vel = np.zeros_like(acc, dtype=np.float64)
+    if acc.size < 2 or dt <= 0.0:
+        return vel
+    vel[1:] = np.cumsum(0.5 * (acc[1:] + acc[:-1]) * dt, dtype=np.float64)
+    return vel
 
 
 def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
@@ -204,7 +212,8 @@ def solve_nonlinear_sh_response(
 
     n_elem = len(element_slices)
     n_nodes = n_elem + 1
-    n_free = n_nodes - 1  # base-fixed model
+    use_elastic_halfspace = config.boundary_condition == BoundaryCondition.ELASTIC_HALFSPACE
+    n_free = n_nodes if use_elastic_halfspace else (n_nodes - 1)
 
     m_elem = np.zeros(n_elem, dtype=np.float64)
     k_elem = np.zeros(n_elem, dtype=np.float64)
@@ -250,6 +259,12 @@ def solve_nonlinear_sh_response(
         raise ValueError("Non-positive nodal mass encountered in nonlinear solver.")
     m_mat = np.diag(m_diag)
     c_full = _assemble_tridiagonal_from_element_values(c_elem, n_nodes)
+    if use_elastic_halfspace:
+        base_layer = cfg_layers[-1]
+        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        dashpot_c = base_rho * base_vs * area
+        c_full[-1, -1] += dashpot_c
     c_mat = c_full[:n_free, :n_free]
     k_initial_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
     k_initial = k_initial_full[:n_free, :n_free]
@@ -275,6 +290,7 @@ def solve_nonlinear_sh_response(
     acc_g = np.asarray(motion.acc, dtype=np.float64)
     n_steps = acc_g.size
     time = np.arange(n_steps, dtype=np.float64) * dt
+    input_vel = _integrate_acc_to_velocity(acc_g, dt) if use_elastic_halfspace else None
 
     u = np.zeros((n_free,), dtype=np.float64)
     v = np.zeros((n_free,), dtype=np.float64)
@@ -302,7 +318,12 @@ def solve_nonlinear_sh_response(
                         g_sec = constitutive_states[j].gmax_fallback
                     k_sec_elem[j] = max(g_sec * area / dz, 1.0e-9)
             f_int = f_int_full[:n_free]
-            f_ext = -m_diag * ag
+            if use_elastic_halfspace:
+                assert input_vel is not None
+                f_ext = np.zeros_like(m_diag)
+                f_ext[-1] = 2.0 * base_rho * base_vs * area * input_vel[i]
+            else:
+                f_ext = -m_diag * ag
             if k_sec_elem is not None:
                 k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
                 k_sec = k_sec_full[:n_free, :n_free]
@@ -318,7 +339,10 @@ def solve_nonlinear_sh_response(
     if n_free == 0:
         surface_acc = acc_g.copy()
     else:
-        surface_acc = a_rel_hist[0, :] + acc_g
+        if use_elastic_halfspace:
+            surface_acc = a_rel_hist[0, :]
+        else:
+            surface_acc = a_rel_hist[0, :] + acc_g
     return time, surface_acc
 
 

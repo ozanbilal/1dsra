@@ -14,6 +14,11 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from dsra1d.calibration import (
+    calibrate_gqh_from_darendeli,
+    calibrate_mkz_from_darendeli,
+    generate_darendeli_curves,
+)
 from dsra1d.config import (
     available_config_templates,
     get_config_template_payload,
@@ -23,6 +28,7 @@ from dsra1d.config import (
 from dsra1d.config.models import (
     BaselineMode,
     BoundaryCondition,
+    DarendeliCalibration,
     MaterialType,
     MotionConfig,
     ProjectConfig,
@@ -101,6 +107,7 @@ class ConfigTemplateRequest(BaseModel):
         "mkz-gqh-mock",
         "mkz-gqh-eql",
         "mkz-gqh-nonlinear",
+        "mkz-gqh-darendeli",
     ] = "effective-stress"
     output_dir: str = ""
     file_name: str = ""
@@ -130,6 +137,7 @@ class WizardLayer(BaseModel):
     material: MaterialType
     material_params: dict[str, float] = Field(default_factory=dict)
     material_optional_args: list[float] = Field(default_factory=list)
+    calibration: DarendeliCalibration | None = None
 
 
 class WizardProfileStep(BaseModel):
@@ -180,6 +188,30 @@ class WizardConfigResponse(BaseModel):
     config_yaml: str
     warnings: list[str]
     status: str
+
+
+class LayerCalibrationPreviewRequest(BaseModel):
+    layer: WizardLayer
+
+
+class LayerCalibrationPreviewResponse(BaseModel):
+    available: bool = False
+    material: str = ""
+    source: str = ""
+    target_available: bool = False
+    strain: list[float] = Field(default_factory=list)
+    target_modulus_reduction: list[float] = Field(default_factory=list)
+    fitted_modulus_reduction: list[float] = Field(default_factory=list)
+    target_damping_ratio: list[float] = Field(default_factory=list)
+    fitted_damping_ratio: list[float] = Field(default_factory=list)
+    material_params: dict[str, float] = Field(default_factory=dict)
+    calibrated_material_params: dict[str, float] = Field(default_factory=dict)
+    fit_rmse: float | None = None
+    loop_strain: list[float] = Field(default_factory=list)
+    loop_stress: list[float] = Field(default_factory=list)
+    loop_strain_amplitude: float | None = None
+    loop_energy: float | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class MotionImportRequest(BaseModel):
@@ -276,6 +308,70 @@ class ParityLatestResponse(BaseModel):
     suite: str = ""
     generated_utc: str = ""
     suites: list[ParitySuiteStatus] = Field(default_factory=list)
+
+
+class DeepsoilParityCaseResponse(BaseModel):
+    name: str
+    passed: bool
+    run: str = ""
+    surface_csv: str = ""
+    psa_csv: str = ""
+    profile_csv: str = ""
+    hysteresis_csv: str = ""
+    checks: dict[str, bool] = Field(default_factory=dict)
+    metrics: dict[str, object] = Field(default_factory=dict)
+
+
+class DeepsoilParityLatestResponse(BaseModel):
+    found: bool
+    report_path: str = ""
+    manifest_path: str = ""
+    total_cases: int = 0
+    passed_cases: int = 0
+    failed_cases: int = 0
+    policy: dict[str, object] = Field(default_factory=dict)
+    cases: list[DeepsoilParityCaseResponse] = Field(default_factory=list)
+
+
+class DeepsoilReleaseManifestResponse(BaseModel):
+    policy_path: str
+    manifest_path: str
+    sample_manifest_path: str
+    manifest_exists: bool
+    case_count: int = 0
+    require_deepsoil_compare: bool = False
+    require_deepsoil_profile: bool = False
+    require_deepsoil_hysteresis: bool = False
+
+
+class DeepsoilManifestCaseModel(BaseModel):
+    name: str = ""
+    run: str = ""
+    surface_csv: str = ""
+    psa_csv: str = ""
+    profile_csv: str = ""
+    hysteresis_csv: str = ""
+    hysteresis_layer: int = Field(default=0, ge=0)
+
+
+class DeepsoilManifestEditorResponse(BaseModel):
+    manifest_path: str
+    sample_manifest_path: str
+    loaded_from: str
+    exists: bool
+    defaults: dict[str, float] = Field(default_factory=dict)
+    cases: list[DeepsoilManifestCaseModel] = Field(default_factory=list)
+
+
+class DeepsoilManifestSaveRequest(BaseModel):
+    defaults: dict[str, float] = Field(default_factory=dict)
+    cases: list[DeepsoilManifestCaseModel] = Field(default_factory=list)
+
+
+class DeepsoilManifestSaveResponse(BaseModel):
+    status: str
+    manifest_path: str
+    case_count: int
 
 
 class ScientificConfidenceRow(BaseModel):
@@ -803,6 +899,150 @@ def _find_latest_parity_report(output_root: Path) -> tuple[Path, dict[str, objec
         if report and _is_parity_report(report):
             return path, report
     return None
+
+
+def _find_latest_deepsoil_compare_report(
+    output_root: Path,
+) -> tuple[Path, dict[str, object]] | None:
+    if not output_root.exists() or not output_root.is_dir():
+        return None
+    candidates = sorted(
+        output_root.rglob("deepsoil_compare_batch.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        report = _json_mapping(path)
+        if report:
+            return path, report
+    return None
+
+
+def _deepsoil_release_manifest_status() -> DeepsoilReleaseManifestResponse:
+    repo_root = _repo_root()
+    policy_path = repo_root / "benchmarks" / "policies" / "release_signoff.yml"
+    manifest_path = repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.json"
+    sample_manifest_path = (
+        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.sample.json"
+    )
+    policy = {}
+    if policy_path.exists():
+        try:
+            raw = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                policy = raw
+        except (OSError, yaml.YAMLError):
+            policy = {}
+    case_count = 0
+    if manifest_path.exists():
+        manifest = _json_mapping(manifest_path)
+        cases_raw = manifest.get("cases")
+        if isinstance(cases_raw, list):
+            case_count = len([item for item in cases_raw if isinstance(item, dict)])
+    return DeepsoilReleaseManifestResponse(
+        policy_path=str(policy_path),
+        manifest_path=str(manifest_path),
+        sample_manifest_path=str(sample_manifest_path),
+        manifest_exists=manifest_path.exists(),
+        case_count=case_count,
+        require_deepsoil_compare=bool(policy.get("require_deepsoil_compare", False)),
+        require_deepsoil_profile=bool(policy.get("require_deepsoil_profile", False)),
+        require_deepsoil_hysteresis=bool(policy.get("require_deepsoil_hysteresis", False)),
+    )
+
+
+def _default_deepsoil_manifest_defaults() -> dict[str, float]:
+    return {
+        "surface_corrcoef_min": 0.95,
+        "surface_nrmse_max": 0.2,
+        "psa_nrmse_max": 0.2,
+        "pga_pct_diff_abs_max": 20.0,
+        "profile_nrmse_max": 0.25,
+        "hysteresis_stress_nrmse_max": 0.25,
+        "hysteresis_energy_pct_diff_abs_max": 25.0,
+    }
+
+
+def _deepsoil_manifest_paths() -> tuple[Path, Path]:
+    repo_root = _repo_root()
+    return (
+        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.json",
+        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.sample.json",
+    )
+
+
+def _coerce_manifest_defaults(raw: object) -> dict[str, float]:
+    defaults = dict(_default_deepsoil_manifest_defaults())
+    if not isinstance(raw, dict):
+        return defaults
+    for key, value in raw.items():
+        value_f = _as_float(value, float("nan"))
+        if np.isfinite(value_f):
+            defaults[str(key)] = float(value_f)
+    return defaults
+
+
+def _coerce_manifest_cases(raw: object) -> list[DeepsoilManifestCaseModel]:
+    if not isinstance(raw, list):
+        return []
+    rows: list[DeepsoilManifestCaseModel] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            rows.append(DeepsoilManifestCaseModel.model_validate(item))
+        except ValidationError:
+            continue
+    return rows
+
+
+def _load_deepsoil_manifest_editor() -> DeepsoilManifestEditorResponse:
+    manifest_path, sample_manifest_path = _deepsoil_manifest_paths()
+    source_path = manifest_path if manifest_path.exists() else sample_manifest_path
+    loaded_from = "missing"
+    defaults = _default_deepsoil_manifest_defaults()
+    cases: list[DeepsoilManifestCaseModel] = []
+    if source_path.exists():
+        payload = _json_mapping(source_path)
+        defaults = _coerce_manifest_defaults(payload.get("defaults"))
+        cases = _coerce_manifest_cases(payload.get("cases"))
+        loaded_from = "manifest" if source_path == manifest_path else "sample"
+    return DeepsoilManifestEditorResponse(
+        manifest_path=str(manifest_path),
+        sample_manifest_path=str(sample_manifest_path),
+        loaded_from=loaded_from,
+        exists=manifest_path.exists(),
+        defaults=defaults,
+        cases=cases,
+    )
+
+
+def _serialize_manifest_cases(cases: list[DeepsoilManifestCaseModel]) -> list[dict[str, object]]:
+    out: list[dict[str, object]] = []
+    for case in cases:
+        if not any(
+            (
+                case.name.strip(),
+                case.run.strip(),
+                case.surface_csv.strip(),
+                case.psa_csv.strip(),
+                case.profile_csv.strip(),
+                case.hysteresis_csv.strip(),
+            )
+        ):
+            continue
+        out.append(
+            {
+                "name": case.name.strip(),
+                "run": case.run.strip(),
+                "surface_csv": case.surface_csv.strip(),
+                "psa_csv": case.psa_csv.strip(),
+                "profile_csv": case.profile_csv.strip(),
+                "hysteresis_csv": case.hysteresis_csv.strip(),
+                "hysteresis_layer": int(case.hysteresis_layer),
+            }
+        )
+    return out
 
 
 def _is_release_signoff_summary(summary: dict[str, object]) -> bool:
@@ -1676,6 +1916,198 @@ def _numeric_list(raw: object) -> list[float]:
     return out
 
 
+def _darendeli_payload(raw: object) -> dict[str, object] | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        calibrated = DarendeliCalibration.model_validate(raw)
+    except ValidationError:
+        return None
+    return cast(dict[str, object], calibrated.model_dump(mode="json"))
+
+
+def _layer_gmax_seed(layer: WizardLayer) -> float:
+    density_t_m3 = float(layer.unit_weight_kn_m3) / 9.81
+    return density_t_m3 * float(layer.vs_m_s) * float(layer.vs_m_s)
+
+
+def _material_preview_curves(
+    material: MaterialType,
+    params: dict[str, float],
+    strain: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    damping_min = float(params.get("damping_min", 0.01))
+    damping_max = float(params.get("damping_max", 0.12))
+    gamma_ref = float(params.get("gamma_ref", 0.0))
+    if material == MaterialType.MKZ:
+        reduction = mkz_modulus_reduction(strain, gamma_ref=gamma_ref)
+    elif material == MaterialType.GQH:
+        reduction = gqh_modulus_reduction(
+            strain,
+            gamma_ref=gamma_ref,
+            a1=float(params.get("a1", 1.0)),
+            a2=float(params.get("a2", 0.0)),
+            m=float(params.get("m", 1.0)),
+        )
+    else:
+        raise ValueError("Preview curves are available only for MKZ/GQH materials.")
+    damping = bounded_damping_from_reduction(
+        reduction,
+        damping_min=damping_min,
+        damping_max=damping_max,
+    )
+    return reduction, damping
+
+
+def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPreviewResponse:
+    material = layer.material
+    warnings: list[str] = []
+    if material not in {MaterialType.MKZ, MaterialType.GQH}:
+        return LayerCalibrationPreviewResponse(
+            available=False,
+            material=material.value,
+            source="unsupported",
+            warnings=["Layer preview is currently available only for MKZ/GQH materials."],
+        )
+
+    calibration = layer.calibration
+    strain_min = calibration.strain_min if calibration is not None else 1.0e-6
+    strain_max = calibration.strain_max if calibration is not None else 1.0e-1
+    n_points = calibration.n_points if calibration is not None else 60
+    strain = np.logspace(
+        np.log10(strain_min),
+        np.log10(strain_max),
+        int(n_points),
+        dtype=np.float64,
+    )
+
+    raw_params = dict(layer.material_params)
+    gmax_seed = float(raw_params.get("gmax", _layer_gmax_seed(layer)))
+    raw_params.setdefault("gmax", gmax_seed)
+
+    target_available = calibration is not None
+    target_modulus: np.ndarray = np.asarray([], dtype=np.float64)
+    target_damping: np.ndarray = np.asarray([], dtype=np.float64)
+    calibrated_params: dict[str, float] = {}
+    source = "manual"
+
+    if calibration is not None:
+        source = calibration.source
+        if material == MaterialType.MKZ:
+            calibrated = calibrate_mkz_from_darendeli(
+                gmax=gmax_seed,
+                plasticity_index=calibration.plasticity_index,
+                ocr=calibration.ocr,
+                mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
+                frequency_hz=calibration.frequency_hz,
+                num_cycles=calibration.num_cycles,
+                atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
+                strain_min=calibration.strain_min,
+                strain_max=calibration.strain_max,
+                n_points=calibration.n_points,
+                reload_factor=calibration.reload_factor or 2.0,
+            )
+        else:
+            calibrated = calibrate_gqh_from_darendeli(
+                gmax=gmax_seed,
+                plasticity_index=calibration.plasticity_index,
+                ocr=calibration.ocr,
+                mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
+                frequency_hz=calibration.frequency_hz,
+                num_cycles=calibration.num_cycles,
+                atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
+                strain_min=calibration.strain_min,
+                strain_max=calibration.strain_max,
+                n_points=calibration.n_points,
+                reload_factor=calibration.reload_factor or 1.6,
+            )
+        target_curves = generate_darendeli_curves(
+            plasticity_index=calibration.plasticity_index,
+            ocr=calibration.ocr,
+            mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
+            frequency_hz=calibration.frequency_hz,
+            num_cycles=calibration.num_cycles,
+            atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
+            strain_min=calibration.strain_min,
+            strain_max=calibration.strain_max,
+            n_points=calibration.n_points,
+        )
+        target_modulus = target_curves.modulus_reduction
+        target_damping = target_curves.damping_ratio
+        calibrated_params = dict(calibrated.material_params)
+        effective_params = {**calibrated_params, **raw_params}
+    else:
+        effective_params = dict(raw_params)
+
+    try:
+        fitted_modulus, fitted_damping = _material_preview_curves(
+            material,
+            effective_params,
+            strain,
+        )
+    except ValueError as exc:
+        warnings.append(str(exc))
+        return LayerCalibrationPreviewResponse(
+            available=False,
+            material=material.value,
+            source=source,
+            target_available=target_available,
+            warnings=warnings,
+        )
+
+    fit_rmse: float | None = None
+    if target_modulus.size:
+        pred = np.clip(fitted_modulus, 1.0e-6, 1.0)
+        obs = np.clip(target_modulus, 1.0e-6, 1.0)
+        fit_rmse = float(np.sqrt(np.mean(np.square(np.log(pred) - np.log(obs)))))
+
+    loop_strain: list[float] = []
+    loop_stress: list[float] = []
+    loop_strain_amplitude: float | None = None
+    loop_energy: float | None = None
+    try:
+        gamma_ref = float(effective_params.get("gamma_ref", 0.0))
+        loop_amp = float(
+            np.clip(
+                max(gamma_ref * 2.0, strain.min() * 5.0),
+                strain.min(),
+                min(strain.max(), 0.01),
+            )
+        )
+        loop = generate_masing_loop(
+            material,
+            effective_params,
+            strain_amplitude=loop_amp,
+            n_points_per_branch=80,
+        )
+        loop_strain = loop.strain.astype(float).tolist()
+        loop_stress = loop.stress.astype(float).tolist()
+        loop_strain_amplitude = loop.strain_amplitude
+        loop_energy = loop.energy_dissipation
+    except ValueError as exc:
+        warnings.append(f"Single-element preview unavailable: {exc}")
+
+    return LayerCalibrationPreviewResponse(
+        available=True,
+        material=material.value,
+        source=source,
+        target_available=target_available,
+        strain=strain.astype(float).tolist(),
+        target_modulus_reduction=target_modulus.astype(float).tolist(),
+        fitted_modulus_reduction=fitted_modulus.astype(float).tolist(),
+        target_damping_ratio=target_damping.astype(float).tolist(),
+        fitted_damping_ratio=fitted_damping.astype(float).tolist(),
+        material_params={k: float(v) for k, v in effective_params.items()},
+        calibrated_material_params={k: float(v) for k, v in calibrated_params.items()},
+        fit_rmse=fit_rmse,
+        loop_strain=loop_strain,
+        loop_stress=loop_stress,
+        loop_strain_amplitude=loop_strain_amplitude,
+        loop_energy=loop_energy,
+        warnings=warnings,
+    )
+
+
 def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[str, object]:
     valid_boundary = {e.value for e in BoundaryCondition}
     valid_material = {e.value for e in MaterialType}
@@ -1701,6 +2133,7 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
             continue
         material_raw = str(item.get("material", "pm4sand")).strip().lower()
         material = material_raw if material_raw in valid_material else "pm4sand"
+        calibration_payload = _darendeli_payload(item.get("calibration"))
         layers_out.append(
             {
                 "name": str(item.get("name", f"Layer-{idx + 1}")),
@@ -1714,6 +2147,7 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
                 "material_optional_args": _numeric_list(
                     item.get("material_optional_args")
                 ),
+                "calibration": calibration_payload,
             }
         )
     if not layers_out:
@@ -1726,6 +2160,7 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
                 "material": "pm4sand",
                 "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
                 "material_optional_args": [],
+                "calibration": None,
             }
         ]
 
@@ -1847,7 +2282,7 @@ def _build_wizard_schema() -> dict[str, object]:
                 "solver_backend",
                 "pm4_validation_profile",
             ],
-            "profile_step": ["layers[]"],
+            "profile_step": ["layers[]", "layers[].calibration"],
             "motion_step": [
                 "motion_path",
                 "units",
@@ -1920,6 +2355,11 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
                 "material": layer.material.value,
                 "material_params": layer.material_params,
                 "material_optional_args": layer.material_optional_args,
+                "calibration": (
+                    layer.calibration.model_dump(mode="json")
+                    if layer.calibration is not None
+                    else None
+                ),
             }
         )
 
@@ -2419,6 +2859,20 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post(
+        "/api/wizard/layer-calibration-preview",
+        response_model=LayerCalibrationPreviewResponse,
+    )
+    def wizard_layer_calibration_preview(
+        payload: LayerCalibrationPreviewRequest,
+    ) -> LayerCalibrationPreviewResponse:
+        try:
+            return _build_layer_calibration_preview(payload.layer)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/wizard/sanity-check", response_model=WizardSanityResponse)
     def wizard_sanity_check(payload: WizardConfigRequest) -> WizardSanityResponse:
         return _wizard_sanity_report(payload)
@@ -2671,6 +3125,94 @@ def create_app() -> FastAPI:
             suite=suite_name,
             generated_utc=generated_utc,
             suites=suite_rows,
+        )
+
+    @app.get("/api/parity/deepsoil/latest", response_model=DeepsoilParityLatestResponse)
+    def deepsoil_parity_latest(
+        output_root: str = Query(default=""),
+    ) -> DeepsoilParityLatestResponse:
+        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
+        latest = _find_latest_deepsoil_compare_report(root)
+        if latest is None:
+            return DeepsoilParityLatestResponse(found=False)
+
+        path, report = latest
+        policy_raw = report.get("policy")
+        policy = policy_raw if isinstance(policy_raw, dict) else {}
+        cases_raw = report.get("cases")
+        case_rows: list[DeepsoilParityCaseResponse] = []
+        if isinstance(cases_raw, list):
+            for case in cases_raw:
+                if not isinstance(case, dict):
+                    continue
+                checks_raw = case.get("checks")
+                checks = (
+                    {str(k): bool(v) for k, v in checks_raw.items()}
+                    if isinstance(checks_raw, dict)
+                    else {}
+                )
+                metrics_raw = case.get("metrics")
+                metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+                case_rows.append(
+                    DeepsoilParityCaseResponse(
+                        name=str(case.get("name", "")),
+                        passed=bool(case.get("passed", False)),
+                        run=str(case.get("run", "")),
+                        surface_csv=str(case.get("surface_csv", "")),
+                        psa_csv=str(case.get("psa_csv", "")),
+                        profile_csv=str(case.get("profile_csv", "")),
+                        hysteresis_csv=str(case.get("hysteresis_csv", "")),
+                        checks=checks,
+                        metrics=metrics,
+                    )
+                )
+        case_rows.sort(key=lambda row: (row.passed, row.name))
+        return DeepsoilParityLatestResponse(
+            found=True,
+            report_path=str(path),
+            manifest_path=str(report.get("manifest_path", "")),
+            total_cases=_as_int(report.get("total_cases", len(case_rows)), 0),
+            passed_cases=_as_int(report.get("passed_cases", 0), 0),
+            failed_cases=_as_int(report.get("failed_cases", 0), 0),
+            policy=policy,
+            cases=case_rows,
+        )
+
+    @app.get(
+        "/api/parity/deepsoil/release-manifest",
+        response_model=DeepsoilReleaseManifestResponse,
+    )
+    def deepsoil_release_manifest() -> DeepsoilReleaseManifestResponse:
+        return _deepsoil_release_manifest_status()
+
+    @app.get(
+        "/api/parity/deepsoil/release-manifest/editor",
+        response_model=DeepsoilManifestEditorResponse,
+    )
+    def deepsoil_release_manifest_editor() -> DeepsoilManifestEditorResponse:
+        return _load_deepsoil_manifest_editor()
+
+    @app.post(
+        "/api/parity/deepsoil/release-manifest/save",
+        response_model=DeepsoilManifestSaveResponse,
+    )
+    def deepsoil_release_manifest_save(
+        payload: DeepsoilManifestSaveRequest,
+    ) -> DeepsoilManifestSaveResponse:
+        manifest_path, _sample_manifest_path = _deepsoil_manifest_paths()
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        rendered_payload = {
+            "defaults": _coerce_manifest_defaults(payload.defaults),
+            "cases": _serialize_manifest_cases(payload.cases),
+        }
+        manifest_path.write_text(
+            json.dumps(rendered_payload, indent=2),
+            encoding="utf-8",
+        )
+        return DeepsoilManifestSaveResponse(
+            status="ok",
+            manifest_path=str(manifest_path),
+            case_count=len(rendered_payload["cases"]),
         )
 
     @app.get("/api/science/confidence", response_model=ScientificConfidenceResponse)

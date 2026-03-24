@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from dsra1d.config import MaterialType, ProjectConfig
+from dsra1d.config import BoundaryCondition, MaterialType, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials import (
     bounded_damping_from_reduction,
@@ -64,6 +64,14 @@ def _rayleigh_coefficients(
     return float(alpha), float(beta)
 
 
+def _integrate_acc_to_velocity(acc: FloatArray, dt: float) -> FloatArray:
+    vel = np.zeros_like(acc, dtype=np.float64)
+    if acc.size < 2 or dt <= 0.0:
+        return vel
+    vel[1:] = np.cumsum(0.5 * (acc[1:] + acc[:-1]) * dt, dtype=np.float64)
+    return vel
+
+
 def _solve_shear_beam_response(
     config: ProjectConfig,
     motion: Motion,
@@ -93,7 +101,8 @@ def _solve_shear_beam_response(
 
     n_elem = len(element_slices)
     n_nodes = n_elem + 1
-    n_free = n_nodes - 1  # base-fixed model
+    use_elastic_halfspace = config.boundary_condition == BoundaryCondition.ELASTIC_HALFSPACE
+    n_free = n_nodes if use_elastic_halfspace else (n_nodes - 1)
 
     m_elem = np.zeros(n_elem, dtype=np.float64)
     k_elem = np.zeros(n_elem, dtype=np.float64)
@@ -150,6 +159,13 @@ def _solve_shear_beam_response(
         c_full[i1, i0] -= c
         c_full[i1, i1] += c
 
+    if use_elastic_halfspace:
+        base_layer = cfg_layers[-1]
+        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        dashpot_c = base_rho * base_vs * area
+        c_full[-1, -1] += dashpot_c
+
     k_mat = k_full[:n_free, :n_free]
     m_mat = np.diag(m_diag)
 
@@ -178,7 +194,15 @@ def _solve_shear_beam_response(
     a4 = (gamma / beta) - 1.0
     a5 = dt * ((gamma / (2.0 * beta)) - 1.0)
 
-    force = -np.outer(m_diag, acc_g)
+    if use_elastic_halfspace:
+        base_layer = cfg_layers[-1]
+        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        input_vel = _integrate_acc_to_velocity(acc_g, dt)
+        force = np.zeros((n_free, n_steps), dtype=np.float64)
+        force[-1, :] = 2.0 * base_rho * base_vs * area * input_vel
+    else:
+        force = -np.outer(m_diag, acc_g)
     u = np.zeros((n_free, n_steps), dtype=np.float64)
     v = np.zeros((n_free, n_steps), dtype=np.float64)
     acc_rel = np.zeros((n_free, n_steps), dtype=np.float64)
@@ -209,7 +233,10 @@ def _solve_shear_beam_response(
         surface_acc = acc_g.copy()
         u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
     else:
-        surface_acc = acc_rel[0, :] + acc_g
+        if use_elastic_halfspace:
+            surface_acc = acc_rel[0, :]
+        else:
+            surface_acc = acc_rel[0, :] + acc_g
         u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
         u_full[:n_free, :] = u
 

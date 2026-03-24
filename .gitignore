@@ -24,6 +24,7 @@ build/
 out/
 results/
 logs/
+examples/parity/deepsoil_compare_manifest.generated.json
 
 # Editor/OS
 .vscode/

@@ -3737,6 +3737,73 @@ def create_app() -> FastAPI:
                 detail=f"Run failed: {type(exc).__name__}: {exc}",
             ) from exc
 
+    @app.post("/api/single-element-test")
+    def single_element_test(
+        material: str = Query(...),
+        strain_amplitude: float = Query(0.01, gt=0.0, le=0.5),
+        gmax: float = Query(100000.0, gt=0.0),
+        gamma_ref: float = Query(0.001, gt=0.0),
+        damping_min: float = Query(0.01, ge=0.0, le=0.5),
+        damping_max: float = Query(0.15, ge=0.0, le=0.5),
+        reload_factor: float = Query(2.0, ge=1.0, le=5.0),
+        g_reduction_min: float = Query(0.0, ge=0.0, le=0.5),
+        a1: float = Query(1.0, gt=0.0),
+        a2: float = Query(0.0, ge=0.0),
+        m: float = Query(1.0, gt=0.0),
+    ) -> dict[str, object]:
+        from dsra1d.materials.hysteretic import generate_masing_loop
+        from dsra1d.materials.mrdf import compute_masing_damping_ratio
+
+        mat_type = MaterialType(material) if material in {e.value for e in MaterialType} else MaterialType.MKZ
+        params: dict[str, float] = {
+            "gmax": gmax,
+            "gamma_ref": gamma_ref,
+            "damping_min": damping_min,
+            "damping_max": damping_max,
+            "reload_factor": reload_factor,
+            "g_reduction_min": g_reduction_min,
+        }
+        if mat_type == MaterialType.GQH:
+            params.update({"a1": a1, "a2": a2, "m": m})
+
+        try:
+            loop = generate_masing_loop(
+                mat_type, params,
+                strain_amplitude=strain_amplitude,
+                n_points_per_branch=100,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Masing damping at this strain amplitude
+        strains_check = np.array([strain_amplitude], dtype=np.float64)
+        d_masing = compute_masing_damping_ratio(mat_type, params, strains_check)
+
+        # G/Gmax at this strain
+        from dsra1d.materials.hysteretic import mkz_modulus_reduction, gqh_modulus_reduction
+        if mat_type == MaterialType.GQH:
+            g_red = float(gqh_modulus_reduction(
+                strains_check, gamma_ref=gamma_ref,
+                a1=a1, a2=a2, m=m, g_reduction_min=g_reduction_min,
+            )[0])
+        else:
+            g_red = float(mkz_modulus_reduction(
+                strains_check, gamma_ref=gamma_ref, g_reduction_min=g_reduction_min,
+            )[0])
+
+        return {
+            "material": mat_type.value,
+            "strain_amplitude": strain_amplitude,
+            "loop_strain": loop.strain.astype(float).tolist(),
+            "loop_stress": loop.stress.astype(float).tolist(),
+            "loop_energy": loop.energy_dissipation,
+            "masing_damping_ratio": float(d_masing[0]),
+            "g_reduction": g_red,
+            "secant_modulus": float(np.max(np.abs(loop.stress))) / strain_amplitude if strain_amplitude > 0 else 0.0,
+            "peak_stress": float(np.max(np.abs(loop.stress))),
+            "params": params,
+        }
+
     @app.get("/")
     def web_root() -> FileResponse:
         return FileResponse(static_dir / "index.html")

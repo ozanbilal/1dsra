@@ -1808,6 +1808,9 @@ function App() {
   const [showDiagnosticRuns, setShowDiagnosticRuns] = useState(false);
   const [parityLatest, setParityLatest] = useState(null);
   const [showPreferences, setShowPreferences] = useState(false);
+  const [setStrainAmp, setSetStrainAmp] = useState(0.01);
+  const [setResult, setSetResult] = useState(null);
+  const [setLoading, setSetLoading] = useState(false);
   const [graphTheme, setGraphTheme] = useState(localStorage.getItem("sw_graphTheme") || "light");
   const [displayUnits, setDisplayUnits] = useState(localStorage.getItem("sw_units") || "SI");
   const [deepsoilParityLatest, setDeepsoilParityLatest] = useState(null);
@@ -4408,6 +4411,65 @@ function App() {
                                 </details>
                               `
                             : null}
+                          <details className="json-details" style=${{ marginTop: "0.5rem" }}>
+                            <summary>Single Element Test</summary>
+                            <div style=${{ padding: "0.5rem 0" }}>
+                              <div className="row" style=${{ gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
+                                <label style=${{ flex: 1 }}>
+                                  <span className="muted" style=${{ display: "block", fontSize: "0.75rem" }}>Strain Amplitude</span>
+                                  <input type="number" step="0.001" min="0.0001" max="0.5"
+                                    value=${setStrainAmp}
+                                    onInput=${(e) => setSetStrainAmp(parseFloat(e.target.value) || 0.01)}
+                                    style=${{ width: "100%" }}
+                                  />
+                                </label>
+                                <button className="btn btn-sm" disabled=${setLoading}
+                                  onClick=${async () => {
+                                    setSetLoading(true);
+                                    try {
+                                      const selLayer = editLayers[Number(selectedEditLayerIdx)];
+                                      const mat = selLayer?.material || "mkz";
+                                      const mp = selLayer?.material_params || {};
+                                      const qs = new URLSearchParams({
+                                        material: mat,
+                                        strain_amplitude: String(setStrainAmp),
+                                        gmax: String(mp.gmax || 100000),
+                                        gamma_ref: String(mp.gamma_ref || 0.001),
+                                        damping_min: String(mp.damping_min || 0.01),
+                                        damping_max: String(mp.damping_max || 0.15),
+                                        reload_factor: String(mp.reload_factor || 2.0),
+                                        g_reduction_min: String(mp.g_reduction_min || 0.0),
+                                        a1: String(mp.a1 || 1.0),
+                                        a2: String(mp.a2 || 0.0),
+                                        m: String(mp.m || 1.0),
+                                      });
+                                      const resp = await fetch("/api/single-element-test?" + qs.toString(), { method: "POST" });
+                                      if (resp.ok) setSetResult(await resp.json());
+                                    } catch(ex) { console.error(ex); }
+                                    setSetLoading(false);
+                                  }}
+                                  style=${{ marginTop: "1rem" }}
+                                >Run SET</button>
+                              </div>
+                              ${setResult ? html`
+                                <div className="profile-grid profile-grid-tight" style=${{ marginBottom: "0.5rem" }}>
+                                  <div className="metric-card"><span>G/Gmax</span><b>${fmt(setResult.g_reduction, 4)}</b></div>
+                                  <div className="metric-card"><span>Masing D</span><b>${fmt(setResult.masing_damping_ratio, 4)}</b></div>
+                                  <div className="metric-card"><span>G_sec</span><b>${fmt(setResult.secant_modulus, 1)} kPa</b></div>
+                                  <div className="metric-card"><span>Loop E</span><b>${fmt(setResult.loop_energy, 4)}</b></div>
+                                </div>
+                                <${ChartCard}
+                                  title="SET Loop"
+                                  x=${setResult.loop_strain || []}
+                                  y=${setResult.loop_stress || []}
+                                  color="var(--copper)"
+                                  subtitle=${`gamma_a=${setStrainAmp}`}
+                                  xLabel="Strain"
+                                  yLabel="Stress (kPa)"
+                                />
+                              ` : null}
+                            </div>
+                          </details>
                         </div>
                       `
                     : html`<div className="hint-box">Select a layer to edit its properties and preview.</div>`}

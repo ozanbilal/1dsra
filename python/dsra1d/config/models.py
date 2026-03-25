@@ -98,6 +98,7 @@ class AnalysisControl(BaseModel):
     integration_scheme: Literal["newmark", "verlet", "euler"] = "newmark"
     pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
     damping_mode: Literal["frequency_independent", "rayleigh"] = "frequency_independent"
+    damping_correction: Literal["auto", "floor_only", "mrdf_only", "combined"] = "auto"
     viscous_damping_update: bool = True
     rayleigh_mode_1_hz: PositiveFloat = 1.0
     rayleigh_mode_2_hz: PositiveFloat = 5.0

@@ -151,6 +151,8 @@ def generate_masing_loop(
     if gamma_ref <= 0.0:
         raise ValueError("material_params['gamma_ref'] must be > 0.")
 
+    g_floor = float(material_params.get("g_reduction_min", 0.0))
+
     def _backbone(abs_strain: FloatArray) -> FloatArray:
         if material == MaterialType.MKZ:
             return mkz_backbone_stress(
@@ -158,6 +160,7 @@ def generate_masing_loop(
                 gmax=gmax,
                 gamma_ref=gamma_ref,
                 tau_max=tau_cap,
+                g_reduction_min=g_floor,
             )
         return gqh_backbone_stress(
             abs_strain,
@@ -167,6 +170,7 @@ def generate_masing_loop(
             a2=float(material_params.get("a2", 0.0)),
             m=float(material_params.get("m", 1.0)),
             tau_max=tau_cap,
+            g_reduction_min=g_floor,
         )
 
     n = int(n_points_per_branch)

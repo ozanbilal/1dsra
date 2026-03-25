@@ -64,6 +64,13 @@ class DeepsoilComparisonResult:
     psa_pct_diff_at_peak: float
     psa_peak_period_s: float
     used_reference_psa_csv: bool
+    # Anderson (2004) GoF metrics
+    arias_intensity_sw: float = 0.0
+    arias_intensity_ref: float = 0.0
+    arias_intensity_ratio: float = 0.0
+    xcorr_lag_samples: int = 0
+    xcorr_lag_s: float = 0.0
+    xcorr_peak_coeff: float = 0.0
     warnings: list[str] = field(default_factory=list)
     profile: DeepsoilProfileComparison | None = None
     hysteresis: DeepsoilHysteresisComparison | None = None
@@ -234,6 +241,66 @@ def _time_history_metrics(
 
     overlap_duration = float(common_time[-1] - common_time[0]) if common_time.size > 1 else 0.0
     return overlap_duration, int(common_time.size), rmse, nrmse, corr, warnings
+
+
+def _arias_intensity(acc: np.ndarray, dt: float) -> float:
+    """Arias intensity: Ia = (pi / 2g) * integral(a^2 dt)."""
+    return float(np.pi / (2.0 * 9.81) * np.sum(acc**2) * dt)
+
+
+def _xcorr_metrics(
+    sw_acc: np.ndarray,
+    ref_acc: np.ndarray,
+    dt: float,
+) -> tuple[int, float, float]:
+    """Cross-correlation lag (samples, seconds) and peak coefficient."""
+    from scipy.signal import correlate
+
+    n = max(len(sw_acc), len(ref_acc))
+    corr = correlate(sw_acc[:n], ref_acc[:n], mode="full")
+    norm = float(np.sqrt(np.sum(sw_acc[:n] ** 2) * np.sum(ref_acc[:n] ** 2)))
+    if norm < 1.0e-20:
+        return 0, 0.0, 0.0
+    corr_norm = corr / norm
+    peak_idx = int(np.argmax(corr_norm))
+    lag_samples = peak_idx - (n - 1)
+    lag_s = float(lag_samples) * dt
+    peak_coeff = float(corr_norm[peak_idx])
+    return lag_samples, lag_s, peak_coeff
+
+
+def _gof_metrics(
+    sw_time: np.ndarray,
+    sw_acc: np.ndarray,
+    ref_time: np.ndarray,
+    ref_acc: np.ndarray,
+    sw_dt: float,
+    ref_dt: float,
+) -> tuple[float, float, float, int, float, float]:
+    """Compute Anderson (2004) GoF-inspired metrics.
+
+    Returns (ia_sw, ia_ref, ia_ratio, xcorr_lag_samples, xcorr_lag_s, xcorr_peak).
+    """
+    compare_dt = min(float(sw_dt), float(ref_dt))
+    if compare_dt <= 0.0:
+        return 0.0, 0.0, 0.0, 0, 0.0, 0.0
+    start = max(float(sw_time[0]), float(ref_time[0]))
+    end = min(float(sw_time[-1]), float(ref_time[-1]))
+    if end <= start:
+        return 0.0, 0.0, 0.0, 0, 0.0, 0.0
+    common_time = np.arange(start, end + 0.5 * compare_dt, compare_dt, dtype=np.float64)
+    if common_time.size < 2:
+        return 0.0, 0.0, 0.0, 0, 0.0, 0.0
+    sw_interp = _interpolate_series(sw_time, sw_acc, common_time)
+    ref_interp = _interpolate_series(ref_time, ref_acc, common_time)
+
+    ia_sw = _arias_intensity(sw_interp, compare_dt)
+    ia_ref = _arias_intensity(ref_interp, compare_dt)
+    ia_ratio = ia_sw / ia_ref if ia_ref > 1.0e-20 else 0.0
+
+    lag_samples, lag_s, peak_coeff = _xcorr_metrics(sw_interp, ref_interp, compare_dt)
+
+    return ia_sw, ia_ref, ia_ratio, lag_samples, lag_s, peak_coeff
 
 
 def _psa_metrics(
@@ -1187,6 +1254,14 @@ def compare_deepsoil_run(
         store.dt_s,
         ref_dt,
     )
+    ia_sw, ia_ref, ia_ratio, xcorr_lag, xcorr_lag_s, xcorr_peak = _gof_metrics(
+        store.time,
+        store.acc_surface,
+        ref_time,
+        ref_acc,
+        store.dt_s,
+        ref_dt,
+    )
     (
         psa_point_count,
         psa_rmse,
@@ -1237,6 +1312,12 @@ def compare_deepsoil_run(
         psa_pct_diff_at_peak=psa_peak_pct_diff,
         psa_peak_period_s=psa_peak_period,
         used_reference_psa_csv=used_reference_psa_csv,
+        arias_intensity_sw=ia_sw,
+        arias_intensity_ref=ia_ref,
+        arias_intensity_ratio=ia_ratio,
+        xcorr_lag_samples=xcorr_lag,
+        xcorr_lag_s=xcorr_lag_s,
+        xcorr_peak_coeff=xcorr_peak,
         profile=profile_result,
         hysteresis=hysteresis_result,
         warnings=warnings,

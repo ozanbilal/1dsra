@@ -14,5 +14,12 @@ require_deepsoil_compare: false
 require_deepsoil_profile: false
 require_deepsoil_hysteresis: false
 
+# Anderson (2004) GoF acceptance thresholds for DEEPSOIL parity
+psa_nrmse_max: 0.10
+pga_pct_diff_max: 5.0
+xcorr_lag_s_warn: 0.5
+arias_intensity_ratio_warn_min: 0.85
+arias_intensity_ratio_warn_max: 1.15
+
 # OpenSees binary fingerprint (sha256) required for strict release signoff.
 opensees_fingerprint: "5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d"

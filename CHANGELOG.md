@@ -190,6 +190,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - step-level readiness badges and inline issue reporting
   - `Generate Config` and `Run Now` buttons now enforce required step validity before execution
 
+- Response Spectra Summary panel in Spectral tab:
+  - PGA, Peak PSA, Peak Period, Mean PSA metric cards
+  - period-indexed PSA table at standard engineering periods (0.01-5.0s) with SI and g units
+  - renders below PSA chart when spectral data is available
+
 ### Changed
 - Small-strain damping utilities extracted into shared module `python/dsra1d/materials/damping.py`:
   - `layer_damping()`, `rayleigh_coefficients()`, and `frequency_independent_element_damping()` are now single source of truth

@@ -5934,6 +5934,52 @@ function App() {
                       yLabel="Amplification"
                     />
                   </div>
+                  ${runSignal.psa_m_s2 && runSignal.period_s ? html`
+                    <div className="card" style=${{ marginTop: "0.75rem", padding: "0.75rem" }}>
+                      <div className="results-kicker">Response Spectra Summary</div>
+                      <div className="profile-grid profile-grid-tight" style=${{ marginBottom: "0.5rem" }}>
+                        <div className="metric-card">
+                          <span>PGA</span>
+                          <b>${(runSignal.pga_si != null ? runSignal.pga_si.toFixed(4) : Math.max(...(runSignal.psa_m_s2 || [0])).toFixed(4))} m/s2</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Peak PSA</span>
+                          <b>${Math.max(...(runSignal.psa_m_s2 || [0])).toFixed(4)} m/s2</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Peak Period</span>
+                          <b>${(() => {
+                            const psa = runSignal.psa_m_s2 || [];
+                            const per = runSignal.period_s || [];
+                            const idx = psa.indexOf(Math.max(...psa));
+                            return idx >= 0 && per[idx] != null ? per[idx].toFixed(3) : "n/a";
+                          })()} s</b>
+                        </div>
+                        <div className="metric-card">
+                          <span>Mean PSA</span>
+                          <b>${((runSignal.psa_m_s2 || []).reduce((a, b) => a + b, 0) / Math.max((runSignal.psa_m_s2 || []).length, 1)).toFixed(4)} m/s2</b>
+                        </div>
+                      </div>
+                      <table className="tbl tbl-sm">
+                        <thead><tr><th>Period (s)</th><th>PSA (m/s2)</th><th>PSA (g)</th></tr></thead>
+                        <tbody>
+                          ${[0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0].map((t_target) => {
+                            const per = runSignal.period_s || [];
+                            const psa = runSignal.psa_m_s2 || [];
+                            if (per.length === 0) return null;
+                            let best = 0;
+                            let minDist = Infinity;
+                            for (let k = 0; k < per.length; k++) {
+                              const d = Math.abs(per[k] - t_target);
+                              if (d < minDist) { minDist = d; best = k; }
+                            }
+                            const val = psa[best] || 0;
+                            return html`<tr><td>${per[best]?.toFixed(3) || t_target.toFixed(3)}</td><td>${val.toFixed(4)}</td><td>${(val / 9.81).toFixed(4)}</td></tr>`;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ` : null}
                 `
               : null}
 

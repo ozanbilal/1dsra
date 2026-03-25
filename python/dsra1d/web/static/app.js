@@ -1,7 +1,7 @@
 
-import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18.3.1";
-import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
-import htm from "https://esm.sh/htm@3.1.1";
+import React, { useEffect, useMemo, useRef, useState } from "/assets/vendor/react.mjs";
+import { createRoot } from "/assets/vendor/react-dom-client.mjs";
+import htm from "/assets/vendor/htm.mjs";
 
 const html = htm.bind(React.createElement);
 const OPENSEES_EXE_ENV_LABEL = "DSRA1D_OPENSEES_EXE_OVERRIDE";
@@ -1732,6 +1732,49 @@ function sortRunsForDisplay(a, b) {
   const bStatus = String(b?.status || "");
   if (aStatus !== bStatus) return aStatus.localeCompare(bStatus);
   return String(a?.run_id || "").localeCompare(String(b?.run_id || ""));
+}
+
+const SPECTRA_SUMMARY_PERIODS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0];
+
+function _findNearest(arr, target) {
+  let best = 0, minD = Infinity;
+  for (let k = 0; k < arr.length; k++) {
+    const d = Math.abs(arr[k] - target);
+    if (d < minD) { minD = d; best = k; }
+  }
+  return best;
+}
+
+function renderSpectraSummary(sig) {
+  const psa = sig.psa_m_s2 || [];
+  const per = sig.period_s || [];
+  if (!psa.length || !per.length) return null;
+  const peakPsa = Math.max(...psa);
+  const peakIdx = psa.indexOf(peakPsa);
+  const peakPeriod = peakIdx >= 0 && per[peakIdx] != null ? per[peakIdx].toFixed(3) : "n/a";
+  const meanPsa = (psa.reduce((a, b) => a + b, 0) / psa.length).toFixed(4);
+  const pgaVal = sig.pga_si != null ? sig.pga_si.toFixed(4) : peakPsa.toFixed(4);
+  const rows = SPECTRA_SUMMARY_PERIODS.map((t) => {
+    const idx = _findNearest(per, t);
+    const v = psa[idx] || 0;
+    const pStr = per[idx] != null ? per[idx].toFixed(3) : t.toFixed(3);
+    return html`<tr><td>${pStr}</td><td>${v.toFixed(4)}</td><td>${(v / 9.81).toFixed(4)}</td></tr>`;
+  });
+  return html`
+    <div className="card" style=${{ marginTop: "0.75rem", padding: "0.75rem" }}>
+      <div className="results-kicker">Response Spectra Summary</div>
+      <div className="profile-grid profile-grid-tight" style=${{ marginBottom: "0.5rem" }}>
+        <div className="metric-card"><span>PGA</span><b>${pgaVal} m/s2</b></div>
+        <div className="metric-card"><span>Peak PSA</span><b>${peakPsa.toFixed(4)} m/s2</b></div>
+        <div className="metric-card"><span>Peak Period</span><b>${peakPeriod} s</b></div>
+        <div className="metric-card"><span>Mean PSA</span><b>${meanPsa} m/s2</b></div>
+      </div>
+      <table className="tbl tbl-sm">
+        <thead><tr><th>Period (s)</th><th>PSA (m/s2)</th><th>PSA (g)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function App() {
@@ -5934,52 +5977,9 @@ function App() {
                       yLabel="Amplification"
                     />
                   </div>
-                  ${runSignal.psa_m_s2 && runSignal.period_s ? html`
-                    <div className="card" style=${{ marginTop: "0.75rem", padding: "0.75rem" }}>
-                      <div className="results-kicker">Response Spectra Summary</div>
-                      <div className="profile-grid profile-grid-tight" style=${{ marginBottom: "0.5rem" }}>
-                        <div className="metric-card">
-                          <span>PGA</span>
-                          <b>${(runSignal.pga_si != null ? runSignal.pga_si.toFixed(4) : Math.max(...(runSignal.psa_m_s2 || [0])).toFixed(4))} m/s2</b>
-                        </div>
-                        <div className="metric-card">
-                          <span>Peak PSA</span>
-                          <b>${Math.max(...(runSignal.psa_m_s2 || [0])).toFixed(4)} m/s2</b>
-                        </div>
-                        <div className="metric-card">
-                          <span>Peak Period</span>
-                          <b>${(() => {
-                            const psa = runSignal.psa_m_s2 || [];
-                            const per = runSignal.period_s || [];
-                            const idx = psa.indexOf(Math.max(...psa));
-                            return idx >= 0 && per[idx] != null ? per[idx].toFixed(3) : "n/a";
-                          })()} s</b>
-                        </div>
-                        <div className="metric-card">
-                          <span>Mean PSA</span>
-                          <b>${((runSignal.psa_m_s2 || []).reduce((a, b) => a + b, 0) / Math.max((runSignal.psa_m_s2 || []).length, 1)).toFixed(4)} m/s2</b>
-                        </div>
-                      </div>
-                      <table className="tbl tbl-sm">
-                        <thead><tr><th>Period (s)</th><th>PSA (m/s2)</th><th>PSA (g)</th></tr></thead>
-                        <tbody>
-                          ${[0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0].map((t_target) => {
-                            const per = runSignal.period_s || [];
-                            const psa = runSignal.psa_m_s2 || [];
-                            if (per.length === 0) return null;
-                            let best = 0;
-                            let minDist = Infinity;
-                            for (let k = 0; k < per.length; k++) {
-                              const d = Math.abs(per[k] - t_target);
-                              if (d < minDist) { minDist = d; best = k; }
-                            }
-                            const val = psa[best] || 0;
-                            return html`<tr><td>${per[best]?.toFixed(3) || t_target.toFixed(3)}</td><td>${val.toFixed(4)}</td><td>${(val / 9.81).toFixed(4)}</td></tr>`;
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ` : null}
+                  ${runSignal.psa_m_s2 && runSignal.period_s
+                    ? renderSpectraSummary(runSignal)
+                    : null}
                 `
               : null}
 
@@ -6265,8 +6265,6 @@ function App() {
                       </details>
                     </div>
                   </div>
-                      `
-                    : null}
                   <div className="muted">
                     Solver notes: ${runSummary.solver_notes || "n/a"}<br />
                     Motion: ${runSummary.input_motion || "n/a"}

@@ -2770,6 +2770,9 @@ def _apply_runtime_backend(
 
 
 def create_app() -> FastAPI:
+    import mimetypes
+    mimetypes.add_type("application/javascript", ".mjs")
+
     app = FastAPI(title="StrataWave Web API", version="0.1.0")
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")

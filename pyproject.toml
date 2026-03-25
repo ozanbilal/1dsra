@@ -58,7 +58,7 @@ package-dir = {"" = "python"}
 where = ["python"]
 
 [tool.setuptools.package-data]
-"dsra1d.web" = ["static/*"]
+"dsra1d.web" = ["static/*", "static/vendor/*"]
 
 [tool.ruff]
 line-length = 100

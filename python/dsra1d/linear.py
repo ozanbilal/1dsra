@@ -12,6 +12,10 @@ from dsra1d.materials import (
     gqh_modulus_reduction,
     mkz_modulus_reduction,
 )
+from dsra1d.materials.damping import (
+    layer_damping as _layer_damping,
+    rayleigh_coefficients as _rayleigh_coefficients,
+)
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
@@ -34,34 +38,6 @@ class EquivalentLinearResponse:
     layer_vs_m_s: dict[int, float]
     layer_damping: dict[int, float]
     layer_gamma_eff: dict[int, float]
-
-
-def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
-    if material in {MaterialType.MKZ, MaterialType.GQH}:
-        return float(np.clip(params.get("damping_min", 0.02), 0.0, 0.20))
-    if material in {MaterialType.PM4SAND, MaterialType.PM4SILT}:
-        return 0.05
-    return 0.02
-
-
-def _rayleigh_coefficients(
-    damping_ratio: float,
-    mode_1_hz: float,
-    mode_2_hz: float,
-) -> tuple[float, float]:
-    xi = float(np.clip(damping_ratio, 0.0, 0.5))
-    f1 = float(max(mode_1_hz, 1.0e-6))
-    f2 = float(max(mode_2_hz, 1.0e-6))
-    if f2 <= f1:
-        f2 = f1 + 1.0e-6
-    w1 = 2.0 * np.pi * f1
-    w2 = 2.0 * np.pi * f2
-    denom = w1 + w2
-    if denom <= 0.0:
-        return 0.0, 0.0
-    alpha = (2.0 * xi * w1 * w2) / denom
-    beta = (2.0 * xi) / denom
-    return float(alpha), float(beta)
 
 
 def _integrate_acc_to_velocity(acc: FloatArray, dt: float) -> FloatArray:
@@ -394,4 +370,164 @@ def solve_equivalent_linear_sh_response(
         layer_vs_m_s=cur_vs,
         layer_damping=cur_damping,
         layer_gamma_eff=cur_gamma_eff,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Frequency-domain transfer function (Thomson-Haskell propagator matrix)
+# ---------------------------------------------------------------------------
+
+@dataclass(slots=True, frozen=True)
+class FrequencyDomainResult:
+    """Result of frequency-domain 1D SH site response."""
+
+    freq_hz: FloatArray
+    transfer_function: FloatArray  # complex H(f)
+    surface_acc: FloatArray  # time-domain surface acceleration
+    time: FloatArray
+
+
+def solve_frequency_domain_sh(
+    config: ProjectConfig,
+    motion: Motion,
+    *,
+    layer_vs_m_s: dict[int, float] | None = None,
+    layer_damping: dict[int, float] | None = None,
+) -> FrequencyDomainResult:
+    """1D SH site response via Thomson-Haskell propagator matrix in frequency domain.
+
+    Layers are numbered 0 (surface) to N-1 (deepest).  The transfer function
+    H(f) = u_surface / u_input is computed at each frequency using propagator
+    matrices, then applied to the input motion FFT.
+
+    For rigid base: input = base motion (within).
+    For elastic halfspace: input = outcrop motion.
+    """
+    cfg_layers = config.profile.layers
+    use_elastic_halfspace = config.boundary_condition == BoundaryCondition.ELASTIC_HALFSPACE
+    n_layers = len(cfg_layers)
+
+    # Build layer properties
+    h = np.zeros(n_layers, dtype=np.float64)
+    rho_arr = np.zeros(n_layers, dtype=np.float64)
+    vs_arr = np.zeros(n_layers, dtype=np.float64)
+    xi_arr = np.zeros(n_layers, dtype=np.float64)
+
+    for i, layer in enumerate(cfg_layers):
+        h[i] = float(layer.thickness_m)
+        rho_arr[i] = float(max(layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        if layer_vs_m_s is not None:
+            vs_arr[i] = float(max(layer_vs_m_s.get(i + 1, layer.vs_m_s), 1.0e-6))
+        else:
+            vs_arr[i] = float(max(layer.vs_m_s, 1.0e-6))
+        if layer_damping is not None:
+            xi_arr[i] = float(np.clip(
+                layer_damping.get(i + 1, _layer_damping(layer.material, layer.material_params)),
+                0.0, 0.5,
+            ))
+        else:
+            xi_arr[i] = float(np.clip(_layer_damping(layer.material, layer.material_params), 0.0, 0.5))
+
+    # FFT of input motion
+    dt = float(motion.dt)
+    acc_input = np.asarray(motion.acc, dtype=np.float64)
+    n_samples = acc_input.size
+    n_fft = int(2 ** np.ceil(np.log2(n_samples)))
+    freq = np.fft.rfftfreq(n_fft, d=dt)
+    fft_input = np.fft.rfft(acc_input, n=n_fft)
+
+    # Precompute complex shear modulus and impedance per layer
+    # G* = G(1 + 2iD),  Vs* = sqrt(G*/rho),  Z = rho * Vs*
+    g_star = np.array(
+        [rho_arr[j] * vs_arr[j] ** 2 * (1.0 + 2.0j * xi_arr[j]) for j in range(n_layers)],
+        dtype=np.complex128,
+    )
+    vs_star = np.sqrt(g_star / rho_arr)
+    z_arr = rho_arr * vs_star  # complex impedance
+
+    n_freq = len(freq)
+    transfer = np.ones(n_freq, dtype=np.complex128)
+
+    for fi in range(n_freq):
+        omega = 2.0 * np.pi * freq[fi]
+        if omega < 1.0e-12:
+            transfer[fi] = 1.0 + 0.0j
+            continue
+
+        # Propagator matrix method (Kramer 1996, Sec. 7.2.1)
+        # State vector s = [u, tau] at each interface.
+        # Layer j propagator (bottom to top):
+        #   s_top = P_j * s_bottom
+        #   P_j = [[cos(kh), sin(kh)/(kG*)], [-kG*sin(kh), cos(kh)]]
+        #
+        # Boundary conditions:
+        #   Surface (top of layer 0): tau = 0
+        #   Rigid base (bottom of layer N-1): u = u_input
+        #   Elastic HS: tau_base = Z_hs * i*omega * u_base (radiation)
+        #
+        # Strategy: propagate two independent basis solutions from base to
+        # surface and combine to satisfy tau_surface = 0.
+        #
+        # Basis 1: s_base = [1, 0]  (unit displacement, zero stress)
+        # Basis 2: s_base = [0, 1]  (zero displacement, unit stress)
+        # At surface: s = a*P_total*[1,0] + b*P_total*[0,1]
+        # Require tau_surface = 0 => a*P21 + b*P22 = 0 => b = -a*P21/P22
+        # u_surface = a*P11 + b*P12 = a*(P11 - P21*P12/P22)
+
+        # Compute total propagator matrix P = P_0 * P_1 * ... * P_{N-1}
+        p_total = np.eye(2, dtype=np.complex128)
+        for j in range(n_layers - 1, -1, -1):
+            k_star = omega / vs_star[j]
+            phase = k_star * h[j]
+            cos_p = np.cos(phase)
+            sin_p = np.sin(phase)
+            kg = k_star * g_star[j]
+            if abs(kg) < 1.0e-30:
+                continue
+            p_j = np.array([
+                [cos_p, sin_p / kg],
+                [-kg * sin_p, cos_p],
+            ], dtype=np.complex128)
+            p_total = p_j @ p_total
+
+        p11, p12 = p_total[0, 0], p_total[0, 1]
+        p21, p22 = p_total[1, 0], p_total[1, 1]
+
+        if use_elastic_halfspace:
+            # At base: tau_base = Z_hs * i*omega * u_base (radiation condition)
+            # s_base = [u_base, Z_hs*i*omega*u_base] = u_base * [1, Z_hs*i*omega]
+            # At surface: s = P * s_base = u_base * [P11 + Z*iw*P12, P21 + Z*iw*P22]
+            # tau_surface = 0 => always satisfied since single free param u_base
+            # H = u_surface / u_outcrop
+            # u_outcrop = 2 * A_incident; u_base = A_inc + A_ref
+            # tau_base = Z_hs*iw*(A_inc - A_ref) = Z_hs*iw*u_base (if A_ref absorbed)
+            # For within motion: H = (P11 + Z*iw*P12) / 1
+            # For outcrop: divide by 2
+            z_hs = z_arr[-1]
+            ziw = z_hs * 1.0j * omega
+            u_surf = p11 + ziw * p12
+            # tau_surf_check = p21 + ziw * p22  # should be ~0 at free surface
+            # Outcrop = 2 * incident => H = u_surf / 2
+            transfer[fi] = u_surf / 2.0
+        else:
+            # Rigid base: u_base = u_input, tau_base = unknown reaction
+            # s_base = [1, tau_r], s_surface = [P11 + tau_r*P12, P21 + tau_r*P22]
+            # tau_surface = 0 => tau_r = -P21/P22
+            # u_surface = P11 - P21*P12/P22
+            if abs(p22) > 1.0e-30:
+                transfer[fi] = p11 - p21 * p12 / p22
+            else:
+                transfer[fi] = p11
+
+    # Apply transfer function
+    fft_surface = fft_input * transfer
+    surface_acc_full = np.fft.irfft(fft_surface, n=n_fft)
+    surface_acc = surface_acc_full[:n_samples]
+    time = np.arange(n_samples, dtype=np.float64) * dt
+
+    return FrequencyDomainResult(
+        freq_hz=freq,
+        transfer_function=transfer,
+        surface_acc=surface_acc,
+        time=time,
     )

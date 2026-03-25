@@ -67,7 +67,7 @@ def modified_hyperbolic_masing_damping(
     gamma = np.maximum(np.abs(_to_float_array(strain)), 1.0e-12)
     gamma_ref = _check_positive("strain_ref", strain_ref)
     exponent = _check_positive("curvature", curvature)
-    scaling = np.clip(_to_float_array(masing_scaling), 1.0e-12, None)
+    scaling = _to_float_array(masing_scaling)
 
     strain_pct = gamma * 100.0
     strain_ref_pct = gamma_ref * 100.0

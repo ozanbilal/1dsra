@@ -8,6 +8,11 @@ import numpy.typing as npt
 from dsra1d.config import BoundaryCondition, MaterialType, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials import gqh_backbone_stress, mkz_backbone_stress
+from dsra1d.materials.damping import (
+    layer_damping as _layer_damping,
+    rayleigh_coefficients as _rayleigh_coefficients,
+)
+from dsra1d.materials.mrdf import MRDFCoefficients, evaluate_mrdf_factor, mrdf_coefficients_from_params
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
@@ -19,34 +24,6 @@ def _integrate_acc_to_velocity(acc: FloatArray, dt: float) -> FloatArray:
         return vel
     vel[1:] = np.cumsum(0.5 * (acc[1:] + acc[:-1]) * dt, dtype=np.float64)
     return vel
-
-
-def _layer_damping(material: MaterialType, params: dict[str, float]) -> float:
-    if material in {MaterialType.MKZ, MaterialType.GQH}:
-        return float(np.clip(params.get("damping_min", 0.02), 0.0, 0.30))
-    if material in {MaterialType.PM4SAND, MaterialType.PM4SILT}:
-        return 0.05
-    return 0.02
-
-
-def _rayleigh_coefficients(
-    damping_ratio: float,
-    mode_1_hz: float,
-    mode_2_hz: float,
-) -> tuple[float, float]:
-    xi = float(np.clip(damping_ratio, 0.0, 0.5))
-    f1 = float(max(mode_1_hz, 1.0e-6))
-    f2 = float(max(mode_2_hz, 1.0e-6))
-    if f2 <= f1:
-        f2 = f1 + 1.0e-6
-    w1 = 2.0 * np.pi * f1
-    w2 = 2.0 * np.pi * f2
-    denom = w1 + w2
-    if denom <= 0.0:
-        return 0.0, 0.0
-    alpha = (2.0 * xi * w1 * w2) / denom
-    beta = (2.0 * xi) / denom
-    return float(alpha), float(beta)
 
 
 def _assemble_tridiagonal_from_element_values(
@@ -77,11 +54,13 @@ def _element_backbone_stress(
         gamma_ref = float(params.get("gamma_ref", 1.0e-3))
         tau_max_raw = params.get("tau_max")
         tau_max = float(tau_max_raw) if tau_max_raw is not None else None
+        g_red_min = float(params.get("g_reduction_min", 0.0))
         tau = mkz_backbone_stress(
             np.array([gamma], dtype=np.float64),
             gmax=gmax,
             gamma_ref=gamma_ref,
             tau_max=tau_max,
+            g_reduction_min=g_red_min,
         )
         return float(tau[0])
 
@@ -90,6 +69,7 @@ def _element_backbone_stress(
         gamma_ref = float(params.get("gamma_ref", 1.0e-3))
         tau_max_raw = params.get("tau_max")
         tau_max = float(tau_max_raw) if tau_max_raw is not None else None
+        g_red_min = float(params.get("g_reduction_min", 0.0))
         tau = gqh_backbone_stress(
             np.array([gamma], dtype=np.float64),
             gmax=gmax,
@@ -98,6 +78,7 @@ def _element_backbone_stress(
             a2=float(params.get("a2", 0.0)),
             m=float(params.get("m", 1.0)),
             tau_max=tau_max,
+            g_reduction_min=g_red_min,
         )
         return float(tau[0])
 
@@ -118,6 +99,7 @@ class _ElementConstitutiveState:
     params: dict[str, float]
     gmax_fallback: float
     reload_factor: float
+    mrdf_coeffs: MRDFCoefficients | None = None
     eps_gamma: float = 1.0e-12
     initialized: bool = False
     direction: int = 0
@@ -175,11 +157,60 @@ class _ElementConstitutiveState:
             # reload_factor!=2.0 -> non-Masing approximation.
             k = max(self.reload_factor, 1.0e-6)
             shifted_gamma = (gamma - self.gamma_rev) / k
-            tau = self.tau_rev + (k * self._backbone(shifted_gamma))
+            tau_masing = self.tau_rev + (k * self._backbone(shifted_gamma))
+
+            if self.mrdf_coeffs is not None:
+                # Phillips-Hashash MRDF correction:
+                # tau = tau_bb + F * (tau_masing - tau_bb)
+                # F < 1 at large strains reduces loop area to match target damping
+                gamma_amp = abs(gamma - self.gamma_rev) / 2.0
+                f_mrdf = evaluate_mrdf_factor(self.mrdf_coeffs, gamma_amp)
+                tau_bb = self._backbone(gamma)
+                tau = tau_bb + f_mrdf * (tau_masing - tau_bb)
+            else:
+                tau = tau_masing
 
         self.gamma_prev = gamma
         self.tau_prev = tau
         return tau
+
+    def tangent_modulus(self, gamma: float) -> float:
+        """Return d(tau)/d(gamma) at given strain WITHOUT mutating state."""
+        if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
+            return self.gmax_fallback
+
+        gmax = float(self.params.get("gmax", self.gmax_fallback))
+        gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
+        g_red_min = float(self.params.get("g_reduction_min", 0.0))
+        # Tangent floor from G/Gmax floor: ensures tangent >= gmax * g_reduction_min
+        tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
+
+        def _backbone_tangent(g: float) -> float:
+            ag = abs(g)
+            if self.material == MaterialType.GQH:
+                a1 = float(self.params.get("a1", 1.0))
+                a2 = float(self.params.get("a2", 0.0))
+                m = float(self.params.get("m", 1.0))
+                r = ag / max(gamma_ref, 1.0e-15)
+                denom = 1.0 + a1 * r + a2 * (r ** m)
+                return max(gmax / (denom * denom), tangent_floor)
+            # MKZ: G_t = gmax / (1 + |gamma|/gamma_ref)^2
+            ratio = ag / max(gamma_ref, 1.0e-15)
+            denom = 1.0 + ratio
+            return max(gmax / (denom * denom), tangent_floor)
+
+        if not self.has_reversal:
+            return _backbone_tangent(gamma)
+        # Masing branch: tangent at shifted strain
+        k = max(self.reload_factor, 1.0e-6)
+        shifted = (gamma - self.gamma_rev) / k
+        g_t_masing = _backbone_tangent(shifted)
+        if self.mrdf_coeffs is not None:
+            gamma_amp = abs(gamma - self.gamma_rev) / 2.0
+            f_mrdf = evaluate_mrdf_factor(self.mrdf_coeffs, gamma_amp)
+            g_t_bb = _backbone_tangent(gamma)
+            return g_t_bb + f_mrdf * (g_t_masing - g_t_bb)
+        return g_t_masing
 
 
 def solve_nonlinear_sh_response(
@@ -246,6 +277,7 @@ def solve_nonlinear_sh_response(
                 params=cfg_layer.material_params,
                 gmax_fallback=g_mod,
                 reload_factor=reload_factor,
+                mrdf_coeffs=mrdf_coefficients_from_params(cfg_layer.material_params),
             )
         )
 
@@ -259,6 +291,7 @@ def solve_nonlinear_sh_response(
         raise ValueError("Non-positive nodal mass encountered in nonlinear solver.")
     m_mat = np.diag(m_diag)
     c_full = _assemble_tridiagonal_from_element_values(c_elem, n_nodes)
+    dashpot_c = 0.0
     if use_elastic_halfspace:
         base_layer = cfg_layers[-1]
         base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
@@ -270,6 +303,9 @@ def solve_nonlinear_sh_response(
     k_initial = k_initial_full[:n_free, :n_free]
 
     use_rayleigh = config.analysis.damping_mode == "rayleigh"
+    viscous_damping_update = (
+        not use_rayleigh and bool(config.analysis.viscous_damping_update)
+    )
     if use_rayleigh:
         xi_target = float(np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12)))
         alpha_rayleigh, beta_rayleigh = _rayleigh_coefficients(
@@ -297,13 +333,15 @@ def solve_nonlinear_sh_response(
     a_rel_hist = np.zeros((n_free, n_steps), dtype=np.float64)
     a_prev = np.zeros((n_free,), dtype=np.float64)
 
+    need_secant = rayleigh_update_matrix or viscous_damping_update
+
     for i in range(n_steps):
         ag = float(acc_g[i])
         for _ in range(substeps):
             u_full = np.zeros((n_nodes,), dtype=np.float64)
             u_full[:n_free] = u
             f_int_full = np.zeros((n_nodes,), dtype=np.float64)
-            k_sec_elem = np.zeros(n_elem, dtype=np.float64) if rayleigh_update_matrix else None
+            k_sec_elem = np.zeros(n_elem, dtype=np.float64) if need_secant else None
             for j in range(n_elem):
                 dz = float(max(dz_elem[j], 1.0e-9))
                 gamma = float((u_full[j] - u_full[j + 1]) / dz)
@@ -325,9 +363,23 @@ def solve_nonlinear_sh_response(
             else:
                 f_ext = -m_diag * ag
             if k_sec_elem is not None:
-                k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
-                k_sec = k_sec_full[:n_free, :n_free]
-                c_step = (alpha_rayleigh * m_mat) + (beta_rayleigh * k_sec)
+                if rayleigh_update_matrix:
+                    k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
+                    k_sec = k_sec_full[:n_free, :n_free]
+                    c_step = (alpha_rayleigh * m_mat) + (beta_rayleigh * k_sec)
+                elif viscous_damping_update:
+                    # DEEPSOIL-equivalent: update viscous damping from secant stiffness
+                    c_updated = np.zeros(n_elem, dtype=np.float64)
+                    for j in range(n_elem):
+                        c_updated[j] = 2.0 * xi_elem[j] * np.sqrt(
+                            max(k_sec_elem[j] * m_elem[j], 1.0e-12)
+                        )
+                    c_step_full = _assemble_tridiagonal_from_element_values(c_updated, n_nodes)
+                    if use_elastic_halfspace:
+                        c_step_full[-1, -1] += dashpot_c
+                    c_step = c_step_full[:n_free, :n_free]
+                else:
+                    c_step = c_rayleigh_const
             else:
                 c_step = c_rayleigh_const
             a_curr = (f_ext - (c_step @ v) - f_int) / m_diag
@@ -367,6 +419,7 @@ def simulate_hysteretic_stress_path(
         params=material_params,
         gmax_fallback=gmax_fallback,
         reload_factor=reload_factor,
+        mrdf_coeffs=mrdf_coefficients_from_params(material_params),
     )
     tau = np.zeros_like(gamma)
     for i, g in enumerate(gamma):

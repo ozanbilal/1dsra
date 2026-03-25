@@ -24,6 +24,10 @@ from dsra1d.interop.opensees import (
 from dsra1d.linear import solve_equivalent_linear_sh_response, solve_linear_sh_response
 from dsra1d.materials import layer_hysteretic_proxy
 from dsra1d.motion import load_motion, preprocess_motion
+from dsra1d.newmark_nonlinear import (
+    solve_nonlinear_implicit_newmark,
+    solve_nonlinear_newmark,
+)
 from dsra1d.nonlinear import solve_nonlinear_sh_response
 from dsra1d.post import compute_spectra, compute_transfer_function
 from dsra1d.store import ResultStore, write_hdf5, write_sqlite
@@ -148,11 +152,16 @@ def _write_nonlinear_outputs(
     config: ProjectConfig,
     motion: Motion,
 ) -> None:
-    t, surface = solve_nonlinear_sh_response(
-        config,
-        motion,
-        substeps=int(config.analysis.nonlinear_substeps),
-    )
+    if config.analysis.integration_scheme == "newmark":
+        t, surface = solve_nonlinear_implicit_newmark(config, motion)
+    elif config.analysis.integration_scheme == "verlet":
+        t, surface = solve_nonlinear_newmark(config, motion)
+    else:
+        t, surface = solve_nonlinear_sh_response(
+            config,
+            motion,
+            substeps=int(config.analysis.nonlinear_substeps),
+        )
     if not np.all(np.isfinite(surface)):
         raise ValueError(
             "Nonlinear solver produced non-finite surface acceleration. "

@@ -15,11 +15,18 @@ def _to_float_array(strain: npt.ArrayLike) -> FloatArray:
     return np.asarray(strain, dtype=np.float64)
 
 
-def mkz_modulus_reduction(strain: npt.ArrayLike, gamma_ref: float) -> FloatArray:
+def mkz_modulus_reduction(
+    strain: npt.ArrayLike,
+    gamma_ref: float,
+    g_reduction_min: float = 0.0,
+) -> FloatArray:
     if gamma_ref <= 0.0:
         raise ValueError("gamma_ref must be > 0.")
     gamma = np.abs(_to_float_array(strain))
-    return 1.0 / (1.0 + (gamma / gamma_ref))
+    reduction = 1.0 / (1.0 + (gamma / gamma_ref))
+    if g_reduction_min > 0.0:
+        reduction = np.maximum(reduction, g_reduction_min)
+    return reduction
 
 
 def mkz_backbone_stress(
@@ -27,10 +34,11 @@ def mkz_backbone_stress(
     gmax: float,
     gamma_ref: float,
     tau_max: float | None = None,
+    g_reduction_min: float = 0.0,
 ) -> FloatArray:
     if gmax <= 0.0:
         raise ValueError("gmax must be > 0.")
-    reduction = mkz_modulus_reduction(strain, gamma_ref)
+    reduction = mkz_modulus_reduction(strain, gamma_ref, g_reduction_min=g_reduction_min)
     strain_arr = _to_float_array(strain)
     tau = gmax * strain_arr * reduction
     if tau_max is not None:
@@ -46,6 +54,7 @@ def gqh_modulus_reduction(
     a1: float = 1.0,
     a2: float = 0.0,
     m: float = 1.0,
+    g_reduction_min: float = 0.0,
 ) -> FloatArray:
     if gamma_ref <= 0.0:
         raise ValueError("gamma_ref must be > 0.")
@@ -57,7 +66,10 @@ def gqh_modulus_reduction(
         raise ValueError("m must be > 0.")
     r = np.abs(_to_float_array(strain)) / gamma_ref
     denom = 1.0 + (a1 * r) + (a2 * np.power(r, m))
-    return 1.0 / denom
+    reduction = 1.0 / denom
+    if g_reduction_min > 0.0:
+        reduction = np.maximum(reduction, g_reduction_min)
+    return reduction
 
 
 def gqh_backbone_stress(
@@ -68,10 +80,14 @@ def gqh_backbone_stress(
     a2: float = 0.0,
     m: float = 1.0,
     tau_max: float | None = None,
+    g_reduction_min: float = 0.0,
 ) -> FloatArray:
     if gmax <= 0.0:
         raise ValueError("gmax must be > 0.")
-    reduction = gqh_modulus_reduction(strain, gamma_ref=gamma_ref, a1=a1, a2=a2, m=m)
+    reduction = gqh_modulus_reduction(
+        strain, gamma_ref=gamma_ref, a1=a1, a2=a2, m=m,
+        g_reduction_min=g_reduction_min,
+    )
     strain_arr = _to_float_array(strain)
     tau = gmax * strain_arr * reduction
     if tau_max is not None:

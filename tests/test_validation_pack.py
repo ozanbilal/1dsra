@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
 
 from scripts.build_validation_pack import build_validation_pack
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32" and os.environ.get("PYTHONUTF8") != "1",
+    reason="fpdf2 font pickle load fails on non-UTF-8 Windows locale (cp1254)",
+)
 def test_build_validation_pack(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     out_dir = tmp_path / "validation"

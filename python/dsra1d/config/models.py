@@ -95,8 +95,10 @@ class AnalysisControl(BaseModel):
     f_max: PositiveFloat = 25.0
     solver_backend: Literal["opensees", "mock", "linear", "eql", "nonlinear"] = "opensees"
     nonlinear_substeps: int = Field(default=4, ge=1, le=128)
+    integration_scheme: Literal["newmark", "verlet", "euler"] = "newmark"
     pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
     damping_mode: Literal["frequency_independent", "rayleigh"] = "frequency_independent"
+    viscous_damping_update: bool = True
     rayleigh_mode_1_hz: PositiveFloat = 1.0
     rayleigh_mode_2_hz: PositiveFloat = 5.0
     rayleigh_update_matrix: bool = False
@@ -206,6 +208,10 @@ class Layer(BaseModel):
                 "damping_min",
                 "damping_max",
                 "reload_factor",
+                "g_reduction_min",
+                "mrdf_p1",
+                "mrdf_p2",
+                "mrdf_p3",
             }
             gmax = effective_params.get("gmax")
             gamma_ref = effective_params.get("gamma_ref")
@@ -227,6 +233,9 @@ class Layer(BaseModel):
             reload_factor_value = effective_params.get("reload_factor")
             if reload_factor_value is not None and reload_factor_value <= 0.0:
                 raise ValueError("MKZ parameter 'reload_factor' must be > 0 when provided.")
+            g_red_min = effective_params.get("g_reduction_min")
+            if g_red_min is not None and not (0.0 <= g_red_min < 1.0):
+                raise ValueError("MKZ parameter 'g_reduction_min' must be in [0, 1).")
         elif self.material == MaterialType.GQH:
             allowed = {
                 "gmax",
@@ -238,6 +247,10 @@ class Layer(BaseModel):
                 "damping_min",
                 "damping_max",
                 "reload_factor",
+                "g_reduction_min",
+                "mrdf_p1",
+                "mrdf_p2",
+                "mrdf_p3",
             }
             gmax = effective_params.get("gmax")
             gamma_ref = effective_params.get("gamma_ref")
@@ -263,6 +276,9 @@ class Layer(BaseModel):
             reload_factor_value = effective_params.get("reload_factor")
             if reload_factor_value is not None and reload_factor_value <= 0.0:
                 raise ValueError("GQH parameter 'reload_factor' must be > 0 when provided.")
+            g_red_min = effective_params.get("g_reduction_min")
+            if g_red_min is not None and not (0.0 <= g_red_min < 1.0):
+                raise ValueError("GQH parameter 'g_reduction_min' must be in [0, 1).")
         else:
             allowed = {"nu"}
             nu = effective_params.get("nu")

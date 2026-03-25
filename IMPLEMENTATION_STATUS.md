@@ -1,13 +1,28 @@
 # StrataWave Implementation Status
 
-Last updated: 2026-03-23
+Last updated: 2026-03-24
 
 ## 1. Summary
 
 This file tracks implementation progress against the original v1.0 plan.
 Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
 
-Recent updates (2026-03-23):
+Recent updates (2026-03-24):
+- Added automated MKZ calibration sweep utility (`scripts/sweep_mkz_calibration.py`):
+  - generates grid of YAML configs varying `reload_factor`, `gamma_ref` scaling, `damping_max`, and `nonlinear_substeps`
+  - each config uses Darendeli-calibrated base parameters with configurable scaling
+  - writes `sweep_manifest.json` for batch execution
+- Added calibration sweep runner (`scripts/run_calibration_sweep.py`):
+  - executes each candidate config, runs StrataWave nonlinear analysis, and compares against DEEPSOIL reference
+  - ranks results by PSA NRMSE and writes `sweep_results.json` + `sweep_results.md`
+- Ran 40-case wide calibration sweep for Example 5A rigid-base nonlinear parity:
+  - best Darendeli-calibrated case: `rf=1.30, gamma_ref_scale=1.50` -> PSA NRMSE=0.1994
+  - confirms that Darendeli-based calibration with ~1.5x gamma_ref scaling approaches the hand-tuned best case (0.1939)
+  - `damping_max` has no measurable effect in nonlinear solver (0.10 vs 0.12 produce identical results)
+  - time-domain surface correlation remains near zero across all candidates - this is a structural solver-model limitation, not a calibration gap
+- Structural fix: moved handoff notes from Phase 2 body to dedicated Section 10
+
+Previous updates (2026-03-23):
 - Native nonlinear solver now accepts configurable `analysis.nonlinear_substeps`; this is wired through runtime metadata and can be used for tighter parity studies without code edits.
 - Iterated DEEPSOIL `Example_5A` rigid-base parity on the native MKZ path:
   - sweep evidence saved under `output/pdf/validation/deepsoil_examples/reload_sweep*/`
@@ -430,9 +445,9 @@ Status legend:
 | PM4Silt support for effective-stress runs | Partial | Material blocks, params, and strict_plus profile checks | Add deeper PM4Silt benchmark/validation matrix |
 | PWP output normalization (`ru`, `delta_u`, `sigma_v_eff`) | Done | Stored in HDF5/SQLite + verified in `verify` checks | Add richer depth-dependent diagnostics |
 | PWP model family (Dobry/Matasovic/GMP/Park-Ahn etc.) | Pending | Not implemented as native model family | Implement first simplified model + dissipation strategy |
-| Nonlinear total-stress MKZ/GQH native coupling | Partial | Native time-domain solver now includes stateful branch tracking and runs MKZ/GQH profiles without mock dependency | Add published-reference calibration and stronger constitutive verification envelopes |
+| Nonlinear total-stress MKZ/GQH native coupling | Partial | Three integration schemes (implicit Newmark, Verlet, Euler) all converge; **G/Gmax floor achieves near-DEEPSOIL parity**: floor=0.047 gives PGA=18.59 vs DEEPSOIL 18.05 (+3% gap), PSA NRMSE 0.17→0.12, PSA corr -0.02→0.63; **MRDF module implemented** (`materials/mrdf.py`) with Phillips-Hashash F(gamma) correction wired into constitutive state; MRDF needs per-scenario target damping calibration before production use | Calibrate MRDF target damping from Darendeli curves; validate g_reduction_min across broader scenario set; investigate surface time-series phase alignment |
 | Masing/non-Masing production hysteresis rules | Partial | Time-stepping constitutive update now supports generalized reload factor (`reload_factor`, Masing/non-Masing approximation) | Extend with advanced path-dependence checks and reference loop matching |
-| Small-strain damping package (freq-independent + Rayleigh) | Pending | Not yet implemented as solver damping module | Design/implement damping module with tests |
+| Small-strain damping package (freq-independent + Rayleigh) | Done | Shared damping module (`materials/damping.py`) with `layer_damping`, `rayleigh_coefficients`, and `frequency_independent_element_damping`; linear/EQL/nonlinear solvers now delegate to single source; Rayleigh + freq-independent + secant-update modes all wired; MRDF correction module available but requires case-specific calibration (over-corrects when combined with G/Gmax floor) | Add published-reference validation for damping module |
 | Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |
 | EQL solver (SHAKE-like + deconv/conv) | Partial | Native time-domain strain-compatible EQL backend (`solver_backend: eql`) is implemented with iterative MKZ/GQH modulus+damping updates and convergence tracking | Add frequency-domain deconvolution/convolution mode and published-reference validation |
 | f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path; Web UI now has `Auto Profile Build` for interactive profile slicing from main layers | Expose shared mesh service/API across all backends and add randomization options |
@@ -499,3 +514,30 @@ Notes:
 Recent updates (2026-03-23):
 - Added an external validation pack generator under `scripts/build_validation_pack.py`.
 - Generated shareable technical validation artifacts under `output/pdf/validation/` from existing smoke, benchmark, parity, and confidence evidence.
+
+## 10. Handoff Notes
+
+If a new agent picks up the repo, continue from the current best native DEEPSOIL parity state:
+- Best hand-tuned parity case: `nonlinear_5a_rigid_dt0025_tuned`
+  - `reload_factor = 1.45`, `gamma_ref = 0.00166/0.00116` (hand-tuned)
+  - `PSA NRMSE = 0.1939`, `surface NRMSE = 0.4364`
+- Best Darendeli-calibrated parity case: `rf1.30_grs1.50_dmax0.10_sub16`
+  - `reload_factor = 1.30`, `gamma_ref_scale = 1.50` (Darendeli-derived base x 1.5)
+  - `PSA NRMSE = 0.1994`, `surface NRMSE = 0.4366`
+- Time-history correlation remains near zero across all candidates (structural solver-model limitation).
+- `damping_max` does not affect nonlinear solver output (confirmed via sweep: 0.10 vs 0.12 identical).
+
+Calibration sweep tooling is now available:
+- `scripts/sweep_mkz_calibration.py` generates candidate config grids
+- `scripts/run_calibration_sweep.py` runs + compares + ranks candidates
+- Sweep evidence stored under `output/pdf/validation/deepsoil_examples/calibration_sweep_wide/`
+
+Next highest-leverage engineering steps (in order):
+1. **Time-domain parity investigation:** The ~0.43 surface NRMSE and near-zero correlation suggest the native solver's time integration or damping formulation produces structurally different waveforms. Investigate small-strain damping treatment and compare native vs DEEPSOIL time-stepping schemes.
+2. **Frequency-domain solver path:** Add frequency-domain transfer function mode for linear/EQL to enable direct spectral comparison without time-domain artifacts.
+3. **Extended sweep:** Run finer grid around `rf=1.2-1.5, grs=1.3-1.7` to find the Pareto front between PSA and surface NRMSE.
+
+Keep external validation artifacts outside product runtime:
+- `output/pdf/validation/`
+- `examples/output/deepsoil_equivalent/`
+Keep mock fallbacks clearly separated from parity campaigns and release signoff.

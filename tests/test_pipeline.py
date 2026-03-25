@@ -359,6 +359,7 @@ def test_run_analysis_nonlinear_nonfinite_response_raises_clear_error(
         return t, surface
 
     monkeypatch.setattr(pipeline_mod, "solve_nonlinear_sh_response", _fake_solver)
+    monkeypatch.setattr(pipeline_mod, "solve_nonlinear_implicit_newmark", _fake_solver)
 
     try:
         run_analysis(cfg, motion, output_dir=tmp_path / "nonfinite-out")
@@ -379,12 +380,17 @@ def test_run_analysis_nonlinear_forwards_configured_substeps(
     seen: dict[str, int] = {}
 
     def _fake_solver(config, motion_obj, **kwargs):
-        _ = (config, motion_obj)
-        seen["substeps"] = int(kwargs["substeps"])
+        _ = (motion_obj,)
+        # New implicit solver reads substeps from config directly,
+        # old Euler solver receives it as kwarg.
+        seen["substeps"] = int(
+            kwargs.get("substeps", config.analysis.nonlinear_substeps)
+        )
         t = np.arange(motion.acc.size, dtype=np.float64) * dt
         return t, 0.5 * motion.acc
 
     monkeypatch.setattr(pipeline_mod, "solve_nonlinear_sh_response", _fake_solver)
+    monkeypatch.setattr(pipeline_mod, "solve_nonlinear_implicit_newmark", _fake_solver)
 
     result = run_analysis(cfg, motion, output_dir=tmp_path / "nonlinear-substeps")
     assert result.status == "ok"

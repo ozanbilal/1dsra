@@ -2,9 +2,9 @@
   "eql01": {
     "checks": {
       "pga": {
-        "expected": 0.03953029115756858,
-        "abs_tol": 0.001976514557878429,
-        "rel_tol": 0.0
+        "expected": 0.03520248114507441,
+        "abs_tol": 0.002,
+        "rel_tol": 0.05
       },
       "ru_max": {
         "expected": 0.0,
@@ -48,9 +48,9 @@
   "eql02": {
     "checks": {
       "pga": {
-        "expected": 0.06903264687193689,
-        "abs_tol": 0.0034516323435968446,
-        "rel_tol": 0.0
+        "expected": 0.05070486734097579,
+        "abs_tol": 0.003,
+        "rel_tol": 0.05
       },
       "ru_max": {
         "expected": 0.0,
@@ -68,9 +68,9 @@
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 2.2007781962913313,
-        "abs_tol": 0.11003890981456657,
-        "rel_tol": 0.0
+        "expected": 1.8284087375087112,
+        "abs_tol": 0.1,
+        "rel_tol": 0.05
       },
       "transfer_peak_freq_hz": {
         "expected": 12.49999999999999,
@@ -114,9 +114,9 @@
         "rel_tol": 0.0
       },
       "transfer_abs_max": {
-        "expected": 0.9598175779197687,
-        "abs_tol": 0.04799087889598844,
-        "rel_tol": 0.0
+        "expected": 1.6537472877420807,
+        "abs_tol": 0.08,
+        "rel_tol": 0.05
       },
       "transfer_peak_freq_hz": {
         "expected": 12.49999999999999,

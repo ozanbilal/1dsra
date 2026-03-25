@@ -2,10 +2,18 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 
+
+@pytest.mark.skipif(
+    sys.platform == "win32" and os.environ.get("PYTHONUTF8") != "1",
+    reason="fpdf2 font pickle load fails on non-UTF-8 Windows locale (cp1254)",
+)
 def test_build_validation_bundle_script(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     (repo_root / "scripts").mkdir(parents=True)
@@ -61,7 +69,7 @@ def test_build_validation_bundle_script(tmp_path: Path) -> None:
 
     out_dir = repo_root / "docs" / "reports" / "validation" / "latest"
     subprocess.run(
-        ["python", str(target_script), "--repo-root", str(repo_root), "--out-dir", str(out_dir)],
+        [sys.executable, str(target_script), "--repo-root", str(repo_root), "--out-dir", str(out_dir)],
         check=True,
     )
 

@@ -1764,6 +1764,9 @@ function App() {
   const [compareLoading, setCompareLoading] = useState(false);
   const [showDiagnosticRuns, setShowDiagnosticRuns] = useState(false);
   const [parityLatest, setParityLatest] = useState(null);
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [graphTheme, setGraphTheme] = useState(localStorage.getItem("sw_graphTheme") || "light");
+  const [displayUnits, setDisplayUnits] = useState(localStorage.getItem("sw_units") || "SI");
   const [deepsoilParityLatest, setDeepsoilParityLatest] = useState(null);
   const [deepsoilManifestStatus, setDeepsoilManifestStatus] = useState(null);
   const [deepsoilManifestDraft, setDeepsoilManifestDraft] = useState(null);
@@ -3496,11 +3499,57 @@ function App() {
   return html`
     <div className="shell">
       <header className="hero">
-        <h1>StrataWave Wave-1 Studio</h1>
+        <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h1 style=${{ margin: 0 }}>StrataWave Wave-1 Studio</h1>
+          <button
+            className="btn btn-sm"
+            onClick=${() => setShowPreferences(!showPreferences)}
+            title="Preferences"
+            style=${{ fontSize: "1.1rem", padding: "4px 10px", opacity: 0.8 }}
+          >Preferences</button>
+        </div>
         <p>
           DEEPSOIL-style 5-step workflow: model build, motion processing, run orchestration and
           results review without manual YAML editing.
         </p>
+        ${showPreferences && html`
+          <div className="card" style=${{ marginTop: "0.5rem", padding: "0.75rem" }}>
+            <h3 style=${{ marginTop: 0, marginBottom: "0.5rem" }}>Preferences</h3>
+            <div style=${{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+              <label>
+                <span className="muted" style=${{ display: "block", marginBottom: "2px" }}>Output Root</span>
+                <input
+                  type="text"
+                  value=${outputRoot}
+                  onInput=${(e) => { setOutputRoot(e.target.value); }}
+                  onBlur=${() => loadRuns()}
+                  style=${{ width: "100%" }}
+                />
+              </label>
+              <label>
+                <span className="muted" style=${{ display: "block", marginBottom: "2px" }}>Graph Theme</span>
+                <select
+                  value=${graphTheme}
+                  onChange=${(e) => { setGraphTheme(e.target.value); localStorage.setItem("sw_graphTheme", e.target.value); }}
+                >
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="seismic">Seismic</option>
+                </select>
+              </label>
+              <label>
+                <span className="muted" style=${{ display: "block", marginBottom: "2px" }}>Units</span>
+                <select
+                  value=${displayUnits}
+                  onChange=${(e) => { setDisplayUnits(e.target.value); localStorage.setItem("sw_units", e.target.value); }}
+                >
+                  <option value="SI">SI (m, kPa, m/s2)</option>
+                  <option value="imperial">Imperial (ft, psf, g)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        `}
       </header>
 
       <section
@@ -6347,6 +6396,8 @@ ${JSON.stringify(convergenceView.raw || { available: false }, null, 2)}
   `;
 }
 
-const root = createRoot(document.getElementById("app"));
+const appEl = document.getElementById("app");
+appEl.setAttribute("data-mounted", "true");
+const root = createRoot(appEl);
 root.render(html`<${App} />`);
 

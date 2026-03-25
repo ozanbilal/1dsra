@@ -1082,7 +1082,18 @@ def _parse_scientific_confidence_matrix(path: Path) -> tuple[str, list[Scientifi
             last_updated = line.split(":", 1)[1].strip()
             break
 
-    table_lines = [line for line in lines if line.strip().startswith("|")]
+    # Find the suite matrix table (contains "suite" column header)
+    table_lines: list[str] = []
+    in_suite_table = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and "suite" in stripped.lower() and not in_suite_table:
+            in_suite_table = True
+            table_lines.append(stripped)
+        elif in_suite_table and stripped.startswith("|"):
+            table_lines.append(stripped)
+        elif in_suite_table and not stripped.startswith("|"):
+            break  # end of suite table
     if len(table_lines) < 3:
         return last_updated, []
     header = [c.strip().lower() for c in table_lines[0].strip().strip("|").split("|")]

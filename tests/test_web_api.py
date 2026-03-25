@@ -46,8 +46,9 @@ def test_web_backend_probe_trims_wrapping_quotes() -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
 
-    exe = shutil.which("python")
-    assert exe is not None
+    exe = shutil.which("python") or shutil.which("python3") or shutil.which("py")
+    if exe is None:
+        pytest.skip("no python executable found on PATH")
     client = TestClient(create_app())
     resp = client.get("/api/backend/opensees/probe", params={"executable": f'"{exe}"'})
     assert resp.status_code == 200
@@ -60,8 +61,9 @@ def test_web_backend_probe_reports_env_override(monkeypatch) -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
 
-    exe = shutil.which("python")
-    assert exe is not None
+    exe = shutil.which("python") or shutil.which("python3") or shutil.which("py")
+    if exe is None:
+        pytest.skip("no python executable found on PATH")
     monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", exe)
 
     client = TestClient(create_app())

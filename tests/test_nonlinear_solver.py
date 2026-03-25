@@ -80,6 +80,42 @@ def test_nonlinear_solver_elastic_halfspace_changes_response() -> None:
     assert not np.allclose(surface_rigid, surface_halfspace)
 
 
+def test_nonlinear_solver_viscous_damping_update_changes_response() -> None:
+    """Viscous damping update (secant-stiffness based) should alter nonlinear response."""
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.analysis.damping_mode = "frequency_independent"
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    cfg_on = cfg.model_copy(deep=True)
+    cfg_on.analysis.viscous_damping_update = True
+    _, surface_on = solve_nonlinear_sh_response(cfg_on, motion)
+
+    cfg_off = cfg.model_copy(deep=True)
+    cfg_off.analysis.viscous_damping_update = False
+    _, surface_off = solve_nonlinear_sh_response(cfg_off, motion)
+
+    assert surface_on.shape == surface_off.shape
+    assert np.all(np.isfinite(surface_on))
+    assert np.all(np.isfinite(surface_off))
+    # Updated damping should produce different response from fixed damping.
+    assert not np.allclose(surface_on, surface_off)
+
+
+def test_nonlinear_solver_viscous_damping_update_elastic_halfspace() -> None:
+    """Viscous damping update should work with elastic halfspace boundary."""
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.analysis.damping_mode = "frequency_independent"
+    cfg.analysis.viscous_damping_update = True
+    cfg.boundary_condition = BoundaryCondition.ELASTIC_HALFSPACE
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+    time, surface = solve_nonlinear_sh_response(cfg, motion)
+    assert time.shape == surface.shape
+    assert np.all(np.isfinite(surface))
+    assert float(np.std(surface)) > 0.0
+
+
 def test_nonlinear_solver_accepts_darendeli_calibrated_config() -> None:
     cfg = load_project_config(Path("examples/configs/mkz_gqh_darendeli.yml"))
     dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import json
 import os
 import shlex
@@ -10,6 +11,11 @@ import sys
 from math import isfinite
 from pathlib import Path
 from typing import Literal, cast
+
+
+class _MaterialChoice(str, enum.Enum):
+    mkz = "mkz"
+    gqh = "gqh"
 
 import numpy as np
 import typer
@@ -36,15 +42,14 @@ from dsra1d.post import render_summary_markdown, summarize_campaign, write_repor
 from dsra1d.verify import verify_batch, verify_run
 
 app = typer.Typer(help="StrataWave CLI")
-RunBackendMode = Literal[
-    "config",
-    "auto",
-    "opensees",
-    "mock",
-    "linear",
-    "eql",
-    "nonlinear",
-]
+class RunBackendMode(str, enum.Enum):
+    config = "config"
+    auto = "auto"
+    opensees = "opensees"
+    mock = "mock"
+    linear = "linear"
+    eql = "eql"
+    nonlinear = "nonlinear"
 
 
 def _release_signoff_policy_path() -> Path:
@@ -724,7 +729,7 @@ def init_config(
 
 @app.command("calibrate-darendeli")
 def calibrate_darendeli(
-    material: Literal["mkz", "gqh"] = typer.Option(..., "--material"),
+    material: _MaterialChoice = typer.Option(..., "--material"),
     out: Path = typer.Option(..., "--out"),
     plasticity_index: float = typer.Option(0.0, "--plasticity-index", min=0.0),
     ocr: float = typer.Option(1.0, "--ocr", min=1.0e-9),
@@ -788,8 +793,9 @@ def calibrate_darendeli(
         )
 
     out.mkdir(parents=True, exist_ok=True)
-    params_path = out / f"darendeli_{material}_params.json"
-    curves_path = out / f"darendeli_{material}_curves.csv"
+    mat_str = material.value
+    params_path = out / f"darendeli_{mat_str}_params.json"
+    curves_path = out / f"darendeli_{mat_str}_curves.csv"
     payload = {
         "material": result.material,
         "source": result.source,

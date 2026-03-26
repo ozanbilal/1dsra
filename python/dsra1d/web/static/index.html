@@ -3,45 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>StrataWave Web Studio</title>
+    <title>StrataWave</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.v2.css" />
   </head>
   <body>
-    <div id="app"><p style="padding:2rem;color:#888;font-family:sans-serif;">Loading StrataWave Web Studio...</p></div>
-    <script type="module" src="/assets/app.js"></script>
-    <script>
-      // Fallback: show CDN load errors to user
-      window.addEventListener('error', function(e) {
-        var app = document.getElementById('app');
-        if (app && app.children.length <= 1) {
-          app.innerHTML = '<div style="padding:2rem;color:#c00;font-family:monospace;">'
-            + '<h3>⚠ Module load failed</h3>'
-            + '<p>' + (e.message || 'Unknown error') + '</p>'
-            + '<p>esm.sh CDN may be unreachable. Check browser console (F12) for details.</p>'
-            + '</div>';
-        }
-      });
-      // Timeout fallback
-      setTimeout(function() {
-        var app = document.getElementById('app');
-        if (app && !app.hasAttribute('data-mounted')) {
-          var p = app.querySelector('p');
-          if (p && p.textContent.indexOf('Loading') >= 0) {
-            app.innerHTML = '<div style="padding:2rem;color:#c70;font-family:monospace;">'
-              + '<h3>⏳ Slow CDN response</h3>'
-              + '<p>React modules from esm.sh are still loading. This can take 10-30s on first load.</p>'
-              + '<p>If it stays blank, open F12 Console to check for errors.</p>'
-              + '</div>';
-          }
-        }
-      }, 8000);
-    </script>
+    <div id="root">
+      <p style="padding:2rem;color:#888;font-family:sans-serif;">Loading StrataWave...</p>
+    </div>
+    <script type="module" src="/assets/app.v2.js"></script>
   </body>
 </html>
-

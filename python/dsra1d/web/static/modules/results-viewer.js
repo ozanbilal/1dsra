@@ -1,8 +1,7 @@
 /**
  * StrataWave v2 — Results Viewer (6 tabs matching DEEPSOIL)
  */
-import { html } from "../vendor/htm.mjs";
-import { useState } from "../vendor/react.mjs";
+import { html, useState } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
 import { fmt, RESULT_TABS } from "./utils.js";
 import { excelExportUrl, downloadUrl } from "./api.js";

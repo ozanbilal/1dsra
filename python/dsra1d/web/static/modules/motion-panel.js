@@ -1,8 +1,7 @@
 /**
  * StrataWave v2 — Motion Upload & Preview Panel
  */
-import { html } from "../vendor/htm.mjs";
-import { useState, useRef } from "../vendor/react.mjs";
+import { html, useState, useRef } from "./setup.js";
 import { ChartCard } from "./charts.js";
 import { fmt } from "./utils.js";
 import * as api from "./api.js";

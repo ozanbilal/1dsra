@@ -5,7 +5,7 @@
  * MultiSeriesChart   — multi-series overlay with log-x support
  * DepthProfileChart  — horizontal depth-oriented profile
  */
-import { html } from "../vendor/htm.mjs";
+import { html } from "./setup.js";
 import { fmt } from "./utils.js";
 
 // ── Geometry helpers ─────────────────────────────────────

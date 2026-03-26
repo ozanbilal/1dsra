@@ -1,8 +1,7 @@
 /**
  * StrataWave v2 — 5-Step Wizard (DEEPSOIL-equivalent flow)
  */
-import { html } from "../vendor/htm.mjs";
-import { useState, useEffect } from "../vendor/react.mjs";
+import { html, useState, useEffect } from "./setup.js";
 import { ProfileEditor } from "./profile-editor.js";
 import { MotionPanel } from "./motion-panel.js";
 import {

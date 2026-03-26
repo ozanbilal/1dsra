@@ -11,9 +11,7 @@
  *   modules/api.js     → Fetch wrappers
  *   modules/utils.js   → Formatting, constants
  */
-import { html } from "./vendor/htm.mjs";
-import { useState, useEffect, useCallback } from "./vendor/react.mjs";
-import { createRoot } from "./vendor/react-dom-client.mjs";
+import { html, useState, useEffect, useCallback, createRoot } from "./modules/setup.js";
 
 import { Wizard } from "./modules/wizard.js";
 import { ResultsViewer } from "./modules/results-viewer.js";

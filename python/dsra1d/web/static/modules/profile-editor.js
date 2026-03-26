@@ -2,8 +2,7 @@
  * StrataWave v2 — Soil Profile Editor
  * DEEPSOIL-style layer table with reference curve selector and calibration preview
  */
-import { html } from "../vendor/htm.mjs";
-import { useState, useCallback } from "../vendor/react.mjs";
+import { html, useState, useCallback } from "./setup.js";
 import { ChartCard, MultiSeriesChart } from "./charts.js";
 import {
   fmt, defaultLayer, computeGmax,

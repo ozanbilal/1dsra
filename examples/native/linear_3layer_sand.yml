@@ -1,0 +1,62 @@
+# StrataWave Native Example: Linear 3-Layer Sand Profile
+# Reference curves: Seed-Idriss Mean (1970)
+# Boundary: Rigid base
+# Solver: Linear SH (implicit Newmark)
+
+project_name: "Linear 3-Layer Sand"
+
+profile:
+  layers:
+    - thickness: 5.0
+      vs: 150.0
+      unit_weight: 17.0
+      material: mkz
+      material_params:
+        gmax: 38250.0    # rho * Vs^2 = (17/9.81) * 150^2
+        gamma_ref: 0.035  # Seed-Idriss mean reference strain
+        damping_min: 0.005
+        damping_max: 0.21
+        reload_factor: 2.0
+
+    - thickness: 10.0
+      vs: 250.0
+      unit_weight: 18.5
+      material: mkz
+      material_params:
+        gmax: 117860.0   # (18.5/9.81) * 250^2
+        gamma_ref: 0.035
+        damping_min: 0.005
+        damping_max: 0.21
+        reload_factor: 2.0
+
+    - thickness: 15.0
+      vs: 400.0
+      unit_weight: 20.0
+      material: mkz
+      material_params:
+        gmax: 326200.0   # (20/9.81) * 400^2
+        gamma_ref: 0.035
+        damping_min: 0.005
+        damping_max: 0.21
+        reload_factor: 2.0
+
+  halfspace:
+    vs: 760.0
+    unit_weight: 22.0
+
+motion:
+  file: "../motions/sample_motion.csv"
+  units: "m/s2"
+
+analysis:
+  solver_backend: linear
+  boundary_condition: rigid
+  f_max: 25.0
+  dt: 0.005
+  damping_mode: frequency_independent
+
+output:
+  formats:
+    - hdf5
+    - sqlite
+    - csv

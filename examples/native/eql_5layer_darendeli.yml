@@ -1,0 +1,83 @@
+# StrataWave Native Example: EQL 5-Layer Mixed Profile
+# Reference curves: Darendeli (2001) calibrated MKZ
+# Boundary: Elastic halfspace
+# Solver: Equivalent-Linear (iterative strain-compatible)
+
+project_name: "EQL 5-Layer Darendeli"
+
+profile:
+  layers:
+    - thickness: 3.0
+      vs: 120.0
+      unit_weight: 16.5
+      material: mkz
+      calibration:
+        method: darendeli
+        plasticity_index: 0
+        ocr: 1.0
+        mean_effective_stress_kpa: 25.0
+
+    - thickness: 5.0
+      vs: 180.0
+      unit_weight: 17.5
+      material: mkz
+      calibration:
+        method: darendeli
+        plasticity_index: 15
+        ocr: 1.0
+        mean_effective_stress_kpa: 65.0
+
+    - thickness: 7.0
+      vs: 250.0
+      unit_weight: 18.5
+      material: mkz
+      calibration:
+        method: darendeli
+        plasticity_index: 30
+        ocr: 1.5
+        mean_effective_stress_kpa: 120.0
+
+    - thickness: 10.0
+      vs: 350.0
+      unit_weight: 19.5
+      material: mkz
+      calibration:
+        method: darendeli
+        plasticity_index: 15
+        ocr: 1.0
+        mean_effective_stress_kpa: 200.0
+
+    - thickness: 15.0
+      vs: 500.0
+      unit_weight: 21.0
+      material: mkz
+      calibration:
+        method: darendeli
+        plasticity_index: 0
+        ocr: 1.0
+        mean_effective_stress_kpa: 350.0
+
+  halfspace:
+    vs: 760.0
+    unit_weight: 22.0
+
+motion:
+  file: "../motions/sample_motion.csv"
+  units: "m/s2"
+
+analysis:
+  solver_backend: eql
+  boundary_condition: elastic_halfspace
+  f_max: 25.0
+  dt: 0.005
+  damping_mode: frequency_independent
+  convergence_tol: 0.03
+  strain_ratio: 0.65
+  relaxation: 0.6
+  max_iterations: 15
+
+output:
+  formats:
+    - hdf5
+    - sqlite
+    - csv

@@ -1,0 +1,81 @@
+# StrataWave Native Example: Nonlinear GQH 5-Layer Graded Profile
+# Reference curves: Darendeli-calibrated GQH
+# Boundary: Elastic halfspace
+# Solver: Nonlinear implicit Newmark
+
+project_name: "Nonlinear GQH Graded Profile"
+
+profile:
+  layers:
+    - thickness: 3.0
+      vs: 100.0
+      unit_weight: 16.0
+      material: gqh
+      calibration:
+        method: darendeli
+        plasticity_index: 0
+        ocr: 1.0
+        mean_effective_stress_kpa: 20.0
+
+    - thickness: 5.0
+      vs: 160.0
+      unit_weight: 17.0
+      material: gqh
+      calibration:
+        method: darendeli
+        plasticity_index: 10
+        ocr: 1.0
+        mean_effective_stress_kpa: 55.0
+
+    - thickness: 7.0
+      vs: 230.0
+      unit_weight: 18.0
+      material: gqh
+      calibration:
+        method: darendeli
+        plasticity_index: 20
+        ocr: 1.5
+        mean_effective_stress_kpa: 100.0
+
+    - thickness: 10.0
+      vs: 320.0
+      unit_weight: 19.0
+      material: gqh
+      calibration:
+        method: darendeli
+        plasticity_index: 10
+        ocr: 1.0
+        mean_effective_stress_kpa: 180.0
+
+    - thickness: 15.0
+      vs: 450.0
+      unit_weight: 20.5
+      material: gqh
+      calibration:
+        method: darendeli
+        plasticity_index: 0
+        ocr: 1.0
+        mean_effective_stress_kpa: 300.0
+
+  halfspace:
+    vs: 800.0
+    unit_weight: 22.0
+
+motion:
+  file: "../motions/sample_motion.csv"
+  units: "m/s2"
+
+analysis:
+  solver_backend: nonlinear
+  boundary_condition: elastic_halfspace
+  f_max: 25.0
+  dt: 0.005
+  damping_mode: frequency_independent
+  nonlinear_substeps: 4
+  integration_scheme: newmark
+
+output:
+  formats:
+    - hdf5
+    - sqlite
+    - csv

@@ -23,57 +23,6 @@ def test_web_health_endpoint() -> None:
     assert payload.get("status") == "ok"
 
 
-def test_web_backend_probe_endpoint() -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    client = TestClient(create_app())
-    resp = client.get("/api/backend/opensees/probe", params={"executable": "OpenSees"})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert isinstance(payload.get("requested"), str)
-    assert payload["requested"]
-    assert isinstance(payload.get("requested_input"), str)
-    assert "available" in payload
-    assert "assumed_available" in payload
-    assert isinstance(payload["assumed_available"], bool)
-    assert "env_override_used" in payload
-    assert isinstance(payload["env_override_used"], bool)
-    assert "version" in payload
-
-
-def test_web_backend_probe_trims_wrapping_quotes() -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    exe = shutil.which("python") or shutil.which("python3") or shutil.which("py")
-    if exe is None:
-        pytest.skip("no python executable found on PATH")
-    client = TestClient(create_app())
-    resp = client.get("/api/backend/opensees/probe", params={"executable": f'"{exe}"'})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["requested"] == exe
-    assert payload["requested_input"] == exe
-
-
-def test_web_backend_probe_reports_env_override(monkeypatch) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    exe = shutil.which("python") or shutil.which("python3") or shutil.which("py")
-    if exe is None:
-        pytest.skip("no python executable found on PATH")
-    monkeypatch.setenv("DSRA1D_OPENSEES_EXE_OVERRIDE", exe)
-
-    client = TestClient(create_app())
-    resp = client.get("/api/backend/opensees/probe", params={"executable": "OpenSees"})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["env_override"] == exe
-    assert payload["env_override_used"] is True
-
-
 def test_web_runs_endpoint_returns_list() -> None:
     from dsra1d.web.app import create_app
     from fastapi.testclient import TestClient
@@ -83,137 +32,6 @@ def test_web_runs_endpoint_returns_list() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert isinstance(payload, list)
-
-
-def test_web_deepsoil_parity_latest_endpoint(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    out_dir = tmp_path / "parity"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    report_path = out_dir / "deepsoil_compare_batch.json"
-    report_path.write_text(
-        json.dumps(
-            {
-                "manifest_path": str(tmp_path / "manifest.json"),
-                "total_cases": 2,
-                "passed_cases": 1,
-                "failed_cases": 1,
-                "policy": {
-                    "surface_corrcoef_min": 0.95,
-                    "profile_nrmse_max": 0.25,
-                },
-                "cases": [
-                    {
-                        "name": "case-fail",
-                        "passed": False,
-                        "run": "out/case-fail",
-                        "surface_csv": "refs/fail_surface.csv",
-                        "profile_csv": "refs/fail_profile.csv",
-                        "checks": {"surface_nrmse_max": False, "profile_nrmse_max": True},
-                        "metrics": {"surface_corrcoef": 0.91},
-                    },
-                    {
-                        "name": "case-pass",
-                        "passed": True,
-                        "run": "out/case-pass",
-                        "surface_csv": "refs/pass_surface.csv",
-                        "checks": {"surface_nrmse_max": True},
-                        "metrics": {"surface_corrcoef": 0.99},
-                    },
-                ],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    client = TestClient(create_app())
-    resp = client.get("/api/parity/deepsoil/latest", params={"output_root": str(tmp_path)})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["found"] is True
-    assert payload["total_cases"] == 2
-    assert payload["failed_cases"] == 1
-    assert payload["cases"][0]["name"] == "case-fail"
-    assert payload["cases"][0]["passed"] is False
-    assert payload["cases"][1]["name"] == "case-pass"
-
-
-def test_web_deepsoil_release_manifest_endpoint() -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    client = TestClient(create_app())
-    resp = client.get("/api/parity/deepsoil/release-manifest")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["policy_path"].endswith("release_signoff.yml")
-    assert payload["manifest_path"].endswith("release_signoff_deepsoil_manifest.json")
-    assert payload["sample_manifest_path"].endswith("release_signoff_deepsoil_manifest.sample.json")
-    assert "require_deepsoil_compare" in payload
-
-
-def test_web_deepsoil_release_manifest_editor_and_save_endpoint(tmp_path, monkeypatch) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    repo_root = tmp_path / "repo"
-    policy_dir = repo_root / "benchmarks" / "policies"
-    policy_dir.mkdir(parents=True, exist_ok=True)
-    (policy_dir / "release_signoff.yml").write_text(
-        "require_deepsoil_compare: true\n",
-        encoding="utf-8",
-    )
-    (policy_dir / "release_signoff_deepsoil_manifest.sample.json").write_text(
-        json.dumps(
-            {
-                "defaults": {"surface_corrcoef_min": 0.95},
-                "cases": [{"name": "sample-case", "run": "out/sample"}],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    import dsra1d.web.app as web_app_mod
-
-    monkeypatch.setattr(web_app_mod, "_repo_root", lambda: repo_root)
-
-    client = TestClient(create_app())
-    resp = client.get("/api/parity/deepsoil/release-manifest/editor")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["loaded_from"] == "sample"
-    assert payload["exists"] is False
-    assert payload["cases"][0]["name"] == "sample-case"
-
-    save_resp = client.post(
-        "/api/parity/deepsoil/release-manifest/save",
-        json={
-            "defaults": {"surface_corrcoef_min": 0.97, "profile_nrmse_max": 0.22},
-            "cases": [
-                {
-                    "name": "case-01",
-                    "run": "out/release/case01",
-                    "surface_csv": "refs/case01_surface.csv",
-                    "psa_csv": "",
-                    "profile_csv": "refs/case01_profile.csv",
-                    "hysteresis_csv": "",
-                    "hysteresis_layer": 0,
-                }
-            ],
-        },
-    )
-    assert save_resp.status_code == 200
-    saved = save_resp.json()
-    assert saved["status"] == "ok"
-    assert saved["case_count"] == 1
-    manifest_path = policy_dir / "release_signoff_deepsoil_manifest.json"
-    assert manifest_path.exists()
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["defaults"]["surface_corrcoef_min"] == 0.97
-    assert manifest["cases"][0]["name"] == "case-01"
 
 
 def test_web_runs_endpoint_includes_health_summary(tmp_path) -> None:
@@ -260,9 +78,9 @@ def test_web_list_config_templates_endpoint() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert "templates" in payload
-    assert "effective-stress" in payload["templates"]
-    assert "pm4sand-calibration" in payload["templates"]
-    assert "pm4silt-calibration" in payload["templates"]
+    assert "mkz-gqh-eql" in payload["templates"]
+    assert "mkz-gqh-nonlinear" in payload["templates"]
+    assert "mkz-gqh-darendeli" in payload["templates"]
 
 
 def test_web_create_config_template_endpoint(tmp_path) -> None:
@@ -273,7 +91,7 @@ def test_web_create_config_template_endpoint(tmp_path) -> None:
     resp = client.post(
         "/api/config/template",
         json={
-            "template": "effective-stress",
+            "template": "mkz-gqh-eql",
             "output_dir": str(tmp_path),
             "file_name": "ui_generated_case.yml",
         },
@@ -386,11 +204,10 @@ def test_web_wizard_schema_endpoint() -> None:
     assert "config_templates" in payload
     assert "template_defaults" in payload
     assert payload["steps"][0]["id"] == "analysis_step"
-    assert "deepsoil_bap_like" in payload["enum_options"]["baseline"]
-    assert "pm4sand-calibration" in payload["config_templates"]
-    assert "pm4silt-calibration" in payload["config_templates"]
+    assert "mkz-gqh-eql" in payload["config_templates"]
+    assert "mkz-gqh-nonlinear" in payload["config_templates"]
     assert "mkz-gqh-darendeli" in payload["config_templates"]
-    assert "pm4sand-calibration" in payload["template_defaults"]
+    assert "mkz-gqh-darendeli" in payload["template_defaults"]
     darendeli_defaults = payload["template_defaults"]["mkz-gqh-darendeli"]["profile_step"]["layers"]
     assert darendeli_defaults[0]["calibration"]["source"] == "darendeli"
     assert darendeli_defaults[0]["material"] == "mkz"
@@ -408,8 +225,7 @@ def test_web_config_from_wizard_endpoint(tmp_path) -> None:
             "analysis_step": {
                 "project_name": "wizard-case",
                 "boundary_condition": "elastic_halfspace",
-                "solver_backend": "opensees",
-                "pm4_validation_profile": "basic",
+                "solver_backend": "nonlinear",
             },
             "profile_step": {
                 "layers": [
@@ -418,8 +234,8 @@ def test_web_config_from_wizard_endpoint(tmp_path) -> None:
                         "thickness_m": 5.0,
                         "unit_weight_kN_m3": 18.0,
                         "vs_m_s": 180.0,
-                        "material": "pm4sand",
-                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material": "mkz",
+                        "material_params": {"gmax": 60000.0, "gamma_ref": 0.001, "damping_min": 0.02, "damping_max": 0.12},
                         "material_optional_args": [],
                     }
                 ]
@@ -438,7 +254,6 @@ def test_web_config_from_wizard_endpoint(tmp_path) -> None:
                 "write_hdf5": True,
                 "write_sqlite": True,
                 "parquet_export": False,
-                "opensees_executable": "OpenSees",
                 "output_dir": str(tmp_path / "out"),
                 "config_output_dir": str(tmp_path),
                 "config_file_name": "wizard_case.yml",
@@ -466,7 +281,6 @@ def test_web_config_from_wizard_preserves_darendeli_calibration(tmp_path) -> Non
                 "project_name": "wizard-darendeli-case",
                 "boundary_condition": "elastic_halfspace",
                 "solver_backend": "nonlinear",
-                "pm4_validation_profile": "basic",
             },
             "profile_step": {
                 "layers": [
@@ -504,7 +318,6 @@ def test_web_config_from_wizard_preserves_darendeli_calibration(tmp_path) -> Non
                 "write_hdf5": True,
                 "write_sqlite": True,
                 "parquet_export": False,
-                "opensees_executable": "OpenSees",
                 "output_dir": str(tmp_path / "out"),
                 "config_output_dir": str(tmp_path),
                 "config_file_name": "wizard_darendeli.yml",
@@ -609,7 +422,6 @@ def test_web_config_from_wizard_wires_rayleigh_damping(tmp_path) -> None:
                 "project_name": "wizard-rayleigh-case",
                 "boundary_condition": "elastic_halfspace",
                 "solver_backend": "linear",
-                "pm4_validation_profile": "basic",
             },
             "profile_step": {
                 "layers": [
@@ -648,7 +460,6 @@ def test_web_config_from_wizard_wires_rayleigh_damping(tmp_path) -> None:
                 "write_hdf5": True,
                 "write_sqlite": True,
                 "parquet_export": False,
-                "opensees_executable": "OpenSees",
                 "output_dir": str(tmp_path / "out"),
                 "config_output_dir": str(tmp_path),
                 "config_file_name": "wizard_rayleigh.yml",
@@ -678,8 +489,7 @@ def test_web_wizard_sanity_check_endpoint(tmp_path) -> None:
             "analysis_step": {
                 "project_name": "wizard-sanity-case",
                 "boundary_condition": "elastic_halfspace",
-                "solver_backend": "mock",
-                "pm4_validation_profile": "basic",
+                "solver_backend": "nonlinear",
             },
             "profile_step": {
                 "layers": [
@@ -688,8 +498,8 @@ def test_web_wizard_sanity_check_endpoint(tmp_path) -> None:
                         "thickness_m": 5.0,
                         "unit_weight_kN_m3": 18.0,
                         "vs_m_s": 180.0,
-                        "material": "pm4sand",
-                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                        "material": "mkz",
+                        "material_params": {"gmax": 60000.0, "gamma_ref": 0.001, "damping_min": 0.02, "damping_max": 0.12},
                         "material_optional_args": [],
                     }
                 ]
@@ -708,7 +518,6 @@ def test_web_wizard_sanity_check_endpoint(tmp_path) -> None:
                 "write_hdf5": True,
                 "write_sqlite": True,
                 "parquet_export": False,
-                "opensees_executable": "OpenSees",
                 "output_dir": str(tmp_path / "out"),
                 "config_output_dir": str(tmp_path),
                 "config_file_name": "wizard_sanity.yml",
@@ -721,202 +530,6 @@ def test_web_wizard_sanity_check_endpoint(tmp_path) -> None:
     assert "checks" in payload
     assert any(item.get("name") == "config_validation" for item in payload.get("checks", []))
     assert "derived" in payload
-
-
-def test_web_wizard_sanity_check_warns_for_low_timeout_budget(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    motion_path = tmp_path / "long_motion.csv"
-    t = np.arange(0.0, 200.0, 0.01, dtype=np.float64)
-    acc = 0.5 * np.sin(2.0 * np.pi * 1.0 * t)
-    np.savetxt(motion_path, np.column_stack([t, acc]), delimiter=",")
-
-    client = TestClient(create_app())
-    resp = client.post(
-        "/api/wizard/sanity-check",
-        json={
-            "analysis_step": {
-                "project_name": "wizard-timeout-case",
-                "boundary_condition": "elastic_halfspace",
-                "solver_backend": "opensees",
-                "pm4_validation_profile": "basic",
-            },
-            "profile_step": {
-                "layers": [
-                    {
-                        "name": "L1",
-                        "thickness_m": 5.0,
-                        "unit_weight_kN_m3": 18.0,
-                        "vs_m_s": 180.0,
-                        "material": "pm4sand",
-                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
-                        "material_optional_args": [],
-                    }
-                ]
-            },
-            "motion_step": {
-                "motion_path": str(motion_path),
-                "units": "m/s2",
-                "baseline": "remove_mean",
-                "scale_mode": "none",
-                "dt_override": 0.01,
-            },
-            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
-            "control_step": {
-                "f_max": 25.0,
-                "timeout_s": 120,
-                "retries": 1,
-                "write_hdf5": True,
-                "write_sqlite": True,
-                "parquet_export": False,
-                "opensees_executable": "OpenSees",
-                "output_dir": str(tmp_path / "out"),
-                "config_output_dir": str(tmp_path),
-                "config_file_name": "wizard_timeout.yml",
-            },
-        },
-    )
-    assert resp.status_code == 200
-    payload = resp.json()
-    warnings = payload.get("warnings", [])
-    assert any("timeout_s=" in str(w) and "Recommended >=" in str(w) for w in warnings)
-    checks = payload.get("checks", [])
-    timeout_checks = [c for c in checks if c.get("name") == "timeout_budget"]
-    assert timeout_checks
-    assert timeout_checks[0].get("status") in {"warning", "ok"}
-    derived = payload.get("derived", {})
-    assert float(derived.get("timeout_recommended_s", 0.0)) >= 120.0
-
-
-def test_web_wizard_sanity_check_warns_when_probe_is_assumed_available(
-    tmp_path, monkeypatch
-) -> None:
-    from dsra1d.interop.opensees.runner import OpenSeesProbeResult
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    def _fake_probe(executable: str, extra_args=None, timeout_s: int = 5):
-        _ = (executable, extra_args, timeout_s)
-        return OpenSeesProbeResult(
-            available=True,
-            assumed_available=True,
-            resolved=Path("C:/tools/OpenSees.exe"),
-            version="unknown",
-            stdout="",
-            stderr="probe timeout fallback",
-            command=["OpenSees", "-version"],
-            binary_sha256="a" * 64,
-        )
-
-    monkeypatch.setattr("dsra1d.web.app.probe_opensees_executable", _fake_probe)
-
-    client = TestClient(create_app())
-    resp = client.post(
-        "/api/wizard/sanity-check",
-        json={
-            "analysis_step": {
-                "project_name": "wizard-assumed-probe-case",
-                "boundary_condition": "elastic_halfspace",
-                "solver_backend": "opensees",
-                "pm4_validation_profile": "basic",
-            },
-            "profile_step": {
-                "layers": [
-                    {
-                        "name": "L1",
-                        "thickness_m": 5.0,
-                        "unit_weight_kN_m3": 18.0,
-                        "vs_m_s": 180.0,
-                        "material": "pm4sand",
-                        "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
-                        "material_optional_args": [],
-                    }
-                ]
-            },
-            "motion_step": {
-                "motion_path": "examples/motions/sample_motion.csv",
-                "units": "m/s2",
-                "baseline": "remove_mean",
-                "scale_mode": "none",
-            },
-            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
-            "control_step": {
-                "f_max": 25.0,
-                "timeout_s": 120,
-                "retries": 1,
-                "write_hdf5": True,
-                "write_sqlite": True,
-                "parquet_export": False,
-                "opensees_executable": "OpenSees",
-                "output_dir": str(tmp_path / "out"),
-                "config_output_dir": str(tmp_path),
-                "config_file_name": "wizard_assumed_probe.yml",
-            },
-        },
-    )
-    assert resp.status_code == 200
-    payload = resp.json()
-    checks = payload.get("checks", [])
-    backend_checks = [c for c in checks if c.get("name") == "backend_probe"]
-    assert backend_checks
-    assert backend_checks[0].get("status") == "warning"
-    assert "assumed" in str(backend_checks[0].get("message", "")).lower()
-    derived = payload.get("derived", {})
-    assert derived.get("opensees_probe_assumed_available") is True
-
-
-def test_web_config_from_wizard_invalid_opensees_material_returns_400(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    client = TestClient(create_app())
-    resp = client.post(
-        "/api/config/from-wizard",
-        json={
-            "analysis_step": {
-                "project_name": "wizard-invalid-case",
-                "boundary_condition": "elastic_halfspace",
-                "solver_backend": "opensees",
-                "pm4_validation_profile": "basic",
-            },
-            "profile_step": {
-                "layers": [
-                    {
-                        "name": "L1",
-                        "thickness_m": 5.0,
-                        "unit_weight_kN_m3": 18.0,
-                        "vs_m_s": 180.0,
-                        "material": "mkz",
-                        "material_params": {"gmax": 60000.0, "gamma_ref": 0.001},
-                        "material_optional_args": [],
-                    }
-                ]
-            },
-            "motion_step": {
-                "motion_path": "examples/motions/sample_motion.csv",
-                "units": "m/s2",
-                "baseline": "remove_mean",
-                "scale_mode": "none",
-            },
-            "damping_step": {"mode": "frequency_independent", "update_matrix": False},
-            "control_step": {
-                "f_max": 25.0,
-                "timeout_s": 120,
-                "retries": 1,
-                "write_hdf5": True,
-                "write_sqlite": True,
-                "parquet_export": False,
-                "opensees_executable": "OpenSees",
-                "output_dir": str(tmp_path / "out"),
-                "config_output_dir": str(tmp_path),
-                "config_file_name": "wizard_case_invalid.yml",
-            },
-        },
-    )
-    assert resp.status_code == 400
-    detail = resp.json().get("detail", "")
-    assert "OpenSees backend currently supports pm4sand/pm4silt/elastic" in detail
 
 
 def test_web_motion_import_peer_at2_endpoint(tmp_path) -> None:
@@ -1063,15 +676,14 @@ def test_web_run_endpoint_success_with_relative_paths(tmp_path) -> None:
     resp = client.post(
         "/api/run",
         json={
-            "config_path": "examples/configs/effective_stress.yml",
+            "config_path": "examples/configs/mkz_gqh_eql.yml",
             "motion_path": "examples/motions/sample_motion.csv",
             "output_root": str(out_root),
-            "backend": "mock",
+            "backend": "config",
         },
     )
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["backend"] == "mock"
     assert payload["status"] == "ok"
     assert Path(payload["output_root"]).resolve() == out_root.resolve()
     assert (out_root / payload["run_id"]).exists()
@@ -1130,10 +742,10 @@ def test_web_run_endpoint_missing_motion_returns_400(tmp_path) -> None:
     resp = client.post(
         "/api/run",
         json={
-            "config_path": "examples/configs/effective_stress.yml",
+            "config_path": "examples/configs/mkz_gqh_eql.yml",
             "motion_path": "examples/motions/not_found_motion.csv",
             "output_root": str(tmp_path / "run_out"),
-            "backend": "mock",
+            "backend": "config",
         },
     )
     assert resp.status_code == 400
@@ -1197,49 +809,6 @@ def test_web_results_summary_fallback_without_output_root() -> None:
         assert payload["run_id"] == result.run_id
     finally:
         shutil.rmtree(fallback_root, ignore_errors=True)
-
-
-def test_web_results_summary_exposes_timeout_recovery_convergence(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    result = _make_mock_run(tmp_path)
-    run_dir = Path(result.output_dir)
-    run_meta_path = run_dir / "run_meta.json"
-    meta = json.loads(run_meta_path.read_text(encoding="utf-8"))
-    meta["solver_backend"] = "opensees"
-    meta["timeout_s_configured"] = 120
-    meta["timeout_s_effective"] = 540
-    meta["opensees_timeout_recovered"] = {
-        "recovered": True,
-        "coverage_ratio": 0.91,
-        "timeout_s_effective": 540,
-    }
-    meta.pop("opensees_diagnostics", None)
-    run_meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-    root = tmp_path / "web-runs"
-    client = TestClient(create_app())
-    summary_resp = client.get(
-        f"/api/runs/{result.run_id}/results/summary",
-        params={"output_root": str(root)},
-    )
-    assert summary_resp.status_code == 200
-    summary = summary_resp.json()
-    conv = summary["convergence"]
-    assert conv["available"] is True
-    assert conv["source"] == "opensees_timeout_recovered"
-    assert conv["severity"] == "warning"
-    assert int(conv["timeout_s_configured"]) == 120
-    assert int(conv["timeout_s_effective"]) == 540
-    assert conv["timeout_recovered"] is True
-
-    runs_resp = client.get("/api/runs", params={"output_root": str(root)})
-    assert runs_resp.status_code == 200
-    rows = runs_resp.json()
-    row = next(item for item in rows if item["run_id"] == result.run_id)
-    assert row["convergence_mode"] == "solver"
-    assert row["convergence_severity"] == "warning"
 
 
 def test_web_runs_endpoint_scans_nested_output_root(tmp_path) -> None:
@@ -1350,7 +919,7 @@ def test_web_results_hysteresis_prefers_recorded_layer_channels(tmp_path) -> Non
     )
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["source"] in {"opensees_recorders", "mixed_recorders_proxy"}
+    assert payload["source"] in {"recorders", "mixed_recorders_proxy"}
     first_layer = next(layer for layer in payload["layers"] if layer["layer_index"] == 0)
     assert first_layer["is_proxy"] is False
     assert "recorded" in str(first_layer["model"])
@@ -1420,134 +989,3 @@ def test_web_download_profile_summary_csv_endpoint(tmp_path) -> None:
     assert len(text.splitlines()) >= 2
 
 
-def test_web_parity_latest_endpoint_reads_latest_report(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    root = tmp_path / "campaign"
-    root.mkdir(parents=True, exist_ok=True)
-    benchmark = {
-        "suite": "opensees-parity",
-        "generated_utc": "2026-03-04T12:00:00Z",
-        "all_passed": False,
-        "ran": 5,
-        "total_cases": 6,
-        "skipped": 1,
-        "skipped_backend": 1,
-        "execution_coverage": 5.0 / 6.0,
-        "backend_ready": False,
-        "backend_fingerprint_ok": False,
-        "backend_probe": {"binary_sha256": "abc123"},
-        "cases": [
-            {
-                "name": "parity01",
-                "status": "skipped",
-                "skip_kind": "probe_failed",
-                "reason": "OpenSees backend probe failed",
-            }
-        ],
-    }
-    (root / "benchmark_opensees-parity.json").write_text(
-        json.dumps(benchmark, indent=2),
-        encoding="utf-8",
-    )
-
-    client = TestClient(create_app())
-    resp = client.get("/api/parity/latest", params={"output_root": str(root)})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["found"] is True
-    assert payload["suite"] == "opensees-parity"
-    assert isinstance(payload["suites"], list)
-    assert len(payload["suites"]) >= 1
-    row = payload["suites"][0]
-    assert row["suite"] == "opensees-parity"
-    assert "execution_coverage" in row
-    assert "block_reasons" in row
-
-
-def test_web_release_signoff_latest_endpoint_reads_summary(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    root = tmp_path / "campaign"
-    root.mkdir(parents=True, exist_ok=True)
-    summary = {
-        "suite": "release-signoff",
-        "generated_utc": "2026-03-04T12:45:00Z",
-        "benchmark": {"all_passed": True, "backend_probe": {"assumed_available": True}},
-        "verify_batch": {"ok": True},
-        "policy": {"campaign": {"passed": False}},
-        "signoff": {
-            "strict_signoff": True,
-            "passed": False,
-            "conditions": {
-                "campaign_policy_passed": False,
-                "backend_fingerprint_ok": True,
-                "backend_probe_not_assumed": False,
-            },
-            "observed": {"backend_probe_sha256": "a" * 64},
-            "policy": {"opensees_fingerprint": "b" * 64},
-        },
-    }
-    (root / "campaign_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
-    client = TestClient(create_app())
-    resp = client.get("/api/release/signoff/latest", params={"output_root": str(root)})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["found"] is True
-    assert payload["suite"] == "release-signoff"
-    assert payload["strict_signoff"] is True
-    assert payload["release_ready"] is False
-    assert payload["signoff_passed"] is False
-    assert payload["campaign_policy_passed"] is False
-    assert payload["benchmark_all_passed"] is True
-    assert payload["verify_ok"] is True
-    assert payload["benchmark_backend_probe_assumed_available"] is True
-    assert payload["benchmark_ran"] == 0
-    assert payload["benchmark_total_cases"] == 0
-    assert payload["benchmark_execution_coverage"] == 0.0
-    assert payload["fingerprint_match"] is False
-    assert payload["severity_score"] >= 20
-    assert payload["severity_label"] in {"warning", "high", "critical"}
-    assert "campaign_policy_passed" in payload["condition_failures"]
-    assert "campaign_policy_failed" in payload["blocker_categories"]
-    assert "backend_probe_assumed" in payload["blocker_categories"]
-    assert "fingerprint_mismatch" in payload["blocker_categories"]
-    assert "signoff_not_passed" in payload["blocker_categories"]
-    assert payload["observed_backend_sha256"] == "a" * 64
-    assert payload["policy_backend_sha256"] == "b" * 64
-
-
-def test_web_release_signoff_latest_endpoint_handles_missing_summary(tmp_path) -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    root = tmp_path / "empty"
-    root.mkdir(parents=True, exist_ok=True)
-    client = TestClient(create_app())
-    resp = client.get("/api/release/signoff/latest", params={"output_root": str(root)})
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["found"] is False
-    assert payload["severity_score"] == 0
-    assert payload["severity_label"] == "unknown"
-
-
-def test_web_science_confidence_endpoint_returns_rows() -> None:
-    from dsra1d.web.app import create_app
-    from fastapi.testclient import TestClient
-
-    client = TestClient(create_app())
-    resp = client.get("/api/science/confidence")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert "source_path" in payload
-    assert "rows" in payload
-    assert isinstance(payload["rows"], list)
-    assert len(payload["rows"]) >= 1
-    first = payload["rows"][0]
-    assert "suite" in first
-    assert "reference_basis" in first
-    assert "confidence_tier" in first

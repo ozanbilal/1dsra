@@ -3,7 +3,7 @@
  * DEEPSOIL-style layer table with reference curve selector and calibration preview
  */
 import { html, useState, useCallback } from "./setup.js";
-import { ChartCard, MultiSeriesChart } from "./charts.js";
+import { ChartCard, MultiSeriesChart, SoilProfilePlot } from "./charts.js";
 import {
   fmt, defaultLayer, computeGmax,
   MATERIAL_TYPES, REFERENCE_CURVES, deepClone,
@@ -101,7 +101,11 @@ export function ProfileEditor({ wizard, setWizard }) {
   const sel = layers[selectedIdx] || null;
 
   return html`
-    <div className="profile-editor">
+    <div className="profile-editor-full">
+      <!-- Soil Profile Plot (DEEPSOIL-style) -->
+      <${SoilProfilePlot} layers=${layers} />
+
+      <div className="profile-editor">
       <!-- Layer Table -->
       <div className="layer-table-container">
         <div className="layer-table-header">
@@ -238,6 +242,7 @@ export function ProfileEditor({ wizard, setWizard }) {
           ` : null}
         </div>
       ` : html`<div className="layer-properties"><p className="muted">Select a layer to edit.</p></div>`}
+    </div>
     </div>
   `;
 }

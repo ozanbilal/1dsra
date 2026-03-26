@@ -16,8 +16,16 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
     </div>`;
   }
 
-  const hasSignals = signals && signals.time && signals.surface_acc;
-  const hasPSA = signals && signals.psa_periods && signals.psa_values;
+  // Normalize signal field names (API uses _s/_m_s2 suffixes)
+  const time = signals?.time || signals?.time_s;
+  const surfAcc = signals?.surface_acc || signals?.surface_acc_m_s2;
+  const psaPeriods = signals?.psa_periods || signals?.period_s;
+  const psaValues = signals?.psa_values || signals?.psa_m_s2;
+  const transferFreq = signals?.transfer_freq || signals?.freq_hz;
+  const transferAbs = signals?.transfer_abs;
+
+  const hasSignals = time && surfAcc;
+  const hasPSA = psaPeriods && psaValues;
   const hasHyst = hysteresis && hysteresis.layers && hysteresis.layers.length > 0;
   const hasProfile = profile && profile.layers && profile.layers.length > 0;
 
@@ -42,11 +50,13 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
       </div>
 
       <div className="results-content">
-        ${activeTab === "time" && html`<${TimeHistoryTab} signals=${signals} />`}
+        ${activeTab === "time" && html`<${TimeHistoryTab} time=${time} surfAcc=${surfAcc} pga=${signals?.pga} />`}
         ${activeTab === "stress_strain" && html`<${StressStrainTab}
           hysteresis=${hysteresis} selectedLayer=${selectedLayer}
           onLayerChange=${setSelectedLayer} />`}
-        ${activeTab === "spectral" && html`<${SpectralTab} signals=${signals} />`}
+        ${activeTab === "spectral" && html`<${SpectralTab}
+          psaPeriods=${psaPeriods} psaValues=${psaValues}
+          transferFreq=${transferFreq} transferAbs=${transferAbs} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} />`}
         ${activeTab === "convergence" && html`<${ConvergenceTab} summary=${summary} />`}
@@ -57,22 +67,22 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
 // ── Tab Components ───────────────────────────────────────
 
-function TimeHistoryTab({ signals }) {
-  if (!signals || !signals.time) return html`<p className="muted">No time history data.</p>`;
+function TimeHistoryTab({ time, surfAcc, pga: pgaFromApi }) {
+  if (!time || !surfAcc) return html`<p className="muted">No time history data.</p>`;
 
-  const pga = signals.surface_acc ? Math.max(...signals.surface_acc.map(Math.abs)) : 0;
+  const pga = pgaFromApi || Math.max(...surfAcc.map(Math.abs));
 
   return html`
     <div className="tab-content">
       <div className="metric-row">
         <div className="metric-card"><span>PGA (m/s2)</span><b>${fmt(pga, 4)}</b></div>
         <div className="metric-card"><span>PGA (g)</span><b>${fmt(pga / 9.81, 4)}</b></div>
-        <div className="metric-card"><span>Duration (s)</span><b>${fmt(signals.time[signals.time.length - 1], 2)}</b></div>
-        <div className="metric-card"><span>Samples</span><b>${signals.time.length}</b></div>
+        <div className="metric-card"><span>Duration (s)</span><b>${fmt(time[time.length - 1], 2)}</b></div>
+        <div className="metric-card"><span>Samples</span><b>${time.length}</b></div>
       </div>
       <${ChartCard}
         title="Surface Acceleration"
-        x=${signals.time} y=${signals.surface_acc}
+        x=${time} y=${surfAcc}
         xLabel="Time (s)" yLabel="Acceleration (m/s2)"
         color="var(--accent)"
       />
@@ -109,20 +119,16 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
   `;
 }
 
-function SpectralTab({ signals }) {
-  if (!signals || !signals.psa_periods || !signals.psa_values) {
+function SpectralTab({ psaPeriods, psaValues, transferFreq, transferAbs }) {
+  if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
 
   const series = [
-    { x: signals.psa_periods, y: signals.psa_values, label: "Surface PSA", color: "#D35400" },
+    { x: psaPeriods, y: psaValues, label: "Surface PSA", color: "#D35400" },
   ];
-  if (signals.psa_input_values) {
-    series.push({ x: signals.psa_periods, y: signals.psa_input_values, label: "Input PSA", color: "#2980B9" });
-  }
 
-  // Transfer function
-  const hasTF = signals.transfer_freq && signals.transfer_abs;
+  const hasTF = transferFreq && transferAbs;
 
   return html`
     <div className="tab-content">
@@ -135,7 +141,7 @@ function SpectralTab({ signals }) {
       ${hasTF ? html`
         <${ChartCard}
           title="Transfer Function |H(f)|"
-          x=${signals.transfer_freq} y=${signals.transfer_abs}
+          x=${transferFreq} y=${transferAbs}
           xLabel="Frequency (Hz)" yLabel="|H(f)|"
           color="#2980B9" logX=${true}
         />

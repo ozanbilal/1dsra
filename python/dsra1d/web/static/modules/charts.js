@@ -191,6 +191,123 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
   `;
 }
 
+// ── Layer Colors ─────────────────────────────────────
+
+const LAYER_COLORS = ["#E74C3C","#2980B9","#27AE60","#F1C40F","#E67E22","#9B59B6","#1ABC9C","#E91E63"];
+
+/**
+ * DEEPSOIL-style Soil Profile Plot — stratigraphy ribbon + multiple depth columns
+ */
+export function SoilProfilePlot({ layers, w = 900, h = 400 }) {
+  if (!layers || !layers.length) return html`<div className="chart-card"><h4>Soil Profile</h4><p className="muted">No layers</p></div>`;
+
+  const pad = { top: 20, right: 10, bottom: 40, left: 50 };
+  const totalDepth = layers.reduce((s, l) => s + (l.thickness_m || l.thickness || 0), 0);
+  if (totalDepth <= 0) return null;
+
+  const plotH = h - pad.top - pad.bottom;
+  const sy = (d) => pad.top + (d / totalDepth) * plotH;
+
+  // Build step data for each column
+  const stepData = [];
+  let depth = 0;
+  for (const l of layers) {
+    const t = l.thickness_m || l.thickness || 0;
+    const mp = l.material_params || {};
+    const vs = l.vs_m_s || l.vs || 0;
+    const gmax = mp.gmax || 0;
+    const fmax = vs > 0 && t > 0 ? vs / (4 * t) : 0;
+    const dmin = (mp.damping_min || 0) * 100;
+    const tau = gmax * (mp.gamma_ref || 0.01); // implied shear strength approx
+
+    stepData.push({ d0: depth, d1: depth + t, vs, fmax, dmin, tau, name: l.name || "", material: l.material || "mkz" });
+    depth += t;
+  }
+
+  // Columns config
+  const columns = [
+    { key: "vs", label: "Vs (m/s)", unit: "" },
+    { key: "fmax", label: "Max Freq (Hz)", unit: "" },
+    { key: "dmin", label: "Damping (%)", unit: "" },
+    { key: "tau", label: "Imp. Strength (kPa)", unit: "" },
+  ];
+
+  const stratW = 100;
+  const colW = (w - pad.left - pad.right - stratW) / columns.length;
+
+  function StepColumn({ colIdx, dataKey, label }) {
+    const vals = stepData.map(s => s[dataKey]);
+    const maxVal = Math.max(...vals, 0.001);
+    const x0 = pad.left + stratW + colIdx * colW;
+
+    return html`
+      <g>
+        <!-- Column header -->
+        <text x=${x0 + colW / 2} y=${pad.top - 6} text-anchor="middle" fill="var(--ink-60)" font-size="8" font-weight="600">${label}</text>
+        <!-- Axis line -->
+        <line x1=${x0 + 4} y1=${pad.top} x2=${x0 + 4} y2=${pad.top + plotH} stroke="var(--ink-10)" />
+        <!-- Step profile -->
+        ${stepData.map((s, i) => {
+          const barW = (s[dataKey] / maxVal) * (colW - 12);
+          return html`
+            <g key=${i}>
+              <rect x=${x0 + 6} y=${sy(s.d0)} width=${Math.max(barW, 0)} height=${sy(s.d1) - sy(s.d0)}
+                fill="#2980B9" fill-opacity="0.15" stroke="#2980B9" stroke-width="0.5" />
+              <line x1=${x0 + 6} y1=${sy(s.d0)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d0)}
+                stroke="#2980B9" stroke-width="1.5" />
+              <line x1=${x0 + 6} y1=${sy(s.d1)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d1)}
+                stroke="#2980B9" stroke-width="1.5" />
+              <line x1=${x0 + 6 + Math.max(barW, 0)} y1=${sy(s.d0)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d1)}
+                stroke="#2980B9" stroke-width="1.5" />
+              <text x=${x0 + 10 + Math.max(barW, 0)} y=${(sy(s.d0) + sy(s.d1)) / 2 + 3}
+                fill="var(--ink-60)" font-size="8">${fmt(s[dataKey], 1)}</text>
+            </g>
+          `;
+        })}
+      </g>
+    `;
+  }
+
+  return html`
+    <div className="chart-card">
+      <h4>Soil Profile Definition</h4>
+      <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
+        <!-- Depth axis -->
+        <text x=${14} y=${pad.top + plotH / 2} text-anchor="middle" fill="var(--ink-70)" font-size="10" font-weight="600"
+          transform="rotate(-90, 14, ${pad.top + plotH / 2})">Depth (m)</text>
+        ${[0, 0.25, 0.5, 0.75, 1.0].map(frac => {
+          const d = frac * totalDepth;
+          const yp = sy(d);
+          return html`
+            <g key=${"dtick" + frac}>
+              <line x1=${pad.left - 4} y1=${yp} x2=${pad.left} y2=${yp} stroke="var(--ink-40)" />
+              <text x=${pad.left - 6} y=${yp + 3} text-anchor="end" fill="var(--ink-60)" font-size="8">${fmt(d, 1)}</text>
+            </g>
+          `;
+        })}
+
+        <!-- Stratigraphy column -->
+        <text x=${pad.left + stratW / 2} y=${pad.top - 6} text-anchor="middle" fill="var(--ink-60)" font-size="8" font-weight="600">Layers</text>
+        ${stepData.map((s, i) => html`
+          <g key=${"strat" + i}>
+            <rect x=${pad.left} y=${sy(s.d0)} width=${stratW - 10} height=${sy(s.d1) - sy(s.d0)}
+              fill=${LAYER_COLORS[i % LAYER_COLORS.length]} stroke="white" stroke-width="1" rx="2" />
+            <text x=${pad.left + (stratW - 10) / 2} y=${(sy(s.d0) + sy(s.d1)) / 2 + 4}
+              text-anchor="middle" fill="white" font-size="9" font-weight="600">
+              ${s.name || `Layer ${i + 1}`}
+            </text>
+          </g>
+        `)}
+
+        <!-- Value columns -->
+        ${columns.map((col, ci) => html`
+          <${StepColumn} key=${col.key} colIdx=${ci} dataKey=${col.key} label=${col.label} />
+        `)}
+      </svg>
+    </div>
+  `;
+}
+
 export function DepthProfileChart({ title, subtitle, depths, values, xLabel, yLabel, color, w = 300, h = 300 }) {
   if (!depths || !values || depths.length < 2) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 

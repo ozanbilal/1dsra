@@ -52,7 +52,8 @@ function App() {
   const [summary, setSummary] = useState(null);
   const [hysteresis, setHysteresis] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [status, setStatus] = useState("idle");
+  const [status, setStatus] = useState("idle"); // idle | running | done | error
+  const [progress, setProgress] = useState(0);  // 0-100
   const [error, setError] = useState(null);
 
   const outputRoot = "out/web";
@@ -60,10 +61,10 @@ function App() {
   // Load runs on mount
   useEffect(() => {
     api.fetchRuns(outputRoot).then(data => {
-      setRuns(data.runs || []);
-      if (data.runs && data.runs.length > 0) {
-        const first = data.runs[0];
-        setSelectedRunId(first.run_id);
+      const runList = Array.isArray(data) ? data : (data.runs || []);
+      setRuns(runList);
+      if (runList.length > 0) {
+        setSelectedRunId(runList[0].run_id);
       }
     }).catch(() => {});
   }, []);
@@ -87,13 +88,16 @@ function App() {
   // Run analysis
   const handleRun = useCallback(async () => {
     setStatus("running");
+    setProgress(0);
     setError(null);
     try {
-      // Generate config from wizard state
+      // Step 1: Generate config (10%)
+      setProgress(10);
       const configResp = await api.generateConfig(wizard);
       const configPath = configResp.config_path || configResp.path;
 
-      // Execute run
+      // Step 2: Submit run (30%)
+      setProgress(30);
       const runResp = await api.executeRun({
         config_path: configPath,
         motion_path: wizard.motion_path || "",
@@ -101,16 +105,22 @@ function App() {
         backend: wizard.solver_backend,
       });
 
+      // Step 3: Run completed (90%)
+      setProgress(90);
       const newRunId = runResp.run_id;
       setSelectedRunId(newRunId);
-      setStatus("done");
+      setViewMode("results");
 
-      // Refresh run list
+      // Step 4: Refresh list (100%)
       const runsData = await api.fetchRuns(outputRoot);
-      setRuns(runsData.runs || []);
+      const refreshedRuns = Array.isArray(runsData) ? runsData : (runsData.runs || []);
+      setRuns(refreshedRuns);
+      setProgress(100);
+      setStatus("done");
     } catch (ex) {
       setError(ex.message);
       setStatus("error");
+      setProgress(0);
     }
   }, [wizard]);
 
@@ -158,6 +168,21 @@ function App() {
               </button>
             `)}
           </div>
+
+          ${status === "running" ? html`
+            <div className="nav-progress">
+              <div className="progress-bar">
+                <div className="progress-fill" style=${{ width: progress + "%" }} />
+              </div>
+              <span className="muted">${progress}% Running...</span>
+            </div>
+          ` : null}
+
+          ${status === "done" ? html`
+            <div className="nav-section" style=${{ padding: "0.5rem 0.75rem" }}>
+              <span style=${{ color: "var(--green)", fontSize: "0.75rem" }}>Analysis complete</span>
+            </div>
+          ` : null}
 
           ${error ? html`<div className="nav-error">${error}</div>` : null}
         </nav>

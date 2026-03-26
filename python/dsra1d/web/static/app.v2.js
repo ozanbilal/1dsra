@@ -159,14 +159,19 @@ function App() {
 
           <div className="nav-section">
             <div className="nav-label">RUNS</div>
-            ${runs.slice(0, 15).map(r => html`
-              <button key=${r.run_id}
-                className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
-                onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
-                <span className="nav-text run-text">${r.run_id.slice(4, 16)}</span>
-                <span className="nav-badge">${r.backend || ""}</span>
-              </button>
-            `)}
+            ${runs.slice(0, 15).map(r => {
+              const ts = r.timestamp_utc || r.timestamp || "";
+              const dateLabel = ts ? new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id.slice(4, 12);
+              const runLabel = "run_" + dateLabel;
+              return html`
+                <button key=${r.run_id}
+                  className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
+                  onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
+                  <span className="nav-text run-text">${runLabel}</span>
+                  <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
+                </button>
+              `;
+            })}
           </div>
 
           ${status === "running" ? html`

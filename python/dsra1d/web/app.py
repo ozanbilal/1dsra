@@ -3737,6 +3737,32 @@ def create_app() -> FastAPI:
                 detail=f"Run failed: {type(exc).__name__}: {exc}",
             ) from exc
 
+    @app.get("/api/reference-curves")
+    def reference_curves(
+        curve_type: str = Query("seed_idriss_mean"),
+        plasticity_index: float = Query(0.0, ge=0.0),
+    ) -> dict[str, object]:
+        from dsra1d.calibration import get_reference_curves
+        try:
+            curves = get_reference_curves(curve_type, plasticity_index=plasticity_index)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "name": curves.name,
+            "source": curves.source,
+            "strain": curves.strain.astype(float).tolist(),
+            "modulus_reduction": curves.modulus_reduction.astype(float).tolist(),
+            "damping_ratio": curves.damping_ratio.astype(float).tolist(),
+        }
+
+    @app.get("/api/reference-curves/types")
+    def reference_curve_types() -> list[dict[str, str]]:
+        return [
+            {"id": "seed_idriss_upper", "name": "Seed-Idriss Sand (Upper)", "source": "Seed & Idriss (1970)"},
+            {"id": "seed_idriss_mean", "name": "Seed-Idriss Sand (Mean)", "source": "Seed & Idriss (1970)"},
+            {"id": "vucetic_dobry", "name": "Vucetic-Dobry", "source": "Vucetic & Dobry (1991)", "pi_dependent": "true"},
+        ]
+
     @app.post("/api/single-element-test")
     def single_element_test(
         material: str = Query(...),

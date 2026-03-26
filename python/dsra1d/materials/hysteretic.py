@@ -19,11 +19,14 @@ def mkz_modulus_reduction(
     strain: npt.ArrayLike,
     gamma_ref: float,
     g_reduction_min: float = 0.0,
+    curvature: float = 1.0,
 ) -> FloatArray:
     if gamma_ref <= 0.0:
         raise ValueError("gamma_ref must be > 0.")
+    if curvature <= 0.0:
+        raise ValueError("curvature must be > 0.")
     gamma = np.abs(_to_float_array(strain))
-    reduction = 1.0 / (1.0 + (gamma / gamma_ref))
+    reduction = 1.0 / (1.0 + np.power(gamma / gamma_ref, curvature))
     if g_reduction_min > 0.0:
         reduction = np.maximum(reduction, g_reduction_min)
     return reduction
@@ -35,10 +38,11 @@ def mkz_backbone_stress(
     gamma_ref: float,
     tau_max: float | None = None,
     g_reduction_min: float = 0.0,
+    curvature: float = 1.0,
 ) -> FloatArray:
     if gmax <= 0.0:
         raise ValueError("gmax must be > 0.")
-    reduction = mkz_modulus_reduction(strain, gamma_ref, g_reduction_min=g_reduction_min)
+    reduction = mkz_modulus_reduction(strain, gamma_ref, g_reduction_min=g_reduction_min, curvature=curvature)
     strain_arr = _to_float_array(strain)
     tau = gmax * strain_arr * reduction
     if tau_max is not None:

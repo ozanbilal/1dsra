@@ -437,3 +437,134 @@ def calibrate_gqh_from_darendeli(
         material_params=material_params,
         fit_rmse=fit_rmse,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reference curve library (Seed-Idriss 1970, Vucetic-Dobry 1991)
+# ---------------------------------------------------------------------------
+
+@dataclass(slots=True)
+class ReferenceCurveSet:
+    """Container for empirical G/Gmax and damping reference curves."""
+    name: str
+    source: str
+    strain: FloatArray
+    modulus_reduction: FloatArray
+    damping_ratio: FloatArray
+
+
+def seed_idriss_sand_upper(
+    strain_min: float = 1.0e-6,
+    strain_max: float = 1.0e-1,
+    n_points: int = 60,
+) -> ReferenceCurveSet:
+    """Seed & Idriss (1970) upper range for sand."""
+    anchor_strain = np.array([
+        1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4,
+        1e-3, 3e-3, 1e-2, 3e-2, 1e-1,
+    ])
+    anchor_gg = np.array([
+        1.000, 1.000, 0.995, 0.980, 0.940, 0.830,
+        0.600, 0.350, 0.170, 0.070, 0.030,
+    ])
+    anchor_damping = np.array([
+        0.002, 0.003, 0.005, 0.008, 0.013, 0.020,
+        0.035, 0.065, 0.105, 0.155, 0.210,
+    ])
+    strains = np.logspace(np.log10(strain_min), np.log10(strain_max), n_points)
+    gg = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), anchor_gg), 0.0, 1.0)
+    damping = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), anchor_damping), 0.0, 0.5)
+    return ReferenceCurveSet(
+        name="Seed-Idriss Sand (Upper)", source="Seed & Idriss (1970)",
+        strain=strains, modulus_reduction=gg, damping_ratio=damping,
+    )
+
+
+def seed_idriss_sand_mean(
+    strain_min: float = 1.0e-6,
+    strain_max: float = 1.0e-1,
+    n_points: int = 60,
+) -> ReferenceCurveSet:
+    """Seed & Idriss (1970) mean curve for sand."""
+    anchor_strain = np.array([
+        1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4,
+        1e-3, 3e-3, 1e-2, 3e-2, 1e-1,
+    ])
+    anchor_gg = np.array([
+        1.000, 1.000, 0.990, 0.960, 0.900, 0.750,
+        0.480, 0.240, 0.100, 0.040, 0.015,
+    ])
+    anchor_damping = np.array([
+        0.004, 0.005, 0.008, 0.012, 0.018, 0.030,
+        0.055, 0.090, 0.140, 0.195, 0.250,
+    ])
+    strains = np.logspace(np.log10(strain_min), np.log10(strain_max), n_points)
+    gg = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), anchor_gg), 0.0, 1.0)
+    damping = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), anchor_damping), 0.0, 0.5)
+    return ReferenceCurveSet(
+        name="Seed-Idriss Sand (Mean)", source="Seed & Idriss (1970)",
+        strain=strains, modulus_reduction=gg, damping_ratio=damping,
+    )
+
+
+def vucetic_dobry(
+    plasticity_index: float = 0.0,
+    strain_min: float = 1.0e-6,
+    strain_max: float = 1.0e-1,
+    n_points: int = 60,
+) -> ReferenceCurveSet:
+    """Vucetic & Dobry (1991) PI-dependent modulus reduction and damping."""
+    pi = max(0.0, float(plasticity_index))
+    anchor_strain = np.array([
+        1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4,
+        1e-3, 3e-3, 1e-2, 3e-2, 1e-1,
+    ])
+    gg_table: dict[float, list[float]] = {
+        0:   [1.000, 1.000, 0.990, 0.960, 0.900, 0.750, 0.480, 0.250, 0.100, 0.040, 0.015],
+        15:  [1.000, 1.000, 0.995, 0.975, 0.940, 0.830, 0.600, 0.370, 0.170, 0.070, 0.030],
+        30:  [1.000, 1.000, 0.997, 0.985, 0.960, 0.880, 0.700, 0.470, 0.250, 0.110, 0.050],
+        50:  [1.000, 1.000, 0.998, 0.990, 0.975, 0.920, 0.780, 0.570, 0.330, 0.160, 0.070],
+        100: [1.000, 1.000, 0.999, 0.995, 0.985, 0.955, 0.860, 0.680, 0.440, 0.230, 0.110],
+        200: [1.000, 1.000, 1.000, 0.998, 0.993, 0.975, 0.920, 0.780, 0.560, 0.330, 0.170],
+    }
+    d_table: dict[float, list[float]] = {
+        0:   [0.004, 0.005, 0.008, 0.012, 0.018, 0.030, 0.055, 0.090, 0.140, 0.195, 0.250],
+        15:  [0.003, 0.004, 0.006, 0.009, 0.014, 0.023, 0.040, 0.070, 0.110, 0.160, 0.210],
+        30:  [0.002, 0.003, 0.005, 0.007, 0.011, 0.018, 0.032, 0.055, 0.090, 0.130, 0.175],
+        50:  [0.002, 0.002, 0.004, 0.006, 0.009, 0.014, 0.025, 0.043, 0.070, 0.105, 0.145],
+        100: [0.001, 0.002, 0.003, 0.004, 0.006, 0.010, 0.018, 0.030, 0.050, 0.075, 0.105],
+        200: [0.001, 0.001, 0.002, 0.003, 0.005, 0.008, 0.013, 0.022, 0.038, 0.055, 0.080],
+    }
+    pi_keys = sorted(gg_table.keys())
+    if pi <= pi_keys[0]:
+        gg_vals, d_vals = np.array(gg_table[pi_keys[0]]), np.array(d_table[pi_keys[0]])
+    elif pi >= pi_keys[-1]:
+        gg_vals, d_vals = np.array(gg_table[pi_keys[-1]]), np.array(d_table[pi_keys[-1]])
+    else:
+        lo = max(k for k in pi_keys if k <= pi)
+        hi = min(k for k in pi_keys if k > pi)
+        frac = (pi - lo) / (hi - lo)
+        gg_vals = (1 - frac) * np.array(gg_table[lo]) + frac * np.array(gg_table[hi])
+        d_vals = (1 - frac) * np.array(d_table[lo]) + frac * np.array(d_table[hi])
+    strains = np.logspace(np.log10(strain_min), np.log10(strain_max), n_points)
+    gg = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), gg_vals), 0.0, 1.0)
+    damping = np.clip(np.interp(np.log10(strains), np.log10(anchor_strain), d_vals), 0.0, 0.5)
+    return ReferenceCurveSet(
+        name=f"Vucetic-Dobry (PI={pi:.0f})", source="Vucetic & Dobry (1991)",
+        strain=strains, modulus_reduction=gg, damping_ratio=damping,
+    )
+
+
+def get_reference_curves(
+    curve_type: str,
+    plasticity_index: float = 0.0,
+    **kwargs: float,
+) -> ReferenceCurveSet:
+    """Dispatch to the requested reference curve generator."""
+    if curve_type == "seed_idriss_upper":
+        return seed_idriss_sand_upper()
+    if curve_type == "seed_idriss_mean":
+        return seed_idriss_sand_mean()
+    if curve_type in ("vucetic_dobry", "vucetic-dobry"):
+        return vucetic_dobry(plasticity_index=plasticity_index)
+    raise ValueError(f"Unknown reference curve type: {curve_type!r}")

@@ -1811,6 +1811,8 @@ function App() {
   const [setStrainAmp, setSetStrainAmp] = useState(0.01);
   const [setResult, setSetResult] = useState(null);
   const [setLoading, setSetLoading] = useState(false);
+  const [refCurveType, setRefCurveType] = useState("seed_idriss_mean");
+  const [refCurveData, setRefCurveData] = useState(null);
   const [graphTheme, setGraphTheme] = useState(localStorage.getItem("sw_graphTheme") || "light");
   const [displayUnits, setDisplayUnits] = useState(localStorage.getItem("sw_units") || "SI");
   const [deepsoilParityLatest, setDeepsoilParityLatest] = useState(null);
@@ -3062,6 +3064,15 @@ function App() {
       x: strain,
       y: preview.fitted_modulus_reduction || [],
     });
+    if (refCurveData && Array.isArray(refCurveData.strain)) {
+      modulus.push({
+        key: "ref-mod",
+        name: refCurveData.name || "Reference",
+        color: "#888",
+        x: refCurveData.strain,
+        y: refCurveData.modulus_reduction,
+      });
+    }
     const damping = [];
     if (Array.isArray(preview.target_damping_ratio) && preview.target_damping_ratio.length) {
       damping.push({
@@ -3079,6 +3090,15 @@ function App() {
       x: strain,
       y: preview.fitted_damping_ratio || [],
     });
+    if (refCurveData && Array.isArray(refCurveData.strain)) {
+      damping.push({
+        key: "ref-damp",
+        name: refCurveData.name || "Reference",
+        color: "#888",
+        x: refCurveData.strain,
+        y: refCurveData.damping_ratio,
+      });
+    }
     const loop = Array.isArray(preview.loop_strain) && Array.isArray(preview.loop_stress) && preview.loop_strain.length
       ? [
           {
@@ -3091,7 +3111,7 @@ function App() {
         ]
       : [];
     return { modulus, damping, loop };
-  }, [layerCalibrationPreview]);
+  }, [layerCalibrationPreview, refCurveData]);
 
   useEffect(() => {
     if (!layers.length) {
@@ -4343,11 +4363,26 @@ function App() {
                         <div className="properties-panel-block">
                           <div className="row between">
                             <strong>Curve Preview</strong>
-                            ${layerCalibrationPreviewLoading
-                              ? html`<span className="chip chip-warn">refreshing</span>`
-                              : layerCalibrationPreview?.available
-                                ? html`<span className="chip chip-ok">ready</span>`
-                                : html`<span className="chip chip-neutral">pending</span>`}
+                            <div className="row" style=${{ gap: "0.25rem", alignItems: "center" }}>
+                              <select value=${refCurveType} onChange=${async (e) => {
+                                setRefCurveType(e.target.value);
+                                try {
+                                  const pi = selectedProfileLayer?.material_params?.plasticity_index ?? 0;
+                                  const resp = await fetch("/api/reference-curves?curve_type=" + e.target.value + "&plasticity_index=" + pi);
+                                  if (resp.ok) setRefCurveData(await resp.json());
+                                } catch(ex) { console.error(ex); }
+                              }} style=${{ fontSize: "0.75rem" }}>
+                                <option value="">No Reference</option>
+                                <option value="seed_idriss_upper">Seed-Idriss Upper</option>
+                                <option value="seed_idriss_mean">Seed-Idriss Mean</option>
+                                <option value="vucetic_dobry">Vucetic-Dobry</option>
+                              </select>
+                              ${layerCalibrationPreviewLoading
+                                ? html`<span className="chip chip-warn">refreshing</span>`
+                                : layerCalibrationPreview?.available
+                                  ? html`<span className="chip chip-ok">ready</span>`
+                                  : html`<span className="chip chip-neutral">pending</span>`}
+                            </div>
                           </div>
                           ${layerCalibrationPreviewError
                             ? html`<div className="warn-box">Preview error: ${layerCalibrationPreviewError}</div>`

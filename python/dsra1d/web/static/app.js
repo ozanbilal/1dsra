@@ -1026,7 +1026,20 @@ function buildTicks(minVal, maxVal, targetTicks = 5) {
   return ticks;
 }
 
-function buildChartGeometry(series) {
+function buildLogTicks(logMin, logMax) {
+  const ticks = [];
+  const lo = Math.floor(logMin);
+  const hi = Math.ceil(logMax);
+  for (let exp = lo; exp <= hi; exp++) {
+    const v = Math.pow(10, exp);
+    if (exp >= logMin - 0.01 && exp <= logMax + 0.01) {
+      ticks.push(v);
+    }
+  }
+  return ticks;
+}
+
+function buildChartGeometry(series, { logX = false } = {}) {
   const normalized = (Array.isArray(series) ? series : [])
     .map((s, idx) => ({
       key: s?.key || `series-${idx}`,
@@ -1043,8 +1056,9 @@ function buildChartGeometry(series) {
   let yMax = -Infinity;
   normalized.forEach((s) => {
     s.points.forEach((p) => {
-      if (p.x < xMin) xMin = p.x;
-      if (p.x > xMax) xMax = p.x;
+      const xv = logX ? (p.x > 0 ? p.x : 1e-12) : p.x;
+      if (xv < xMin) xMin = xv;
+      if (xv > xMax) xMax = xv;
       if (p.y < yMin) yMin = p.y;
       if (p.y > yMax) yMax = p.y;
     });
@@ -1052,7 +1066,12 @@ function buildChartGeometry(series) {
   if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) {
     return null;
   }
-  if (Math.abs(xMax - xMin) < 1e-12) xMax = xMin + 1.0;
+  if (logX) {
+    if (xMin <= 0) xMin = 1e-6;
+    if (xMax <= xMin) xMax = xMin * 10;
+  } else {
+    if (Math.abs(xMax - xMin) < 1e-12) xMax = xMin + 1.0;
+  }
   if (Math.abs(yMax - yMin) < 1e-12) yMax = yMin + 1.0;
 
   const yPad = 0.06 * (yMax - yMin);
@@ -1062,7 +1081,16 @@ function buildChartGeometry(series) {
   const { width, height, padLeft, padRight, padTop, padBottom } = CHART_FRAME;
   const innerW = width - padLeft - padRight;
   const innerH = height - padTop - padBottom;
-  const xToPx = (x) => padLeft + ((x - xMin) / (xMax - xMin)) * innerW;
+
+  let xToPx;
+  if (logX) {
+    const logXMin = Math.log10(xMin);
+    const logXMax = Math.log10(xMax);
+    const logRange = logXMax - logXMin || 1;
+    xToPx = (x) => padLeft + ((Math.log10(Math.max(x, 1e-12)) - logXMin) / logRange) * innerW;
+  } else {
+    xToPx = (x) => padLeft + ((x - xMin) / (xMax - xMin)) * innerW;
+  }
   const yToPx = (y) => height - padBottom - ((y - yMin) / (yMax - yMin)) * innerH;
 
   const paths = normalized.map((s) => {
@@ -1070,11 +1098,22 @@ function buildChartGeometry(series) {
     return { key: s.key, name: s.name, color: s.color, points: pts };
   });
 
-  const xTicks = buildTicks(xMin, xMax, 6).map((v) => ({
-    value: v,
-    px: xToPx(v),
-    label: formatAxisTick(v),
-  }));
+  let xTicks;
+  if (logX) {
+    const logXMin = Math.log10(xMin);
+    const logXMax = Math.log10(xMax);
+    xTicks = buildLogTicks(logXMin, logXMax).map((v) => ({
+      value: v,
+      px: xToPx(v),
+      label: v >= 0.01 ? String(v) : v.toExponential(0),
+    }));
+  } else {
+    xTicks = buildTicks(xMin, xMax, 6).map((v) => ({
+      value: v,
+      px: xToPx(v),
+      label: formatAxisTick(v),
+    }));
+  }
   const yTicks = buildTicks(yMin, yMax, 5).map((v) => ({
     value: v,
     py: yToPx(v),
@@ -1337,9 +1376,9 @@ function pickOverlayColor(index) {
   return OVERLAY_COLORS[index % OVERLAY_COLORS.length];
 }
 
-function MultiSeriesChartCard({ title, subtitle, series, xLabel = "", yLabel = "" }) {
+function MultiSeriesChartCard({ title, subtitle, series, xLabel = "", yLabel = "", logX = false }) {
   const normalized = Array.isArray(series) ? series : [];
-  const geometry = useMemo(() => buildChartGeometry(normalized), [normalized]);
+  const geometry = useMemo(() => buildChartGeometry(normalized, { logX }), [normalized, logX]);
 
   return html`
     <section className="chart-card">
@@ -4400,6 +4439,7 @@ function App() {
                               series=${layerCalibrationCharts.modulus}
                               xLabel="Strain"
                               yLabel="G/Gmax"
+                              logX=${true}
                             />
                             <${MultiSeriesChartCard}
                               title="Damping Ratio"
@@ -4407,6 +4447,7 @@ function App() {
                               series=${layerCalibrationCharts.damping}
                               xLabel="Strain"
                               yLabel="Damping"
+                              logX=${true}
                             />
                             <${MultiSeriesChartCard}
                               title="Single Element Loop"

@@ -2704,6 +2704,33 @@ def create_app() -> FastAPI:
             "params": params,
         }
 
+    # ── Motion Library (scan directories for earthquake records) ──
+
+    MOTION_LIBRARY_DIRS: list[Path] = [
+        Path(r"C:\Users\PC\Documents\DEEPSOIL 7\Input Motions"),
+        Path(__file__).resolve().parent.parent.parent.parent / "examples" / "motions",
+    ]
+
+    @app.get("/api/motions/library")
+    def list_motion_library() -> list[dict[str, str]]:
+        """Scan configured directories for earthquake motion files."""
+        results: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for lib_dir in MOTION_LIBRARY_DIRS:
+            if not lib_dir.is_dir():
+                continue
+            for f in sorted(lib_dir.iterdir()):
+                if f.suffix.lower() in {".csv", ".at2", ".txt"} and f.name not in seen:
+                    seen.add(f.name)
+                    results.append({
+                        "name": f.stem,
+                        "file_name": f.name,
+                        "path": str(f),
+                        "format": f.suffix.lower().lstrip("."),
+                        "source": lib_dir.name,
+                    })
+        return results
+
     @app.get("/api/examples")
     def list_examples() -> list[dict[str, str]]:
         examples_dir = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "native"

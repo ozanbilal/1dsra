@@ -96,6 +96,7 @@ function App() {
       // Execute run
       const runResp = await api.executeRun({
         config_path: configPath,
+        motion_path: wizard.motion_path || "",
         output_root: outputRoot,
         backend: wizard.solver_backend,
       });

@@ -1,7 +1,8 @@
 /**
  * StrataWave v2 — Motion Upload & Preview Panel
+ * Supports: file upload (CSV/AT2), motion library browser, scaling
  */
-import { html, useState, useRef } from "./setup.js";
+import { html, useState, useEffect, useRef } from "./setup.js";
 import { ChartCard } from "./charts.js";
 import { fmt } from "./utils.js";
 import * as api from "./api.js";
@@ -10,8 +11,19 @@ export function MotionPanel({ wizard, update }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [library, setLibrary] = useState([]);
+  const [libLoading, setLibLoading] = useState(false);
   const csvRef = useRef(null);
   const at2Ref = useRef(null);
+
+  // Load motion library on mount
+  useEffect(() => {
+    setLibLoading(true);
+    api.fetchMotionLibrary()
+      .then(data => setLibrary(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLibLoading(false));
+  }, []);
 
   async function handleCSVUpload(e) {
     const file = e.target.files?.[0];
@@ -20,10 +32,9 @@ export function MotionPanel({ wizard, update }) {
     setError(null);
     try {
       const result = await api.uploadMotionCSV(file);
-      const motionPath = result.uploaded_path || result.path || result.file_path;
+      const motionPath = result.uploaded_path || result.path || "";
       update("motion_path", motionPath);
       update("motion_units", "m/s2");
-      // Preview will be loaded separately if needed
     } catch (ex) {
       setError(ex.message);
     }
@@ -37,7 +48,7 @@ export function MotionPanel({ wizard, update }) {
     setError(null);
     try {
       const result = await api.uploadMotionAT2(file);
-      const motionPath = result.csv_path || result.uploaded_path || result.path;
+      const motionPath = result.csv_path || result.uploaded_path || "";
       update("motion_path", motionPath);
       update("motion_units", "m/s2");
       if (result.time && result.acc) {
@@ -49,11 +60,18 @@ export function MotionPanel({ wizard, update }) {
     setUploading(false);
   }
 
+  function selectFromLibrary(motion) {
+    update("motion_path", motion.path);
+    update("motion_units", "m/s2");
+    setError(null);
+  }
+
   return html`
     <div className="step-body">
       <input ref=${csvRef} type="file" accept=".csv,.txt" className="hidden-input" onChange=${handleCSVUpload} />
       <input ref=${at2Ref} type="file" accept=".at2,.AT2" className="hidden-input" onChange=${handleAT2Upload} />
 
+      <!-- Upload buttons -->
       <div className="motion-upload-row">
         <button className="btn" onClick=${() => csvRef.current?.click()} disabled=${uploading}>
           Upload CSV
@@ -64,10 +82,32 @@ export function MotionPanel({ wizard, update }) {
         ${uploading ? html`<span className="muted">Uploading...</span>` : null}
       </div>
 
+      <!-- Motion Library -->
+      ${library.length > 0 ? html`
+        <div style=${{ marginTop: "0.75rem" }}>
+          <div className="field">
+            <label>Motion Library</label>
+            <select value=${wizard.motion_path || ""}
+              onChange=${e => {
+                const sel = library.find(m => m.path === e.target.value);
+                if (sel) selectFromLibrary(sel);
+              }}>
+              <option value="">— Select from library —</option>
+              ${library.map(m => html`
+                <option key=${m.path} value=${m.path}>
+                  ${m.name} (${m.format.toUpperCase()}) — ${m.source}
+                </option>
+              `)}
+            </select>
+          </div>
+        </div>
+      ` : libLoading ? html`<p className="muted" style=${{ marginTop: "0.5rem" }}>Loading motion library...</p>` : null}
+
+      <!-- Current selection -->
       ${wizard.motion_path ? html`
         <div className="field" style=${{ marginTop: "0.5rem" }}>
-          <label>Motion File</label>
-          <input type="text" value=${wizard.motion_path} readOnly className="muted" />
+          <label>Selected Motion</label>
+          <input type="text" value=${wizard.motion_path} readOnly style=${{ color: "var(--ink-60)", fontSize: "0.75rem" }} />
         </div>
       ` : null}
 

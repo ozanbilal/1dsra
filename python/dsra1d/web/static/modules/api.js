@@ -120,6 +120,10 @@ export function processMotion(payload) {
   return request("POST", "/api/motion/process", payload);
 }
 
+export function fetchMotionLibrary() {
+  return request("GET", "/api/motions/library");
+}
+
 // ── Calibration ──────────────────────────────────────────
 
 export function fetchCalibrationPreview(layerData) {

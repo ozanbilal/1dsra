@@ -65,13 +65,18 @@ export function ProfileEditor({ wizard, setWizard }) {
   const loadCalibPreview = useCallback(async (layer) => {
     try {
       const data = await api.fetchCalibrationPreview({
-        layer_index: selectedIdx,
-        material: layer.material,
-        material_params: layer.material_params || {},
-        calibration: layer.calibration || null,
+        layer: {
+          name: layer.name || `Layer ${selectedIdx + 1}`,
+          thickness_m: layer.thickness || layer.thickness_m || 5.0,
+          vs_m_s: layer.vs || layer.vs_m_s || 150.0,
+          unit_weight_kN_m3: layer.unit_weight || layer.unit_weight_kN_m3 || 18.0,
+          material: layer.material || "mkz",
+          material_params: layer.material_params || {},
+          calibration: layer.calibration || undefined,
+        },
       });
       setCalibPreview(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Calibration preview:", e); }
   }, [selectedIdx]);
 
   const runSET = useCallback(async (layer, strainAmp) => {

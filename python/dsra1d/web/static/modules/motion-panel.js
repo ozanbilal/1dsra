@@ -20,11 +20,10 @@ export function MotionPanel({ wizard, update }) {
     setError(null);
     try {
       const result = await api.uploadMotionCSV(file);
-      update("motion_path", result.path || result.file_path);
+      const motionPath = result.uploaded_path || result.path || result.file_path;
+      update("motion_path", motionPath);
       update("motion_units", "m/s2");
-      if (result.time && result.acc) {
-        setPreview({ time: result.time, acc: result.acc, dt: result.dt, pga: result.pga });
-      }
+      // Preview will be loaded separately if needed
     } catch (ex) {
       setError(ex.message);
     }
@@ -38,7 +37,8 @@ export function MotionPanel({ wizard, update }) {
     setError(null);
     try {
       const result = await api.uploadMotionAT2(file);
-      update("motion_path", result.path || result.file_path);
+      const motionPath = result.csv_path || result.uploaded_path || result.path;
+      update("motion_path", motionPath);
       update("motion_units", "m/s2");
       if (result.time && result.acc) {
         setPreview({ time: result.time, acc: result.acc, dt: result.dt, pga: result.pga });

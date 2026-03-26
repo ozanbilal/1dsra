@@ -50,20 +50,32 @@ export function loadExample(exampleId) {
 
 // ── Motion ───────────────────────────────────────────────
 
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(",")[1]; // strip data:...;base64, prefix
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadMotionCSV(file) {
-  const form = new FormData();
-  form.append("file", file);
-  const resp = await fetch(BASE + "/api/motion/upload/csv", { method: "POST", body: form });
-  if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
-  return resp.json();
+  const content_base64 = await fileToBase64(file);
+  return request("POST", "/api/motion/upload/csv", {
+    content_base64,
+    file_name: file.name,
+  });
 }
 
 export async function uploadMotionAT2(file) {
-  const form = new FormData();
-  form.append("file", file);
-  const resp = await fetch(BASE + "/api/motion/upload/peer-at2", { method: "POST", body: form });
-  if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
-  return resp.json();
+  const content_base64 = await fileToBase64(file);
+  return request("POST", "/api/motion/upload/peer-at2", {
+    content_base64,
+    file_name: file.name,
+  });
 }
 
 export function processMotion(payload) {
@@ -73,7 +85,7 @@ export function processMotion(payload) {
 // ── Calibration ──────────────────────────────────────────
 
 export function fetchCalibrationPreview(layerData) {
-  return request("POST", "/api/wizard/calibration-preview", layerData);
+  return request("POST", "/api/wizard/layer-calibration-preview", layerData);
 }
 
 export function runSingleElementTest(params) {

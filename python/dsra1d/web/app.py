@@ -2704,6 +2704,20 @@ def create_app() -> FastAPI:
             "params": params,
         }
 
+    @app.get("/api/examples")
+    def list_examples() -> list[dict[str, str]]:
+        examples_dir = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "native"
+        if not examples_dir.is_dir():
+            return []
+        results = []
+        for yml in sorted(examples_dir.glob("*.yml")):
+            results.append({
+                "id": yml.stem,
+                "name": yml.stem.replace("_", " ").title(),
+                "path": str(yml),
+            })
+        return results
+
     @app.get("/")
     def web_root() -> FileResponse:
         return FileResponse(static_dir / "index.html")

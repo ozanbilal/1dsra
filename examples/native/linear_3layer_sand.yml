@@ -3,38 +3,41 @@
 # Boundary: Rigid base
 # Solver: Linear SH (implicit Newmark)
 
-project_name: "Linear 3-Layer Sand"
+project_name: linear-3layer-sand
 
 profile:
   layers:
-    - thickness: 5.0
-      vs: 150.0
-      unit_weight: 17.0
+    - name: LooseSand
+      thickness_m: 5.0
+      vs_m_s: 150.0
+      unit_weight_kN_m3: 17.0
       material: mkz
       material_params:
-        gmax: 38250.0    # rho * Vs^2 = (17/9.81) * 150^2
-        gamma_ref: 0.035  # Seed-Idriss mean reference strain
-        damping_min: 0.005
-        damping_max: 0.21
-        reload_factor: 2.0
-
-    - thickness: 10.0
-      vs: 250.0
-      unit_weight: 18.5
-      material: mkz
-      material_params:
-        gmax: 117860.0   # (18.5/9.81) * 250^2
+        gmax: 38250.0
         gamma_ref: 0.035
         damping_min: 0.005
         damping_max: 0.21
         reload_factor: 2.0
 
-    - thickness: 15.0
-      vs: 400.0
-      unit_weight: 20.0
+    - name: MediumSand
+      thickness_m: 10.0
+      vs_m_s: 250.0
+      unit_weight_kN_m3: 18.5
       material: mkz
       material_params:
-        gmax: 326200.0   # (20/9.81) * 400^2
+        gmax: 117860.0
+        gamma_ref: 0.035
+        damping_min: 0.005
+        damping_max: 0.21
+        reload_factor: 2.0
+
+    - name: DenseSand
+      thickness_m: 15.0
+      vs_m_s: 400.0
+      unit_weight_kN_m3: 20.0
+      material: mkz
+      material_params:
+        gmax: 326200.0
         gamma_ref: 0.035
         damping_min: 0.005
         damping_max: 0.21

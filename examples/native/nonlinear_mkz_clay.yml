@@ -3,40 +3,43 @@
 # Boundary: Rigid base
 # Solver: Nonlinear implicit Newmark
 
-project_name: "Nonlinear MKZ Clay PI=30"
+project_name: nonlinear-mkz-clay
 
 profile:
   layers:
-    - thickness: 5.0
-      vs: 130.0
-      unit_weight: 17.0
+    - name: SoftClay
+      thickness_m: 5.0
+      vs_m_s: 130.0
+      unit_weight_kN_m3: 17.0
       material: mkz
       material_params:
-        gmax: 29310.0     # (17/9.81) * 130^2
-        gamma_ref: 0.09    # Vucetic-Dobry PI=30 reference strain
-        damping_min: 0.01
-        damping_max: 0.15
-        reload_factor: 1.8
-        g_reduction_min: 0.03
-
-    - thickness: 8.0
-      vs: 200.0
-      unit_weight: 18.0
-      material: mkz
-      material_params:
-        gmax: 73420.0     # (18/9.81) * 200^2
+        gmax: 29310.0
         gamma_ref: 0.09
         damping_min: 0.01
         damping_max: 0.15
         reload_factor: 1.8
         g_reduction_min: 0.03
 
-    - thickness: 12.0
-      vs: 320.0
-      unit_weight: 19.5
+    - name: MediumClay
+      thickness_m: 8.0
+      vs_m_s: 200.0
+      unit_weight_kN_m3: 18.0
       material: mkz
       material_params:
-        gmax: 203750.0    # (19.5/9.81) * 320^2
+        gmax: 73420.0
+        gamma_ref: 0.09
+        damping_min: 0.01
+        damping_max: 0.15
+        reload_factor: 1.8
+        g_reduction_min: 0.03
+
+    - name: StiffClay
+      thickness_m: 12.0
+      vs_m_s: 320.0
+      unit_weight_kN_m3: 19.5
+      material: mkz
+      material_params:
+        gmax: 203750.0
         gamma_ref: 0.09
         damping_min: 0.01
         damping_max: 0.12

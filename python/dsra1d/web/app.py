@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import sqlite3
 from pathlib import Path
 from typing import Literal, cast
@@ -34,11 +33,6 @@ from dsra1d.config.models import (
     ProjectConfig,
     ScaleMode,
 )
-from dsra1d.interop.opensees import (
-    probe_opensees_executable,
-    read_pwp_raw,
-    resolve_opensees_executable,
-)
 from dsra1d.materials import (
     bounded_damping_from_reduction,
     generate_masing_loop,
@@ -52,9 +46,8 @@ from dsra1d.store import ResultStore
 from dsra1d.types import Motion
 from dsra1d.units import accel_factor_to_si
 
-RunBackendMode = Literal["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"]
-ResolvedBackend = Literal["opensees", "mock", "linear", "eql", "nonlinear"]
-OPENSEES_EXE_ENV = "DSRA1D_OPENSEES_EXE_OVERRIDE"
+RunBackendMode = Literal["config", "linear", "eql", "nonlinear"]
+ResolvedBackend = Literal["linear", "eql", "nonlinear"]
 
 
 class RunRequest(BaseModel):
@@ -62,7 +55,6 @@ class RunRequest(BaseModel):
     motion_path: str
     output_root: str = "out/web"
     backend: RunBackendMode = "config"
-    opensees_executable: str | None = None
 
 
 class RunResponse(BaseModel):
@@ -100,15 +92,10 @@ class RunSummary(BaseModel):
 
 class ConfigTemplateRequest(BaseModel):
     template: Literal[
-        "effective-stress",
-        "effective-stress-strict-plus",
-        "pm4sand-calibration",
-        "pm4silt-calibration",
-        "mkz-gqh-mock",
         "mkz-gqh-eql",
         "mkz-gqh-nonlinear",
         "mkz-gqh-darendeli",
-    ] = "effective-stress"
+    ] = "mkz-gqh-eql"
     output_dir: str = ""
     file_name: str = ""
 
@@ -123,8 +110,7 @@ class ConfigTemplateResponse(BaseModel):
 class WizardAnalysisStep(BaseModel):
     project_name: str = "wizard-project"
     boundary_condition: BoundaryCondition = BoundaryCondition.ELASTIC_HALFSPACE
-    solver_backend: RunBackendMode = "opensees"
-    pm4_validation_profile: Literal["basic", "strict", "strict_plus"] = "basic"
+    solver_backend: RunBackendMode = "nonlinear"
 
 
 class WizardLayer(BaseModel):
@@ -169,7 +155,6 @@ class WizardControlStep(BaseModel):
     write_hdf5: bool = True
     write_sqlite: bool = True
     parquet_export: bool = False
-    opensees_executable: str = "OpenSees"
     output_dir: str = "out/web"
     config_output_dir: str = ""
     config_file_name: str = ""
@@ -287,140 +272,6 @@ class ResultSummaryResponse(BaseModel):
     solver_notes: str
 
 
-class ParitySuiteStatus(BaseModel):
-    suite: str
-    all_passed: bool
-    ran: int
-    total_cases: int
-    skipped: int
-    skipped_backend: int
-    execution_coverage: float
-    backend_ready: bool
-    backend_fingerprint_ok: bool
-    binary_fingerprint: str = ""
-    block_reasons: list[str] = Field(default_factory=list)
-    skip_reasons: dict[str, int] = Field(default_factory=dict)
-
-
-class ParityLatestResponse(BaseModel):
-    found: bool
-    report_path: str = ""
-    suite: str = ""
-    generated_utc: str = ""
-    suites: list[ParitySuiteStatus] = Field(default_factory=list)
-
-
-class DeepsoilParityCaseResponse(BaseModel):
-    name: str
-    passed: bool
-    run: str = ""
-    surface_csv: str = ""
-    psa_csv: str = ""
-    profile_csv: str = ""
-    hysteresis_csv: str = ""
-    checks: dict[str, bool] = Field(default_factory=dict)
-    metrics: dict[str, object] = Field(default_factory=dict)
-
-
-class DeepsoilParityLatestResponse(BaseModel):
-    found: bool
-    report_path: str = ""
-    manifest_path: str = ""
-    total_cases: int = 0
-    passed_cases: int = 0
-    failed_cases: int = 0
-    policy: dict[str, object] = Field(default_factory=dict)
-    cases: list[DeepsoilParityCaseResponse] = Field(default_factory=list)
-
-
-class DeepsoilReleaseManifestResponse(BaseModel):
-    policy_path: str
-    manifest_path: str
-    sample_manifest_path: str
-    manifest_exists: bool
-    case_count: int = 0
-    require_deepsoil_compare: bool = False
-    require_deepsoil_profile: bool = False
-    require_deepsoil_hysteresis: bool = False
-
-
-class DeepsoilManifestCaseModel(BaseModel):
-    name: str = ""
-    run: str = ""
-    surface_csv: str = ""
-    psa_csv: str = ""
-    profile_csv: str = ""
-    hysteresis_csv: str = ""
-    hysteresis_layer: int = Field(default=0, ge=0)
-
-
-class DeepsoilManifestEditorResponse(BaseModel):
-    manifest_path: str
-    sample_manifest_path: str
-    loaded_from: str
-    exists: bool
-    defaults: dict[str, float] = Field(default_factory=dict)
-    cases: list[DeepsoilManifestCaseModel] = Field(default_factory=list)
-
-
-class DeepsoilManifestSaveRequest(BaseModel):
-    defaults: dict[str, float] = Field(default_factory=dict)
-    cases: list[DeepsoilManifestCaseModel] = Field(default_factory=list)
-
-
-class DeepsoilManifestSaveResponse(BaseModel):
-    status: str
-    manifest_path: str
-    case_count: int
-
-
-class ScientificConfidenceRow(BaseModel):
-    suite: str
-    case_count: int
-    reference_basis: str
-    tolerance_policy: str
-    binary_fingerprint: str
-    last_verified_utc: str
-    confidence_tier: str
-    status_notes: str = ""
-
-
-class ScientificConfidenceResponse(BaseModel):
-    source_path: str
-    last_updated: str = ""
-    rows: list[ScientificConfidenceRow] = Field(default_factory=list)
-
-
-class ReleaseSignoffLatestResponse(BaseModel):
-    found: bool
-    summary_path: str = ""
-    generated_utc: str = ""
-    suite: str = ""
-    release_ready: bool = False
-    strict_signoff: bool = False
-    signoff_passed: bool = False
-    benchmark_all_passed: bool = False
-    benchmark_ran: int = 0
-    benchmark_total_cases: int = 0
-    benchmark_skipped: int = 0
-    benchmark_skipped_backend: int = 0
-    benchmark_execution_coverage: float = 0.0
-    benchmark_backend_ready: bool = False
-    benchmark_backend_fingerprint_ok: bool = False
-    benchmark_backend_probe_assumed_available: bool = False
-    backend_missing_cases: list[str] = Field(default_factory=list)
-    verify_ok: bool = False
-    campaign_policy_passed: bool = False
-    observed_backend_sha256: str = ""
-    policy_backend_sha256: str = ""
-    fingerprint_match: bool = False
-    severity_score: int = 0
-    severity_label: str = "unknown"
-    blocker_categories: list[str] = Field(default_factory=list)
-    condition_failures: list[str] = Field(default_factory=list)
-    conditions: dict[str, bool] = Field(default_factory=dict)
-
-
 class WizardSanityCheckItem(BaseModel):
     name: str
     status: Literal["ok", "warning", "blocker"]
@@ -496,19 +347,6 @@ def _profile_summary_csv_text(summary: ResultProfileSummaryResponse) -> str:
     return "\n".join(lines)
 
 
-class BackendProbeResponse(BaseModel):
-    requested: str
-    requested_input: str = ""
-    resolved: str | None = None
-    available: bool
-    assumed_available: bool = False
-    env_override: str | None = None
-    env_override_used: bool = False
-    version: str = ""
-    error: str = ""
-    binary_sha256: str | None = None
-
-
 class HysteresisLayerResponse(BaseModel):
     layer_index: int
     layer_name: str
@@ -563,45 +401,6 @@ def _safe_upload_stem(raw: str, fallback: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in base)
 
 
-def _discover_opensees_executable() -> Path | None:
-    override = os.getenv(OPENSEES_EXE_ENV, "").strip()
-    if override:
-        resolved = resolve_opensees_executable(override)
-        if resolved is not None:
-            return resolved.resolve()
-
-    resolved_default = resolve_opensees_executable("OpenSees")
-    if resolved_default is not None:
-        return resolved_default.resolve()
-
-    home = Path.home()
-    candidate_roots = [home / "tools" / "opensees", _repo_root() / ".tools" / "opensees"]
-    for root in candidate_roots:
-        if not root.exists():
-            continue
-        candidates = sorted(root.glob("**/OpenSees.exe"))
-        if candidates:
-            return candidates[0].resolve()
-    return None
-
-
-def _normalize_opensees_executable(raw_value: str | None) -> str:
-    raw = (raw_value or "").strip()
-    if len(raw) >= 2 and ((raw[0] == raw[-1] == '"') or (raw[0] == raw[-1] == "'")):
-        raw = raw[1:-1].strip()
-    return raw.strip("\"'") or "OpenSees"
-
-
-def _effective_opensees_executable(raw_value: str | None) -> str:
-    raw = _normalize_opensees_executable(raw_value)
-    if raw != "OpenSees":
-        return raw
-    discovered = _discover_opensees_executable()
-    if discovered is not None:
-        return str(discovered)
-    return raw
-
-
 def _resolve_input_path(path_value: str, *, label: str) -> Path:
     text = path_value.strip()
     if not text:
@@ -630,7 +429,6 @@ def _resolve_output_root(raw: str) -> Path:
 
 def _collect_runs(output_root: Path) -> list[Path]:
     run_dirs = _scan_run_dirs(output_root)
-    # Deterministic run IDs can appear in multiple roots; keep the newest per ID.
     unique_by_id: dict[str, Path] = {}
     for run_dir in run_dirs:
         unique_by_id.setdefault(run_dir.name, run_dir)
@@ -806,331 +604,6 @@ def _as_float(value: object, default: float = 0.0) -> float:
     return default
 
 
-def _extract_suite_reports(report: dict[str, object]) -> list[tuple[str, dict[str, object]]]:
-    suite = str(report.get("suite", "")).strip()
-    if suite == "release-signoff":
-        sub_raw = report.get("subreports")
-        if isinstance(sub_raw, dict):
-            out: list[tuple[str, dict[str, object]]] = []
-            for key, value in sub_raw.items():
-                if isinstance(value, dict):
-                    out.append((str(key), dict(value)))
-            if out:
-                return out
-    return [(suite or "unknown", report)]
-
-
-def _suite_skip_reasons(cases: list[dict[str, object]]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for case in cases:
-        if str(case.get("status", "")).strip().lower() != "skipped":
-            continue
-        skip_kind = str(case.get("skip_kind", "")).strip()
-        reason = str(case.get("reason", "")).strip()
-        key = skip_kind or reason or "unknown_skip"
-        counts[key] = counts.get(key, 0) + 1
-    return counts
-
-
-def _suite_parity_status(suite: str, report: dict[str, object]) -> ParitySuiteStatus:
-    cases_raw = report.get("cases")
-    cases = [c for c in cases_raw if isinstance(c, dict)] if isinstance(cases_raw, list) else []
-    skip_reasons = _suite_skip_reasons(cases)
-    backend_probe = report.get("backend_probe")
-    backend_probe_dict = backend_probe if isinstance(backend_probe, dict) else {}
-    binary_fingerprint = str(backend_probe_dict.get("binary_sha256", "")).strip().lower()
-    backend_probe_assumed = bool(backend_probe_dict.get("assumed_available", False))
-
-    all_passed = bool(report.get("all_passed", False))
-    skipped = _as_int(report.get("skipped", 0), 0)
-    skipped_backend = _as_int(report.get("skipped_backend", 0), 0)
-    backend_ready = bool(report.get("backend_ready", True))
-    backend_fingerprint_ok = bool(report.get("backend_fingerprint_ok", True))
-    block_reasons: list[str] = []
-    if not all_passed:
-        block_reasons.append("all_passed=false")
-    if skipped > 0:
-        block_reasons.append("skipped>0")
-    if skipped_backend > 0:
-        block_reasons.append("skipped_backend>0")
-    if not backend_ready:
-        block_reasons.append("backend_ready=false")
-    if not backend_fingerprint_ok:
-        block_reasons.append("backend_fingerprint_ok=false")
-    if backend_probe_assumed:
-        block_reasons.append("backend_probe_assumed=true")
-
-    return ParitySuiteStatus(
-        suite=suite,
-        all_passed=all_passed,
-        ran=_as_int(report.get("ran", 0), 0),
-        total_cases=_as_int(report.get("total_cases", len(cases)), 0),
-        skipped=skipped,
-        skipped_backend=skipped_backend,
-        execution_coverage=_as_float(report.get("execution_coverage", 0.0), 0.0),
-        backend_ready=backend_ready,
-        backend_fingerprint_ok=backend_fingerprint_ok,
-        binary_fingerprint=binary_fingerprint,
-        block_reasons=block_reasons,
-        skip_reasons=skip_reasons,
-    )
-
-
-def _is_parity_report(report: dict[str, object]) -> bool:
-    suite = str(report.get("suite", "")).strip()
-    if suite in {"opensees-parity", "release-signoff"}:
-        return True
-    sub_raw = report.get("subreports")
-    if isinstance(sub_raw, dict) and "opensees-parity" in sub_raw:
-        return True
-    return False
-
-
-def _find_latest_parity_report(output_root: Path) -> tuple[Path, dict[str, object]] | None:
-    if not output_root.exists() or not output_root.is_dir():
-        return None
-    candidates = sorted(
-        output_root.rglob("benchmark_*.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for path in candidates:
-        report = _json_mapping(path)
-        if report and _is_parity_report(report):
-            return path, report
-    return None
-
-
-def _find_latest_deepsoil_compare_report(
-    output_root: Path,
-) -> tuple[Path, dict[str, object]] | None:
-    if not output_root.exists() or not output_root.is_dir():
-        return None
-    candidates = sorted(
-        output_root.rglob("deepsoil_compare_batch.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for path in candidates:
-        report = _json_mapping(path)
-        if report:
-            return path, report
-    return None
-
-
-def _deepsoil_release_manifest_status() -> DeepsoilReleaseManifestResponse:
-    repo_root = _repo_root()
-    policy_path = repo_root / "benchmarks" / "policies" / "release_signoff.yml"
-    manifest_path = repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.json"
-    sample_manifest_path = (
-        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.sample.json"
-    )
-    policy = {}
-    if policy_path.exists():
-        try:
-            raw = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                policy = raw
-        except (OSError, yaml.YAMLError):
-            policy = {}
-    case_count = 0
-    if manifest_path.exists():
-        manifest = _json_mapping(manifest_path)
-        cases_raw = manifest.get("cases")
-        if isinstance(cases_raw, list):
-            case_count = len([item for item in cases_raw if isinstance(item, dict)])
-    return DeepsoilReleaseManifestResponse(
-        policy_path=str(policy_path),
-        manifest_path=str(manifest_path),
-        sample_manifest_path=str(sample_manifest_path),
-        manifest_exists=manifest_path.exists(),
-        case_count=case_count,
-        require_deepsoil_compare=bool(policy.get("require_deepsoil_compare", False)),
-        require_deepsoil_profile=bool(policy.get("require_deepsoil_profile", False)),
-        require_deepsoil_hysteresis=bool(policy.get("require_deepsoil_hysteresis", False)),
-    )
-
-
-def _default_deepsoil_manifest_defaults() -> dict[str, float]:
-    return {
-        "surface_corrcoef_min": 0.95,
-        "surface_nrmse_max": 0.2,
-        "psa_nrmse_max": 0.2,
-        "pga_pct_diff_abs_max": 20.0,
-        "profile_nrmse_max": 0.25,
-        "hysteresis_stress_nrmse_max": 0.25,
-        "hysteresis_energy_pct_diff_abs_max": 25.0,
-    }
-
-
-def _deepsoil_manifest_paths() -> tuple[Path, Path]:
-    repo_root = _repo_root()
-    return (
-        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.json",
-        repo_root / "benchmarks" / "policies" / "release_signoff_deepsoil_manifest.sample.json",
-    )
-
-
-def _coerce_manifest_defaults(raw: object) -> dict[str, float]:
-    defaults = dict(_default_deepsoil_manifest_defaults())
-    if not isinstance(raw, dict):
-        return defaults
-    for key, value in raw.items():
-        value_f = _as_float(value, float("nan"))
-        if np.isfinite(value_f):
-            defaults[str(key)] = float(value_f)
-    return defaults
-
-
-def _coerce_manifest_cases(raw: object) -> list[DeepsoilManifestCaseModel]:
-    if not isinstance(raw, list):
-        return []
-    rows: list[DeepsoilManifestCaseModel] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        try:
-            rows.append(DeepsoilManifestCaseModel.model_validate(item))
-        except ValidationError:
-            continue
-    return rows
-
-
-def _load_deepsoil_manifest_editor() -> DeepsoilManifestEditorResponse:
-    manifest_path, sample_manifest_path = _deepsoil_manifest_paths()
-    source_path = manifest_path if manifest_path.exists() else sample_manifest_path
-    loaded_from = "missing"
-    defaults = _default_deepsoil_manifest_defaults()
-    cases: list[DeepsoilManifestCaseModel] = []
-    if source_path.exists():
-        payload = _json_mapping(source_path)
-        defaults = _coerce_manifest_defaults(payload.get("defaults"))
-        cases = _coerce_manifest_cases(payload.get("cases"))
-        loaded_from = "manifest" if source_path == manifest_path else "sample"
-    return DeepsoilManifestEditorResponse(
-        manifest_path=str(manifest_path),
-        sample_manifest_path=str(sample_manifest_path),
-        loaded_from=loaded_from,
-        exists=manifest_path.exists(),
-        defaults=defaults,
-        cases=cases,
-    )
-
-
-def _serialize_manifest_cases(cases: list[DeepsoilManifestCaseModel]) -> list[dict[str, object]]:
-    out: list[dict[str, object]] = []
-    for case in cases:
-        if not any(
-            (
-                case.name.strip(),
-                case.run.strip(),
-                case.surface_csv.strip(),
-                case.psa_csv.strip(),
-                case.profile_csv.strip(),
-                case.hysteresis_csv.strip(),
-            )
-        ):
-            continue
-        out.append(
-            {
-                "name": case.name.strip(),
-                "run": case.run.strip(),
-                "surface_csv": case.surface_csv.strip(),
-                "psa_csv": case.psa_csv.strip(),
-                "profile_csv": case.profile_csv.strip(),
-                "hysteresis_csv": case.hysteresis_csv.strip(),
-                "hysteresis_layer": int(case.hysteresis_layer),
-            }
-        )
-    return out
-
-
-def _is_release_signoff_summary(summary: dict[str, object]) -> bool:
-    suite = str(summary.get("suite", "")).strip().lower()
-    if suite != "release-signoff":
-        return False
-    signoff_raw = summary.get("signoff")
-    signoff = signoff_raw if isinstance(signoff_raw, dict) else {}
-    policy_raw = summary.get("policy")
-    policy = policy_raw if isinstance(policy_raw, dict) else {}
-    return bool(signoff) or bool(policy)
-
-
-def _find_latest_release_signoff_summary(
-    output_root: Path,
-) -> tuple[Path, dict[str, object]] | None:
-    if not output_root.exists() or not output_root.is_dir():
-        return None
-    candidates = sorted(
-        output_root.rglob("campaign_summary.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for path in candidates:
-        summary = _json_mapping(path)
-        if summary and _is_release_signoff_summary(summary):
-            return path, summary
-    return None
-
-
-def _parse_scientific_confidence_matrix(path: Path) -> tuple[str, list[ScientificConfidenceRow]]:
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    last_updated = ""
-    for line in lines:
-        if line.lower().startswith("last updated:"):
-            last_updated = line.split(":", 1)[1].strip()
-            break
-
-    # Find the suite matrix table (contains "suite" column header)
-    table_lines: list[str] = []
-    in_suite_table = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("|") and "suite" in stripped.lower() and not in_suite_table:
-            in_suite_table = True
-            table_lines.append(stripped)
-        elif in_suite_table and stripped.startswith("|"):
-            table_lines.append(stripped)
-        elif in_suite_table and not stripped.startswith("|"):
-            break  # end of suite table
-    if len(table_lines) < 3:
-        return last_updated, []
-    header = [c.strip().lower() for c in table_lines[0].strip().strip("|").split("|")]
-    rows: list[ScientificConfidenceRow] = []
-    for line in table_lines[2:]:
-        cols = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cols) != len(header):
-            continue
-        row_map = {header[i]: cols[i] for i in range(len(header))}
-        suite = row_map.get("suite", "").strip()
-        if not suite:
-            continue
-        case_count_raw = row_map.get("case_count", row_map.get("case count", "0"))
-        case_count = _as_int(case_count_raw.replace("`", ""), 0)
-        rows.append(
-            ScientificConfidenceRow(
-                suite=suite,
-                case_count=case_count,
-                reference_basis=row_map.get("reference_basis", row_map.get("reference basis", "")),
-                tolerance_policy=row_map.get(
-                    "tolerance_policy", row_map.get("tolerance policy", "")
-                ),
-                binary_fingerprint=row_map.get(
-                    "binary_fingerprint", row_map.get("binary fingerprint", "")
-                ),
-                last_verified_utc=row_map.get(
-                    "last_verified_utc", row_map.get("last verified utc", "")
-                ),
-                confidence_tier=row_map.get(
-                    "confidence_tier", row_map.get("confidence tier", "")
-                ),
-                status_notes=row_map.get("status_notes", row_map.get("status notes", "")),
-            )
-        )
-    return last_updated, rows
-
-
 def _read_project_name(sqlite_path: Path) -> str:
     if not sqlite_path.exists():
         return ""
@@ -1198,7 +671,14 @@ def _read_layer_pwp_profile_stats(
     if pwp_path is None:
         return None, None, None
 
-    _, pwp = read_pwp_raw(pwp_path)
+    # Read PWP raw data from text file
+    try:
+        data = np.loadtxt(pwp_path, ndmin=2)
+    except Exception:
+        return None, None, None
+    if data.size == 0:
+        return None, None, None
+    pwp = data[:, -1] if data.ndim == 2 and data.shape[1] > 1 else data.ravel()
     pwp = np.asarray(pwp, dtype=np.float64)
     if pwp.size == 0:
         return None, None, None
@@ -1313,18 +793,6 @@ def _read_profile_layer_summary(
 
 def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[str, object]:
     if not sqlite_path.exists():
-        if run_dir is None:
-            return {"available": False}
-        meta_raw = _read_run_meta_raw(run_dir)
-        diag_raw = meta_raw.get("opensees_diagnostics")
-        if isinstance(diag_raw, dict):
-            diag = _with_timeout_meta(dict(diag_raw), meta_raw)
-            diag["available"] = True
-            diag.setdefault("source", "opensees_logs")
-            return diag
-        meta_conv = _convergence_from_opensees_meta(meta_raw)
-        if meta_conv is not None:
-            return meta_conv
         return {"available": False}
     conn = sqlite3.connect(sqlite_path)
     try:
@@ -1336,17 +804,6 @@ def _read_convergence(sqlite_path: Path, run_dir: Path | None = None) -> dict[st
         except sqlite3.Error:
             row = None
         if row is None:
-            if run_dir is not None:
-                meta_raw = _read_run_meta_raw(run_dir)
-                diag_raw = meta_raw.get("opensees_diagnostics")
-                if isinstance(diag_raw, dict):
-                    diag = _with_timeout_meta(dict(diag_raw), meta_raw)
-                    diag["available"] = True
-                    diag.setdefault("source", "opensees_logs")
-                    return diag
-                meta_conv = _convergence_from_opensees_meta(meta_raw)
-                if meta_conv is not None:
-                    return meta_conv
             return {"available": False}
         return {
             "available": True,
@@ -1393,56 +850,6 @@ def _optional_float(value: object) -> float | None:
         return parsed if np.isfinite(parsed) else None
     except (TypeError, ValueError):
         return None
-
-
-def _with_timeout_meta(conv: dict[str, object], meta_raw: dict[str, object]) -> dict[str, object]:
-    out = dict(conv)
-    timeout_cfg = _optional_int(meta_raw.get("timeout_s_configured"))
-    timeout_eff = _optional_int(meta_raw.get("timeout_s_effective"))
-    if timeout_cfg is not None:
-        out["timeout_s_configured"] = timeout_cfg
-    if timeout_eff is not None:
-        out["timeout_s_effective"] = timeout_eff
-
-    recovered_raw = meta_raw.get("opensees_timeout_recovered")
-    if isinstance(recovered_raw, dict):
-        recovered = bool(recovered_raw.get("recovered", False))
-        out["timeout_recovered"] = recovered
-        coverage = _optional_float(recovered_raw.get("coverage_ratio"))
-        if coverage is not None:
-            out["timeout_recovered_coverage"] = coverage
-        if recovered:
-            out["severity"] = "warning"
-            out.setdefault("source", "opensees_timeout_recovered")
-    return out
-
-
-def _convergence_from_opensees_meta(meta_raw: dict[str, object]) -> dict[str, object] | None:
-    backend = str(meta_raw.get("solver_backend", "")).strip().lower()
-    if backend != "opensees":
-        return None
-    timeout_cfg = _optional_int(meta_raw.get("timeout_s_configured"))
-    timeout_eff = _optional_int(meta_raw.get("timeout_s_effective"))
-    recovered_raw = meta_raw.get("opensees_timeout_recovered")
-    recovered = (
-        bool(recovered_raw.get("recovered", False))
-        if isinstance(recovered_raw, dict)
-        else False
-    )
-    if timeout_cfg is None and timeout_eff is None and not recovered:
-        return None
-    conv: dict[str, object] = {
-        "available": True,
-        "source": "opensees_timeout_recovered" if recovered else "opensees_meta",
-        "severity": "warning" if recovered else "ok",
-        "warning_count": 0,
-        "failed_converge_count": 0,
-        "analyze_failed_count": 0,
-        "divide_by_zero_count": 0,
-        "pm4_initialize_count": 0,
-        "dynamic_fallback_failed": False,
-    }
-    return _with_timeout_meta(conv, meta_raw)
 
 
 def _run_health_summary(sqlite_path: Path, run_dir: Path) -> dict[str, object]:
@@ -1576,12 +983,8 @@ def _layer_loop_profile(
         params.setdefault("damping_max", 0.12)
         return MaterialType.GQH, params, False, "gqh"
 
-    # PM4/effective-stress layers use MKZ proxy defaults for derived metrics.
-    # When recorder channels are present in run artifacts, _build_hysteresis_response
-    # consumes recorded strain/stress directly and bypasses this proxy loop.
-    gamma_ref = 0.0012 if material == MaterialType.PM4SAND else 0.0018
-    if material == MaterialType.ELASTIC:
-        gamma_ref = 0.0005
+    # Elastic layers use MKZ proxy defaults for derived metrics.
+    gamma_ref = 0.0005 if material == MaterialType.ELASTIC else 0.0012
     proxy_params = {
         "gmax": _estimate_gmax_kpa(vs_m_s, unit_weight_kn_m3),
         "gamma_ref": gamma_ref,
@@ -1662,7 +1065,6 @@ def _load_layer_recorded_hysteresis(
 ) -> tuple[np.ndarray, np.ndarray] | None:
     if layer_index_zero_based < 0:
         return None
-    # OpenSees material tags are 1-based; fallback checks include 0-based legacy naming.
     tag_candidates = [layer_index_zero_based + 1, layer_index_zero_based]
     seen: set[int] = set()
     for tag in tag_candidates:
@@ -1860,7 +1262,7 @@ def _build_hysteresis_response(
         note_parts.append("Config snapshot not found; using sqlite layer fallback.")
     if recorded_layers > 0:
         if recorded_layers >= len(layers):
-            source = "opensees_recorders"
+            source = "recorders"
         else:
             source = "mixed_recorders_proxy"
             note_parts.append(
@@ -1868,7 +1270,7 @@ def _build_hysteresis_response(
             )
     if proxy_used:
         note_parts.append(
-            "PM4/elastic layers shown as MKZ proxies until native recorder channels are added."
+            "Elastic layers shown as MKZ proxies until native recorder channels are added."
         )
     if not layers:
         note_parts.append("No layer data available for hysteresis rendering.")
@@ -2133,8 +1535,6 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     motion_dict = motion if isinstance(motion, dict) else {}
     output = payload.get("output")
     output_dict = output if isinstance(output, dict) else {}
-    opensees = payload.get("opensees")
-    opensees_dict = opensees if isinstance(opensees, dict) else {}
 
     layers_raw = profile_dict.get("layers")
     layers_in = layers_raw if isinstance(layers_raw, list) else []
@@ -2142,8 +1542,8 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     for idx, item in enumerate(layers_in):
         if not isinstance(item, dict):
             continue
-        material_raw = str(item.get("material", "pm4sand")).strip().lower()
-        material = material_raw if material_raw in valid_material else "pm4sand"
+        material_raw = str(item.get("material", "mkz")).strip().lower()
+        material = material_raw if material_raw in valid_material else "mkz"
         calibration_payload = _darendeli_payload(item.get("calibration"))
         layers_out.append(
             {
@@ -2168,8 +1568,8 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
                 "thickness_m": 5.0,
                 "unit_weight_kN_m3": 18.0,
                 "vs_m_s": 180.0,
-                "material": "pm4sand",
-                "material_params": {"Dr": 0.45, "G0": 600.0, "hpo": 0.53},
+                "material": "mkz",
+                "material_params": {"gmax": 60000.0, "gamma_ref": 0.001},
                 "material_optional_args": [],
                 "calibration": None,
             }
@@ -2197,14 +1597,9 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
         scale_mode_raw if scale_mode_raw in valid_scale_mode else ScaleMode.NONE.value
     )
 
-    pm4_profile_raw = str(analysis_dict.get("pm4_validation_profile", "basic"))
-    pm4_profile = (
-        pm4_profile_raw if pm4_profile_raw in {"basic", "strict", "strict_plus"} else "basic"
-    )
-
-    backend_raw = str(analysis_dict.get("solver_backend", "opensees"))
-    if backend_raw not in {"config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"}:
-        backend_raw = "opensees"
+    backend_raw = str(analysis_dict.get("solver_backend", "nonlinear"))
+    if backend_raw not in {"config", "linear", "eql", "nonlinear"}:
+        backend_raw = "nonlinear"
 
     damping_mode_raw = str(analysis_dict.get("damping_mode", "frequency_independent"))
     damping_mode = (
@@ -2216,14 +1611,11 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     rayleigh_mode_2 = _as_positive_float_or_none(analysis_dict.get("rayleigh_mode_2_hz"))
     rayleigh_update = bool(analysis_dict.get("rayleigh_update_matrix", False))
 
-    requested_opensees_executable = str(opensees_dict.get("executable", "OpenSees"))
-
     wizard_payload = {
         "analysis_step": {
             "project_name": str(payload.get("project_name", "wizard-project")),
             "boundary_condition": boundary,
             "solver_backend": backend_raw,
-            "pm4_validation_profile": pm4_profile,
         },
         "profile_step": {"layers": layers_out},
         "motion_step": {
@@ -2249,9 +1641,6 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
             "write_hdf5": bool(output_dict.get("write_hdf5", True)),
             "write_sqlite": bool(output_dict.get("write_sqlite", True)),
             "parquet_export": bool(output_dict.get("parquet_export", False)),
-            "opensees_executable": _effective_opensees_executable(
-                requested_opensees_executable
-            ),
             "output_dir": "out/web",
             "config_output_dir": "",
             "config_file_name": "",
@@ -2268,15 +1657,18 @@ def _build_wizard_schema() -> dict[str, object]:
         payload = get_config_template_payload(name)
         template_defaults[name] = _wizard_defaults_from_project_payload(payload)
     default_template = (
-        "effective-stress"
-        if "effective-stress" in template_defaults
+        "mkz-gqh-eql"
+        if "mkz-gqh-eql" in template_defaults
         else (template_names[0] if template_names else "")
     )
     default_wizard = template_defaults.get(default_template)
     if default_wizard is None:
         default_wizard = _wizard_defaults_from_project_payload(
-            get_config_template_payload("effective-stress")
+            get_config_template_payload("mkz-gqh-eql")
         )
+
+    # Filter materials to native solvers only (mkz, gqh, elastic)
+    native_materials = ["mkz", "gqh", "elastic"]
 
     return {
         "steps": [
@@ -2291,7 +1683,6 @@ def _build_wizard_schema() -> dict[str, object]:
                 "project_name",
                 "boundary_condition",
                 "solver_backend",
-                "pm4_validation_profile",
             ],
             "profile_step": ["layers[]", "layers[].calibration"],
             "motion_step": [
@@ -2312,7 +1703,6 @@ def _build_wizard_schema() -> dict[str, object]:
                 "write_hdf5",
                 "write_sqlite",
                 "parquet_export",
-                "opensees_executable",
                 "output_dir",
                 "config_output_dir",
                 "config_file_name",
@@ -2324,11 +1714,10 @@ def _build_wizard_schema() -> dict[str, object]:
         "template_defaults": template_defaults,
         "enum_options": {
             "boundary_condition": [e.value for e in BoundaryCondition],
-            "solver_backend": ["config", "auto", "opensees", "mock", "linear", "eql", "nonlinear"],
+            "solver_backend": ["config", "linear", "eql", "nonlinear"],
             "baseline": [e.value for e in BaselineMode],
             "scale_mode": [e.value for e in ScaleMode],
-            "material": [e.value for e in MaterialType],
-            "pm4_validation_profile": ["basic", "strict", "strict_plus"],
+            "material": native_materials,
         },
         "constraints": {
             "dt": {"gt": 0.0},
@@ -2382,7 +1771,6 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
             "dt": req.control_step.dt,
             "f_max": req.control_step.f_max,
             "solver_backend": req.analysis_step.solver_backend,
-            "pm4_validation_profile": req.analysis_step.pm4_validation_profile,
             "damping_mode": req.damping_step.mode,
             "rayleigh_mode_1_hz": mode_1,
             "rayleigh_mode_2_hz": mode_2,
@@ -2401,9 +1789,6 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
             "write_hdf5": req.control_step.write_hdf5,
             "write_sqlite": req.control_step.write_sqlite,
             "parquet_export": req.control_step.parquet_export,
-        },
-        "opensees": {
-            "executable": _effective_opensees_executable(req.control_step.opensees_executable),
         },
     }
     return payload, warnings
@@ -2454,22 +1839,6 @@ def _estimate_dt(time_axis: np.ndarray) -> float:
         if np.isfinite(dt) and dt > 0.0:
             return dt
     return 1.0
-
-
-def _recommended_opensees_timeout_s(
-    configured_timeout_s: int,
-    *,
-    dt_s: float,
-    n_samples: int,
-) -> int:
-    base = int(max(configured_timeout_s, 1))
-    if n_samples <= 1 or not np.isfinite(dt_s) or dt_s <= 0.0:
-        return base
-    duration_s = float((n_samples - 1) * dt_s)
-    duration_budget = int(np.ceil(60.0 + (3.0 * duration_s)))
-    sample_budget = int(np.ceil(120.0 + (0.02 * n_samples)))
-    adaptive = max(base, duration_budget, sample_budget, 180)
-    return int(min(adaptive, 3600))
 
 
 def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
@@ -2566,150 +1935,18 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
             WizardSanityCheckItem(
                 name="time_step",
                 status="ok",
-                message=f"dt={dt_used:.6g}s (recommended≈{(dt_recommended or dt_used):.6g}s).",
+                message=f"dt={dt_used:.6g}s (recommended~{(dt_recommended or dt_used):.6g}s).",
             )
         )
 
     requested_backend = payload.analysis_step.solver_backend
-    requested_executable = _effective_opensees_executable(payload.control_step.opensees_executable)
-    env_override_raw = os.getenv(OPENSEES_EXE_ENV, "").strip()
-    env_override = _normalize_opensees_executable(env_override_raw) if env_override_raw else ""
-    derived["opensees_requested"] = requested_executable
-    if env_override:
-        derived["opensees_env_override"] = env_override
-    if requested_backend in {"opensees", "auto"}:
-        probe = probe_opensees_executable(requested_executable)
-        derived["opensees_resolved"] = (
-            str(probe.resolved) if probe.resolved is not None else None
+    checks.append(
+        WizardSanityCheckItem(
+            name="backend_material_compatibility",
+            status="ok",
+            message=f"Backend '{requested_backend}' accepts MKZ/GQH/elastic materials.",
         )
-        derived["opensees_available"] = bool(probe.available)
-        derived["opensees_probe_assumed_available"] = bool(probe.assumed_available)
-        if probe.available:
-            if probe.assumed_available:
-                msg = (
-                    "OpenSees probe timed out and availability is assumed; "
-                    "runtime execution will confirm."
-                )
-                checks.append(
-                    WizardSanityCheckItem(
-                        name="backend_probe",
-                        status="warning",
-                        message=msg,
-                    )
-                )
-                warnings.append(msg)
-            else:
-                checks.append(
-                    WizardSanityCheckItem(
-                        name="backend_probe",
-                        status="ok",
-                        message=f"OpenSees available: {probe.resolved}",
-                    )
-                )
-        else:
-            msg = f"OpenSees executable not available ({requested_executable})."
-            if requested_backend == "opensees":
-                checks.append(
-                    WizardSanityCheckItem(name="backend_probe", status="blocker", message=msg)
-                )
-                blockers.append(msg)
-            else:
-                checks.append(
-                    WizardSanityCheckItem(name="backend_probe", status="warning", message=msg)
-                )
-                warnings.append(f"{msg} Auto backend may fall back to mock.")
-        if env_override and (
-            _normalize_opensees_executable(payload.control_step.opensees_executable)
-            == "OpenSees"
-        ):
-            checks.append(
-                WizardSanityCheckItem(
-                    name="backend_env_override",
-                    status="warning",
-                    message=(
-                        f"{OPENSEES_EXE_ENV} is set; backend probe/runtime may use this "
-                        "override when executable is OpenSees."
-                    ),
-                )
-            )
-
-    if requested_backend in {"opensees", "auto"} and motion_path_resolved is not None:
-        if dt_used is not None:
-            time_axis, acc_axis = load_motion_series(
-                motion_path_resolved,
-                dt_override=payload.motion_step.dt_override,
-                fallback_dt=float(dt_used),
-            )
-            dt_motion = _estimate_dt(np.asarray(time_axis, dtype=np.float64))
-            n_samples = int(np.asarray(acc_axis, dtype=np.float64).size)
-            duration_s = float(max(n_samples - 1, 0) * dt_motion)
-            timeout_cfg_s = int(max(payload.control_step.timeout_s, 1))
-            timeout_rec_s = _recommended_opensees_timeout_s(
-                timeout_cfg_s,
-                dt_s=dt_motion,
-                n_samples=n_samples,
-            )
-            derived["timeout_configured_s"] = timeout_cfg_s
-            derived["timeout_recommended_s"] = timeout_rec_s
-            derived["motion_duration_s"] = duration_s
-            if timeout_cfg_s < timeout_rec_s:
-                msg = (
-                    f"timeout_s={timeout_cfg_s}s may be too low for this motion "
-                    f"(duration≈{duration_s:.1f}s). Recommended >= {timeout_rec_s}s "
-                    "for OpenSees."
-                )
-                checks.append(
-                    WizardSanityCheckItem(
-                        name="timeout_budget",
-                        status="warning",
-                        message=msg,
-                    )
-                )
-                warnings.append(msg)
-            else:
-                checks.append(
-                    WizardSanityCheckItem(
-                        name="timeout_budget",
-                        status="ok",
-                        message=(
-                            f"timeout_s={timeout_cfg_s}s, recommended≈{timeout_rec_s}s "
-                            f"(duration≈{duration_s:.1f}s)."
-                        ),
-                    )
-                )
-
-    layer_materials = [layer.material.value for layer in payload.profile_step.layers]
-    if requested_backend == "opensees":
-        unsupported = sorted({m for m in layer_materials if m in {"mkz", "gqh"}})
-        if unsupported:
-            msg = (
-                "OpenSees backend currently supports pm4sand/pm4silt/elastic in v1; "
-                f"found unsupported materials: {', '.join(unsupported)}."
-            )
-            checks.append(
-                WizardSanityCheckItem(
-                    name="backend_material_compatibility",
-                    status="blocker",
-                    message=msg,
-                )
-            )
-            blockers.append(msg)
-        else:
-            checks.append(
-                WizardSanityCheckItem(
-                    name="backend_material_compatibility",
-                    status="ok",
-                    message="Layer materials are compatible with OpenSees v1 backend.",
-                )
-            )
-    else:
-        checks.append(
-            WizardSanityCheckItem(
-                name="backend_material_compatibility",
-                status="ok",
-                message=f"Backend '{requested_backend}' does not require PM4-only material gate.",
-            )
-        )
+    )
 
     if cfg is not None:
         derived["config_backend"] = cfg.analysis.solver_backend
@@ -2726,10 +1963,9 @@ def _apply_runtime_backend(
     requested: RunBackendMode,
     *,
     config_backend: str,
-    executable: str,
 ) -> tuple[ResolvedBackend, str]:
     def normalize(raw: str) -> ResolvedBackend:
-        if raw not in {"opensees", "mock", "linear", "eql", "nonlinear"}:
+        if raw not in {"linear", "eql", "nonlinear"}:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported config solver backend: {raw}",
@@ -2737,33 +1973,10 @@ def _apply_runtime_backend(
         return cast(ResolvedBackend, raw)
 
     if requested == "config":
-        if config_backend == "auto":
-            resolved = resolve_opensees_executable(executable)
-            if resolved is None:
-                return "mock", "mock (config:auto fallback: OpenSees missing)"
-            return "opensees", f"opensees ({resolved})"
         normalized = normalize(config_backend)
         return normalized, normalized
 
-    if requested == "auto":
-        if config_backend in {"auto", "opensees"}:
-            resolved = resolve_opensees_executable(executable)
-            if resolved is None:
-                return "mock", "mock (auto-fallback: OpenSees missing)"
-            return "opensees", f"opensees ({resolved})"
-        normalized = normalize(config_backend)
-        return normalized, normalized
-
-    if requested == "opensees":
-        resolved = resolve_opensees_executable(executable)
-        if resolved is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"OpenSees executable not found: {executable}",
-            )
-        return "opensees", f"opensees ({resolved})"
-
-    if requested in {"mock", "linear", "eql", "nonlinear"}:
+    if requested in {"linear", "eql", "nonlinear"}:
         return requested, f"{requested} (forced)"
 
     raise HTTPException(status_code=400, detail=f"Unsupported backend mode: {requested}")
@@ -2780,38 +1993,6 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
-
-    @app.get("/api/backend/opensees/probe", response_model=BackendProbeResponse)
-    def backend_probe_opensees(
-        executable: str = Query(default="OpenSees"),
-    ) -> BackendProbeResponse:
-        requested_input = _normalize_opensees_executable(executable)
-        effective_executable = _effective_opensees_executable(requested_input)
-        env_override_raw = os.getenv(OPENSEES_EXE_ENV, "").strip()
-        env_override = _normalize_opensees_executable(env_override_raw) if env_override_raw else ""
-        env_override_resolved = (
-            resolve_opensees_executable(env_override) if env_override else None
-        )
-        probe = probe_opensees_executable(effective_executable)
-        env_override_used = False
-        if (
-            env_override_resolved is not None
-            and requested_input == "OpenSees"
-            and probe.resolved is not None
-        ):
-            env_override_used = probe.resolved.resolve() == env_override_resolved.resolve()
-        return BackendProbeResponse(
-            requested=effective_executable,
-            requested_input=requested_input,
-            resolved=str(probe.resolved) if probe.resolved is not None else None,
-            available=bool(probe.available),
-            assumed_available=bool(probe.assumed_available),
-            env_override=env_override or None,
-            env_override_used=bool(env_override_used),
-            version=str(probe.version or ""),
-            error=str(probe.stderr or ""),
-            binary_sha256=probe.binary_sha256 or None,
-        )
 
     @app.get("/api/config/templates")
     def list_config_templates() -> dict[str, list[str]]:
@@ -3120,299 +2301,6 @@ def create_app() -> FastAPI:
             )
         return items
 
-    @app.get("/api/parity/latest", response_model=ParityLatestResponse)
-    def parity_latest(output_root: str = Query(default="")) -> ParityLatestResponse:
-        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
-        latest = _find_latest_parity_report(root)
-        if latest is None:
-            return ParityLatestResponse(found=False)
-        path, report = latest
-        suite_name = str(report.get("suite", "")).strip()
-        generated_utc = str(report.get("generated_utc", "")).strip()
-        suite_rows = [
-            _suite_parity_status(sub_suite, sub_report)
-            for sub_suite, sub_report in _extract_suite_reports(report)
-        ]
-        return ParityLatestResponse(
-            found=True,
-            report_path=str(path),
-            suite=suite_name,
-            generated_utc=generated_utc,
-            suites=suite_rows,
-        )
-
-    @app.get("/api/parity/deepsoil/latest", response_model=DeepsoilParityLatestResponse)
-    def deepsoil_parity_latest(
-        output_root: str = Query(default=""),
-    ) -> DeepsoilParityLatestResponse:
-        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
-        latest = _find_latest_deepsoil_compare_report(root)
-        if latest is None:
-            return DeepsoilParityLatestResponse(found=False)
-
-        path, report = latest
-        policy_raw = report.get("policy")
-        policy = policy_raw if isinstance(policy_raw, dict) else {}
-        cases_raw = report.get("cases")
-        case_rows: list[DeepsoilParityCaseResponse] = []
-        if isinstance(cases_raw, list):
-            for case in cases_raw:
-                if not isinstance(case, dict):
-                    continue
-                checks_raw = case.get("checks")
-                checks = (
-                    {str(k): bool(v) for k, v in checks_raw.items()}
-                    if isinstance(checks_raw, dict)
-                    else {}
-                )
-                metrics_raw = case.get("metrics")
-                metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
-                case_rows.append(
-                    DeepsoilParityCaseResponse(
-                        name=str(case.get("name", "")),
-                        passed=bool(case.get("passed", False)),
-                        run=str(case.get("run", "")),
-                        surface_csv=str(case.get("surface_csv", "")),
-                        psa_csv=str(case.get("psa_csv", "")),
-                        profile_csv=str(case.get("profile_csv", "")),
-                        hysteresis_csv=str(case.get("hysteresis_csv", "")),
-                        checks=checks,
-                        metrics=metrics,
-                    )
-                )
-        case_rows.sort(key=lambda row: (row.passed, row.name))
-        return DeepsoilParityLatestResponse(
-            found=True,
-            report_path=str(path),
-            manifest_path=str(report.get("manifest_path", "")),
-            total_cases=_as_int(report.get("total_cases", len(case_rows)), 0),
-            passed_cases=_as_int(report.get("passed_cases", 0), 0),
-            failed_cases=_as_int(report.get("failed_cases", 0), 0),
-            policy=policy,
-            cases=case_rows,
-        )
-
-    @app.get(
-        "/api/parity/deepsoil/release-manifest",
-        response_model=DeepsoilReleaseManifestResponse,
-    )
-    def deepsoil_release_manifest() -> DeepsoilReleaseManifestResponse:
-        return _deepsoil_release_manifest_status()
-
-    @app.get(
-        "/api/parity/deepsoil/release-manifest/editor",
-        response_model=DeepsoilManifestEditorResponse,
-    )
-    def deepsoil_release_manifest_editor() -> DeepsoilManifestEditorResponse:
-        return _load_deepsoil_manifest_editor()
-
-    @app.post(
-        "/api/parity/deepsoil/release-manifest/save",
-        response_model=DeepsoilManifestSaveResponse,
-    )
-    def deepsoil_release_manifest_save(
-        payload: DeepsoilManifestSaveRequest,
-    ) -> DeepsoilManifestSaveResponse:
-        manifest_path, _sample_manifest_path = _deepsoil_manifest_paths()
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        rendered_payload = {
-            "defaults": _coerce_manifest_defaults(payload.defaults),
-            "cases": _serialize_manifest_cases(payload.cases),
-        }
-        manifest_path.write_text(
-            json.dumps(rendered_payload, indent=2),
-            encoding="utf-8",
-        )
-        return DeepsoilManifestSaveResponse(
-            status="ok",
-            manifest_path=str(manifest_path),
-            case_count=len(rendered_payload["cases"]),
-        )
-
-    @app.get("/api/science/confidence", response_model=ScientificConfidenceResponse)
-    def science_confidence() -> ScientificConfidenceResponse:
-        matrix_path = _repo_root() / "SCIENTIFIC_CONFIDENCE_MATRIX.md"
-        if not matrix_path.exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Scientific confidence matrix not found: {matrix_path}",
-            )
-        last_updated, rows = _parse_scientific_confidence_matrix(matrix_path)
-        return ScientificConfidenceResponse(
-            source_path=str(matrix_path),
-            last_updated=last_updated,
-            rows=rows,
-        )
-
-    @app.get("/api/release/signoff/latest", response_model=ReleaseSignoffLatestResponse)
-    def release_signoff_latest(
-        output_root: str = Query(default=""),
-    ) -> ReleaseSignoffLatestResponse:
-        root = _safe_real_path(output_root) if output_root else (_repo_root() / "out")
-        latest = _find_latest_release_signoff_summary(root)
-        if latest is None:
-            return ReleaseSignoffLatestResponse(found=False)
-
-        path, summary = latest
-        signoff_raw = summary.get("signoff")
-        signoff = signoff_raw if isinstance(signoff_raw, dict) else {}
-        conditions_raw = signoff.get("conditions")
-        conditions_map = conditions_raw if isinstance(conditions_raw, dict) else {}
-        conditions = {str(k): bool(v) for k, v in conditions_map.items()}
-        failures = [name for name, ok in conditions.items() if not ok]
-
-        benchmark_raw = summary.get("benchmark")
-        benchmark = benchmark_raw if isinstance(benchmark_raw, dict) else {}
-        verify_raw = summary.get("verify_batch")
-        verify = verify_raw if isinstance(verify_raw, dict) else {}
-        policy_raw = summary.get("policy")
-        policy = policy_raw if isinstance(policy_raw, dict) else {}
-        campaign_policy_raw = policy.get("campaign")
-        campaign_policy = (
-            campaign_policy_raw if isinstance(campaign_policy_raw, dict) else {}
-        )
-        observed_raw = signoff.get("observed")
-        observed = observed_raw if isinstance(observed_raw, dict) else {}
-        signoff_policy_raw = signoff.get("policy")
-        signoff_policy = signoff_policy_raw if isinstance(signoff_policy_raw, dict) else {}
-        backend_missing_cases_raw = benchmark.get("backend_missing_cases")
-        backend_missing_cases = (
-            [str(v) for v in backend_missing_cases_raw]
-            if isinstance(backend_missing_cases_raw, list)
-            else []
-        )
-        benchmark_ran = _as_int(benchmark.get("ran", 0), 0)
-        benchmark_total_cases = _as_int(benchmark.get("total_cases", 0), 0)
-        benchmark_skipped = _as_int(benchmark.get("skipped", 0), 0)
-        benchmark_skipped_backend = _as_int(benchmark.get("skipped_backend", 0), 0)
-        benchmark_execution_coverage = _as_float(benchmark.get("execution_coverage", 0.0), 0.0)
-        benchmark_backend_ready = bool(benchmark.get("backend_ready", False))
-        benchmark_backend_fingerprint_ok = bool(benchmark.get("backend_fingerprint_ok", False))
-        benchmark_probe_raw = benchmark.get("backend_probe")
-        benchmark_probe = benchmark_probe_raw if isinstance(benchmark_probe_raw, dict) else {}
-        backend_probe_assumed_available = bool(
-            benchmark_probe.get("assumed_available", False)
-        )
-        strict_signoff = bool(signoff.get("strict_signoff", False))
-        signoff_passed = bool(signoff.get("passed", False))
-        benchmark_all_passed = bool(benchmark.get("all_passed", False))
-        verify_ok = bool(verify.get("ok", False))
-        campaign_policy_passed = bool(campaign_policy.get("passed", False))
-        observed_backend_sha256 = str(observed.get("backend_probe_sha256", "")).strip().lower()
-        policy_backend_sha256 = str(signoff_policy.get("opensees_fingerprint", "")).strip().lower()
-        fingerprint_match = bool(observed_backend_sha256) and (
-            observed_backend_sha256 == policy_backend_sha256
-        )
-
-        failure_category_map = {
-            "suite_release_signoff": "suite_mismatch",
-            "campaign_policy_passed": "campaign_policy_failed",
-            "verify_report_present": "verify_report_missing",
-            "verify_policy_passed": "verify_policy_failed",
-            "require_runs_ok": "insufficient_runs",
-            "min_execution_coverage_ok": "coverage_below_threshold",
-            "fail_on_skip_ok": "skipped_cases_present",
-            "backend_fingerprint_ok": "backend_fingerprint_invalid",
-            "fingerprint_match": "fingerprint_mismatch",
-            "backend_probe_not_assumed": "backend_probe_assumed",
-        }
-        blocker_categories = [
-            failure_category_map.get(name, f"condition_{name}") for name in failures
-        ]
-        if not strict_signoff and "strict_signoff_disabled" not in blocker_categories:
-            blocker_categories.append("strict_signoff_disabled")
-        if (observed_backend_sha256 or policy_backend_sha256) and (not fingerprint_match):
-            if "fingerprint_mismatch" not in blocker_categories:
-                blocker_categories.append("fingerprint_mismatch")
-        if not signoff_passed and "signoff_not_passed" not in blocker_categories:
-            blocker_categories.append("signoff_not_passed")
-        if benchmark_skipped_backend > 0 and "backend_cases_skipped" not in blocker_categories:
-            blocker_categories.append("backend_cases_skipped")
-        if backend_missing_cases and "backend_missing_cases" not in blocker_categories:
-            blocker_categories.append("backend_missing_cases")
-        if backend_probe_assumed_available and "backend_probe_assumed" not in blocker_categories:
-            blocker_categories.append("backend_probe_assumed")
-
-        unique_blocker_categories = list(dict.fromkeys(blocker_categories))
-
-        release_ready = (
-            strict_signoff
-            and signoff_passed
-            and benchmark_all_passed
-            and verify_ok
-            and campaign_policy_passed
-            and benchmark_skipped == 0
-            and benchmark_skipped_backend == 0
-            and benchmark_execution_coverage >= 1.0
-            and benchmark_backend_ready
-            and benchmark_backend_fingerprint_ok
-            and fingerprint_match
-            and (not backend_probe_assumed_available)
-        )
-
-        category_weights = {
-            "suite_mismatch": 25,
-            "campaign_policy_failed": 22,
-            "verify_report_missing": 18,
-            "verify_policy_failed": 18,
-            "insufficient_runs": 20,
-            "coverage_below_threshold": 20,
-            "skipped_cases_present": 14,
-            "backend_fingerprint_invalid": 20,
-            "fingerprint_mismatch": 30,
-            "strict_signoff_disabled": 30,
-            "signoff_not_passed": 24,
-            "backend_cases_skipped": 18,
-            "backend_missing_cases": 18,
-            "backend_probe_assumed": 18,
-        }
-        severity_score = sum(
-            int(category_weights.get(category, 10)) for category in unique_blocker_categories
-        )
-        if benchmark_execution_coverage < 1.0:
-            severity_score += int((1.0 - benchmark_execution_coverage) * 20.0)
-        if not release_ready:
-            severity_score = max(severity_score, 20)
-        severity_score = max(0, min(100, severity_score))
-        if release_ready:
-            severity_label = "ok"
-        elif severity_score >= 70:
-            severity_label = "critical"
-        elif severity_score >= 40:
-            severity_label = "high"
-        else:
-            severity_label = "warning"
-
-        return ReleaseSignoffLatestResponse(
-            found=True,
-            summary_path=str(path),
-            generated_utc=str(summary.get("generated_utc", "")),
-            suite=str(summary.get("suite", "")),
-            release_ready=release_ready,
-            strict_signoff=strict_signoff,
-            signoff_passed=signoff_passed,
-            benchmark_all_passed=benchmark_all_passed,
-            benchmark_ran=benchmark_ran,
-            benchmark_total_cases=benchmark_total_cases,
-            benchmark_skipped=benchmark_skipped,
-            benchmark_skipped_backend=benchmark_skipped_backend,
-            benchmark_execution_coverage=benchmark_execution_coverage,
-            benchmark_backend_ready=benchmark_backend_ready,
-            benchmark_backend_fingerprint_ok=benchmark_backend_fingerprint_ok,
-            benchmark_backend_probe_assumed_available=backend_probe_assumed_available,
-            backend_missing_cases=backend_missing_cases,
-            verify_ok=verify_ok,
-            campaign_policy_passed=campaign_policy_passed,
-            observed_backend_sha256=observed_backend_sha256,
-            policy_backend_sha256=policy_backend_sha256,
-            fingerprint_match=fingerprint_match,
-            severity_score=severity_score,
-            severity_label=severity_label,
-            blocker_categories=unique_blocker_categories,
-            condition_failures=failures,
-            conditions=conditions,
-        )
-
     @app.get("/api/runs/tree")
     def runs_tree(output_root: str = Query(default="")) -> dict[str, object]:
         root = _safe_real_path(output_root) if output_root else _default_output_root()
@@ -3697,23 +2585,11 @@ def create_app() -> FastAPI:
             output_root = _resolve_output_root(payload.output_root)
 
             cfg = load_project_config(config_path)
-            if payload.opensees_executable:
-                cfg.opensees.executable = payload.opensees_executable
-            cfg.opensees.executable = _effective_opensees_executable(cfg.opensees.executable)
             backend, backend_note = _apply_runtime_backend(
                 payload.backend,
                 config_backend=cfg.analysis.solver_backend,
-                executable=cfg.opensees.executable,
             )
             cfg.analysis.solver_backend = backend
-            if backend == "opensees":
-                resolved = resolve_opensees_executable(cfg.opensees.executable)
-                if resolved is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"OpenSees executable not found: {cfg.opensees.executable}",
-                    )
-                cfg.opensees.executable = str(resolved)
 
             dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
             motion = load_motion(motion_path, dt=dt, unit=cfg.motion.units)
@@ -3801,11 +2677,9 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        # Masing damping at this strain amplitude
         strains_check = np.array([strain_amplitude], dtype=np.float64)
         d_masing = compute_masing_damping_ratio(mat_type, params, strains_check)
 
-        # G/Gmax at this strain
         from dsra1d.materials.hysteretic import mkz_modulus_reduction, gqh_modulus_reduction
         if mat_type == MaterialType.GQH:
             g_red = float(gqh_modulus_reduction(
@@ -3838,4 +2712,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

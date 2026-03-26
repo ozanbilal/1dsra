@@ -2,7 +2,7 @@
  * StrataWave v2 — Soil Profile Editor
  * DEEPSOIL-style layer table with reference curve selector and calibration preview
  */
-import { html, useState, useCallback } from "./setup.js";
+import { html, useState, useCallback, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, SoilProfilePlot } from "./charts.js";
 import {
   fmt, defaultLayer, computeGmax,
@@ -16,9 +16,36 @@ export function ProfileEditor({ wizard, setWizard }) {
   const [calibPreview, setCalibPreview] = useState(null);
   const [refCurveData, setRefCurveData] = useState(null);
   const [setResult, setSetResult] = useState(null);
+  const [autoFmax, setAutoFmax] = useState(25);
+  const [autoPPW, setAutoPPW] = useState(10);
+  const [autoMinDz, setAutoMinDz] = useState(0.5);
+  const [autoMaxSub, setAutoMaxSub] = useState(20);
 
   function updateLayers(newLayers) {
     setWizard(prev => ({ ...prev, layers: newLayers }));
+  }
+
+  function autoSublayer() {
+    // DEEPSOIL-style: split each layer into sublayers based on wavelength criterion
+    // target_dz = Vs / (points_per_wavelength * f_max), capped at min_dz and max_sublayers
+    const newLayers = [];
+    for (const l of layers) {
+      const vs = l.vs_m_s || l.vs || 150;
+      const thick = l.thickness_m || l.thickness || 5;
+      const targetDz = Math.max(vs / (autoPPW * autoFmax), autoMinDz);
+      const nSub = Math.min(Math.max(Math.ceil(thick / targetDz), 1), autoMaxSub);
+      const subThick = thick / nSub;
+      for (let j = 0; j < nSub; j++) {
+        newLayers.push({
+          ...deepClone(l),
+          name: (l.name || "Layer") + (nSub > 1 ? `_${j + 1}` : ""),
+          thickness: subThick,
+          thickness_m: subThick,
+        });
+      }
+    }
+    updateLayers(newLayers);
+    setSelectedIdx(0);
   }
 
   function addLayer() {
@@ -109,9 +136,38 @@ export function ProfileEditor({ wizard, setWizard }) {
       <!-- Layer Table -->
       <div className="layer-table-container">
         <div className="layer-table-header">
-          <h4>Soil Layers</h4>
-          <button className="btn btn-sm" onClick=${addLayer}>+ Add Layer</button>
+          <h4>Soil Layers (${layers.length})</h4>
+          <div style=${{ display: "flex", gap: "0.35rem" }}>
+            <button className="btn btn-sm" onClick=${addLayer}>+ Add</button>
+          </div>
         </div>
+        <details className="auto-profile-details">
+          <summary>Auto Sublayering</summary>
+          <div className="row" style=${{ gap: "0.4rem", marginTop: "0.4rem", fontSize: "0.75rem" }}>
+            <div className="field">
+              <label>f_max (Hz)</label>
+              <input type="number" min="1" max="100" value=${autoFmax}
+                onInput=${e => setAutoFmax(parseFloat(e.target.value) || 25)} />
+            </div>
+            <div className="field">
+              <label>Pts/λ</label>
+              <input type="number" min="3" max="30" value=${autoPPW}
+                onInput=${e => setAutoPPW(parseInt(e.target.value) || 10)} />
+            </div>
+            <div className="field">
+              <label>Min dz (m)</label>
+              <input type="number" step="0.1" min="0.1" max="5" value=${autoMinDz}
+                onInput=${e => setAutoMinDz(parseFloat(e.target.value) || 0.5)} />
+            </div>
+            <div className="field">
+              <label>Max sub</label>
+              <input type="number" min="1" max="50" value=${autoMaxSub}
+                onInput=${e => setAutoMaxSub(parseInt(e.target.value) || 20)} />
+            </div>
+          </div>
+          <button className="btn btn-sm btn-accent" style=${{ marginTop: "0.4rem" }}
+            onClick=${autoSublayer}>Apply Auto Sublayering</button>
+        </details>
         <table className="tbl layer-table">
           <thead>
             <tr>

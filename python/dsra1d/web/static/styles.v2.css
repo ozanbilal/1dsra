@@ -390,6 +390,17 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.auto-profile-details {
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+.auto-profile-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--ink-60);
+}
+
 .calibration-actions {
   display: flex;
   gap: 0.5rem;

@@ -2718,6 +2718,57 @@ def create_app() -> FastAPI:
             })
         return results
 
+    @app.post("/api/examples/{example_id}/load")
+    def load_example(example_id: str) -> dict[str, object]:
+        """Load an example config and return wizard-compatible state."""
+        examples_dir = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "native"
+        yml_path = examples_dir / f"{example_id}.yml"
+        if not yml_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Example '{example_id}' not found.")
+        try:
+            cfg = load_project_config(yml_path)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        layers = []
+        for layer in cfg.profile.layers:
+            layer_dict: dict[str, object] = {
+                "name": layer.name,
+                "thickness": float(layer.thickness_m),
+                "thickness_m": float(layer.thickness_m),
+                "vs": float(layer.vs_m_s),
+                "vs_m_s": float(layer.vs_m_s),
+                "unit_weight": float(layer.unit_weight_kn_m3),
+                "unit_weight_kN_m3": float(layer.unit_weight_kn_m3),
+                "material": layer.material.value,
+                "material_params": {k: float(v) for k, v in layer.material_params.items()},
+            }
+            if layer.calibration is not None:
+                layer_dict["calibration"] = {
+                    "plasticity_index": layer.calibration.plasticity_index,
+                    "ocr": layer.calibration.ocr,
+                    "mean_effective_stress_kpa": layer.calibration.mean_effective_stress_kpa,
+                }
+            layers.append(layer_dict)
+
+        return {
+            "project_name": cfg.project_name or example_id,
+            "solver_backend": cfg.analysis.solver_backend,
+            "boundary_condition": cfg.boundary_condition,
+            "damping_mode": cfg.analysis.damping_mode or "frequency_independent",
+            "dt": cfg.analysis.dt or 0.005,
+            "f_max": cfg.analysis.f_max,
+            "max_iterations": getattr(cfg.analysis, "max_iterations", 15),
+            "convergence_tol": getattr(cfg.analysis, "convergence_tol", 0.03),
+            "strain_ratio": getattr(cfg.analysis, "strain_ratio", 0.65),
+            "nonlinear_substeps": getattr(cfg.analysis, "nonlinear_substeps", 4),
+            "viscous_damping_update": True,
+            "motion_path": "",
+            "motion_units": cfg.motion.units if cfg.motion else "m/s2",
+            "scale_mode": "none",
+            "layers": layers,
+        }
+
     @app.get("/")
     def web_root() -> FileResponse:
         return FileResponse(static_dir / "index.html")

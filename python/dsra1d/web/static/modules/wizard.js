@@ -18,15 +18,12 @@ const STEPS = [
   { id: "control", label: "5. Analysis Control" },
 ];
 
-export function Wizard({ wizard, setWizard, onRun, status }) {
-  const [activeStep, setActiveStep] = useState(0);
+export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setActiveStep }) {
   const [examples, setExamples] = useState([]);
 
   useEffect(() => {
     api.fetchExamples().then(setExamples).catch(() => {});
   }, []);
-
-  const step = STEPS[activeStep];
 
   function update(path, value) {
     setWizard(prev => {
@@ -53,16 +50,6 @@ export function Wizard({ wizard, setWizard, onRun, status }) {
 
   return html`
     <div className="wizard">
-      <div className="wizard-steps">
-        ${STEPS.map((s, i) => html`
-          <button key=${s.id}
-            className=${"wizard-step-btn" + (i === activeStep ? " active" : "")}
-            onClick=${() => setActiveStep(i)}>
-            ${s.label}
-          </button>
-        `)}
-      </div>
-
       <div className="wizard-body">
         ${activeStep === 0 && html`
           <${AnalysisStep}

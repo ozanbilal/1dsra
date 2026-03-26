@@ -113,53 +113,75 @@ function App() {
     }
   }, [wizard]);
 
+  const [activeStep, setActiveStep] = useState(0);
+  const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
+
   return html`
     <div className="shell">
       <header className="header">
         <h1 className="logo">StrataWave</h1>
         <span className="tagline">1D Site Response Analysis</span>
+        <div className="header-actions">
+          <button className=${"header-tab" + (viewMode === "wizard" ? " active" : "")}
+            onClick=${() => setViewMode("wizard")}>Model</button>
+          <button className=${"header-tab" + (viewMode === "results" ? " active" : "")}
+            onClick=${() => setViewMode("results")}>Results</button>
+        </div>
       </header>
 
-      <div className="main-layout">
-        <!-- Left: Wizard -->
-        <aside className="wizard-panel">
-          <${Wizard}
-            wizard=${wizard}
-            setWizard=${setWizard}
-            onRun=${handleRun}
-            status=${status}
-          />
+      <div className="main-layout-3col">
+        <!-- Col 1: Navigation -->
+        <nav className="nav-rail">
+          <div className="nav-section">
+            <div className="nav-label">WIZARD</div>
+            ${["Analysis Type", "Soil Profile", "Input Motion", "Damping", "Analysis Control"].map((label, i) => html`
+              <button key=${i}
+                className=${"nav-btn" + (viewMode === "wizard" && activeStep === i ? " active" : "")}
+                onClick=${() => { setViewMode("wizard"); setActiveStep(i); }}>
+                <span className="nav-num">${i + 1}</span>
+                <span className="nav-text">${label}</span>
+              </button>
+            `)}
+          </div>
 
-          ${error ? html`
-            <div className="error-banner">${error}</div>
-          ` : null}
+          <div className="nav-divider" />
 
-          <!-- Run List -->
-          ${runs.length > 0 ? html`
-            <div className="run-list">
-              <h4>Runs</h4>
-              ${runs.slice(0, 20).map(r => html`
-                <div key=${r.run_id}
-                  className=${"run-item" + (r.run_id === selectedRunId ? " active" : "")}
-                  onClick=${() => setSelectedRunId(r.run_id)}>
-                  <span className="run-id">${r.run_id.slice(0, 16)}</span>
-                  <span className="run-backend muted">${r.backend || ""}</span>
-                </div>
-              `)}
-            </div>
-          ` : null}
-        </aside>
+          <div className="nav-section">
+            <div className="nav-label">RUNS</div>
+            ${runs.slice(0, 15).map(r => html`
+              <button key=${r.run_id}
+                className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
+                onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
+                <span className="nav-text run-text">${r.run_id.slice(4, 16)}</span>
+                <span className="nav-badge">${r.backend || ""}</span>
+              </button>
+            `)}
+          </div>
 
-        <!-- Right: Results -->
-        <main className="results-panel">
-          <${ResultsViewer}
-            runId=${selectedRunId}
-            signals=${signals}
-            summary=${summary}
-            hysteresis=${hysteresis}
-            profile=${profile}
-            outputRoot=${outputRoot}
-          />
+          ${error ? html`<div className="nav-error">${error}</div>` : null}
+        </nav>
+
+        <!-- Col 2+3: Content -->
+        <main className="content-area">
+          ${viewMode === "wizard" ? html`
+            <${Wizard}
+              wizard=${wizard}
+              setWizard=${setWizard}
+              onRun=${handleRun}
+              status=${status}
+              activeStep=${activeStep}
+              setActiveStep=${setActiveStep}
+            />
+          ` : html`
+            <${ResultsViewer}
+              runId=${selectedRunId}
+              signals=${signals}
+              summary=${summary}
+              hysteresis=${hysteresis}
+              profile=${profile}
+              outputRoot=${outputRoot}
+            />
+          `}
         </main>
       </div>
     </div>

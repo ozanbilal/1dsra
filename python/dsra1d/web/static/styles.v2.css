@@ -55,6 +55,22 @@ body {
   letter-spacing: -0.5px;
 }
 
+.header-actions { margin-left: auto; display: flex; gap: 2px; }
+
+.header-tab {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: rgba(255,255,255,0.6);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: all 0.15s;
+}
+.header-tab:hover { color: white; background: rgba(255,255,255,0.15); }
+.header-tab.active { color: white; background: var(--accent); }
+
 .tagline {
   font-size: 0.75rem;
   opacity: 0.6;
@@ -65,6 +81,106 @@ body {
   grid-template-columns: 380px 1fr;
   flex: 1;
   overflow: hidden;
+}
+
+.main-layout-3col {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Nav Rail (left sidebar) ────────────────────────── */
+
+.nav-rail {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-section { padding: 0.25rem 0; }
+
+.nav-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--ink-40);
+  letter-spacing: 1px;
+  padding: 0.5rem 0.75rem 0.25rem;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: none;
+  font-family: var(--font);
+  font-size: 0.78rem;
+  color: var(--ink-60);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s;
+}
+
+.nav-btn:hover { background: var(--bg); color: var(--ink); }
+.nav-btn.active {
+  background: #FFF5EB;
+  color: var(--accent);
+  font-weight: 600;
+  border-left: 3px solid var(--accent);
+}
+
+.nav-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink-10);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--ink-60);
+  flex-shrink: 0;
+}
+.nav-btn.active .nav-num { background: var(--accent); color: white; }
+
+.nav-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-text { font-family: var(--mono); font-size: 0.7rem; }
+.nav-badge {
+  font-size: 0.6rem;
+  color: var(--ink-40);
+  margin-left: auto;
+}
+.nav-run.active { border-left-color: var(--blue); }
+.nav-run.active .nav-text { color: var(--blue); }
+
+.nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.5rem 0.75rem;
+}
+
+.nav-error {
+  margin: 0.5rem 0.75rem;
+  padding: 0.35rem 0.5rem;
+  background: #FEF2F2;
+  border-radius: var(--radius);
+  color: var(--red);
+  font-size: 0.7rem;
+}
+
+/* ── Content Area ───────────────────────────────────── */
+
+.content-area {
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  background: var(--bg);
 }
 
 /* ── Wizard Panel ───────────────────────────────────── */

@@ -61,6 +61,7 @@ def write_hdf5(
     mesh_dz: np.ndarray,
     mesh_n_sub: np.ndarray,
     eql_summary: dict[str, object] | None = None,
+    acc_input: np.ndarray | None = None,
 ) -> Path:
     with h5py.File(path, "w") as h5:
         h5.create_dataset("/time", data=time)
@@ -71,6 +72,8 @@ def write_hdf5(
 
         signals = h5.create_group("/signals")
         signals.create_dataset("surface_acc", data=acc_surface)
+        if acc_input is not None:
+            signals.create_dataset("input_acc", data=acc_input)
 
         pwp = h5.create_group("/pwp")
         pwp.create_dataset("time", data=ru_time)

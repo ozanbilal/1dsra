@@ -15,6 +15,7 @@ class ResultStore:
     dt_s: float
     time: np.ndarray
     acc_surface: np.ndarray
+    acc_input: np.ndarray
     spectra_periods: np.ndarray
     spectra_psa: np.ndarray
     transfer_freq_hz: np.ndarray
@@ -47,6 +48,11 @@ def load_result(output_dir: str | Path) -> ResultStore:
         )
         time = np.array(h5["/time"], dtype=np.float64) if "/time" in h5 else np.array([])
         acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
+        acc_input = (
+            np.array(h5["/signals/input_acc"], dtype=np.float64)
+            if "/signals/input_acc" in h5
+            else np.array([], dtype=np.float64)
+        )
         periods = np.array(h5["/spectra/periods"], dtype=np.float64)
         psa = np.array(h5["/spectra/psa"], dtype=np.float64)
         transfer_freq_hz = (
@@ -165,6 +171,7 @@ def load_result(output_dir: str | Path) -> ResultStore:
         dt_s=dt_s,
         time=time,
         acc_surface=acc,
+        acc_input=acc_input,
         spectra_periods=periods,
         spectra_psa=psa,
         transfer_freq_hz=transfer_freq_hz,

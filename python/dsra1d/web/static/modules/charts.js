@@ -25,9 +25,18 @@ function logTicks(min, max) {
   const logMax = Math.ceil(Math.log10(max));
   const ticks = [];
   for (let e = logMin; e <= logMax; e++) {
-    ticks.push(Math.pow(10, e));
+    const base = Math.pow(10, e);
+    for (const mult of [1, 2, 5]) {
+      const t = base * mult;
+      if (t >= min * 0.99 && t <= max * 1.01) ticks.push(t);
+    }
   }
   return ticks;
+}
+
+function isMajorLogTick(t) {
+  const log = Math.log10(t);
+  return Math.abs(log - Math.round(log)) < 0.001;
 }
 
 function buildGeometry(x, y, w, h, pad, opts = {}) {
@@ -85,15 +94,18 @@ function Axes({ geo, w, h, xLabel, yLabel, logX }) {
       ${xTicks.map(t => {
         const tx = scaleX(t);
         if (tx < pad.left || tx > w - pad.right) return null;
+        const isMajor = logX ? isMajorLogTick(t) : true;
         return html`
           <g key=${"xt" + t}>
-            <line x1=${tx} y1=${pad.top + plotH} x2=${tx} y2=${pad.top + plotH + 4}
+            <line x1=${tx} y1=${pad.top + plotH} x2=${tx} y2=${pad.top + plotH + (isMajor ? 4 : 2)}
               stroke="var(--ink-40)" stroke-width="1" />
             <line x1=${tx} y1=${pad.top} x2=${tx} y2=${pad.top + plotH}
               stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
-            <text x=${tx} y=${h - 4} text-anchor="middle" fill="var(--ink-60)" font-size="9">
-              ${logX ? t.toExponential(0) : fmt(t, 2)}
-            </text>
+            ${isMajor ? html`
+              <text x=${tx} y=${h - 4} text-anchor="middle" fill="var(--ink-60)" font-size="9">
+                ${logX ? t.toExponential(0) : fmt(t, 2)}
+              </text>
+            ` : null}
           </g>
         `;
       })}
@@ -311,29 +323,61 @@ export function SoilProfilePlot({ layers, w = 900, h = 400 }) {
 export function DepthProfileChart({ title, subtitle, depths, values, xLabel, yLabel, color, w = 300, h = 300 }) {
   if (!depths || !values || depths.length < 2) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
-  const pad = { top: 20, right: 20, bottom: 32, left: 52 };
+  const pad = { top: 24, right: 12, bottom: 32, left: 52 };
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
 
   const dMin = Math.min(...depths);
   const dMax = Math.max(...depths);
-  const vMin = Math.min(...values);
-  const vMax = Math.max(...values);
+  const rawVMin = Math.min(...values);
+  const rawVMax = Math.max(...values);
+  // Include 0 in x range if all values are positive (depth profiles start at 0)
+  const vMin = rawVMin > 0 ? 0 : rawVMin;
+  const vMax = rawVMax === vMin ? vMin + 1 : rawVMax;
 
-  function sx(v) { return pad.left + ((v - vMin) / (vMax - vMin || 1)) * plotW; }
+  function sx(v) { return pad.left + ((v - vMin) / (vMax - vMin)) * plotW; }
   function sy(d) { return pad.top + ((d - dMin) / (dMax - dMin || 1)) * plotH; }
 
   const points = depths.map((d, i) => `${sx(values[i])},${sy(d)}`).join(" ");
+  const xTicks = linearTicks(vMin, vMax, 4);
+  const yTicks = linearTicks(dMin, dMax, 5);
 
   return html`
     <div className="chart-card">
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
       <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
+        <!-- Axes -->
         <line x1=${pad.left} y1=${pad.top} x2=${pad.left} y2=${pad.top + plotH} stroke="var(--ink-40)" />
         <line x1=${pad.left} y1=${pad.top + plotH} x2=${w - pad.right} y2=${pad.top + plotH} stroke="var(--ink-40)" />
+        <!-- X ticks (top) -->
+        ${xTicks.map(t => {
+          const tx = sx(t);
+          if (tx < pad.left - 1 || tx > w - pad.right + 1) return null;
+          return html`
+            <g key=${"xt" + t}>
+              <line x1=${tx} y1=${pad.top} x2=${tx} y2=${pad.top + plotH} stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
+              <line x1=${tx} y1=${pad.top - 3} x2=${tx} y2=${pad.top} stroke="var(--ink-40)" />
+              <text x=${tx} y=${pad.top - 5} text-anchor="middle" fill="var(--ink-60)" font-size="8">${fmt(t, t < 1 ? 3 : 1)}</text>
+            </g>
+          `;
+        })}
+        <!-- Y ticks (depth) -->
+        ${yTicks.map(t => {
+          const ty = sy(t);
+          if (ty < pad.top - 1 || ty > pad.top + plotH + 1) return null;
+          return html`
+            <g key=${"yt" + t}>
+              <line x1=${pad.left} y1=${ty} x2=${w - pad.right} y2=${ty} stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
+              <line x1=${pad.left - 3} y1=${ty} x2=${pad.left} y2=${ty} stroke="var(--ink-40)" />
+              <text x=${pad.left - 5} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="8">${fmt(t, 1)}</text>
+            </g>
+          `;
+        })}
+        <!-- Data line -->
         <polyline points=${points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
-        ${xLabel ? html`<text x=${pad.left + plotW / 2} y=${h - 2} text-anchor="middle" fill="var(--ink-70)" font-size="10">${xLabel}</text>` : null}
-        ${yLabel ? html`<text x=${12} y=${pad.top + plotH / 2} text-anchor="middle" fill="var(--ink-70)" font-size="10" transform="rotate(-90, 12, ${pad.top + plotH / 2})">${yLabel}</text>` : null}
+        <!-- Labels -->
+        ${xLabel ? html`<text x=${pad.left + plotW / 2} y=${h - 2} text-anchor="middle" fill="var(--ink-70)" font-size="9">${xLabel}</text>` : null}
+        ${yLabel ? html`<text x=${12} y=${pad.top + plotH / 2} text-anchor="middle" fill="var(--ink-70)" font-size="9" transform="rotate(-90, 12, ${pad.top + plotH / 2})">${yLabel}</text>` : null}
       </svg>
     </div>
   `;

@@ -2395,7 +2395,28 @@ def create_app() -> FastAPI:
             sigma_time_list = sigma_time_list[::step]
             sigma_v_eff_list = sigma_v_eff_list[::step]
 
+        # Input motion (base acceleration)
+        input_acc_list: list[float] = []
+        input_psa_list: list[float] = []
+        input_period_list: list[float] = []
+        if rs.acc_input.size > 1:
+            raw_input = [float(v) for v in rs.acc_input]
+            raw_input_t = [float(i) * float(dt_s) for i in range(len(raw_input))]
+            raw_input_t, raw_input = _downsample_pair(raw_input_t, raw_input, max_points=max_points)
+            input_acc_list = raw_input
+            spectra_input = compute_spectra(
+                np.asarray(rs.acc_input, dtype=np.float64),
+                dt=dt_s,
+                damping=0.05,
+            )
+            input_period_list = [float(v) for v in spectra_input.periods]
+            input_psa_list = [float(v) for v in spectra_input.psa]
+            input_period_list, input_psa_list = _downsample_pair(
+                input_period_list, input_psa_list, max_points=max_spectral_points
+            )
+
         pga = float(np.max(np.abs(acc))) if acc.size > 0 else 0.0
+        pga_input = float(np.max(np.abs(rs.acc_input))) if rs.acc_input.size > 0 else 0.0
         ru_max = float(np.max(rs.ru)) if rs.ru.size > 0 else 0.0
         delta_u_max = float(np.max(rs.delta_u)) if rs.delta_u.size > 0 else 0.0
         sigma_v_eff_min = float(np.min(rs.sigma_v_eff)) if rs.sigma_v_eff.size > 0 else 0.0
@@ -2403,8 +2424,11 @@ def create_app() -> FastAPI:
             "run_id": run_id,
             "time_s": time_list,
             "surface_acc_m_s2": acc_list,
+            "input_acc_m_s2": input_acc_list,
             "period_s": period_list,
             "psa_m_s2": psa_list,
+            "input_period_s": input_period_list,
+            "input_psa_m_s2": input_psa_list,
             "spectra_source": "recomputed_from_surface_acc",
             "dt_s": float(dt_s),
             "delta_t": float(dt_s),
@@ -2422,6 +2446,7 @@ def create_app() -> FastAPI:
             "sigma_v_eff": sigma_v_eff_list,
             "sigma_v_ref": float(rs.sigma_v_ref),
             "pga": float(pga),
+            "pga_input": float(pga_input),
             "ru_max": float(ru_max),
             "delta_u_max": float(delta_u_max),
             "sigma_v_eff_min": float(sigma_v_eff_min),

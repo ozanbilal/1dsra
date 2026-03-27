@@ -19,8 +19,11 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
   // Normalize signal field names (API uses _s/_m_s2 suffixes)
   const time = signals?.time || signals?.time_s;
   const surfAcc = signals?.surface_acc || signals?.surface_acc_m_s2;
+  const inputAcc = signals?.input_acc_m_s2;
   const psaPeriods = signals?.psa_periods || signals?.period_s;
   const psaValues = signals?.psa_values || signals?.psa_m_s2;
+  const inputPsaPeriods = signals?.input_period_s;
+  const inputPsaValues = signals?.input_psa_m_s2;
   const transferFreq = signals?.transfer_freq || signals?.freq_hz;
   const transferAbs = signals?.transfer_abs;
 
@@ -50,12 +53,15 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
       </div>
 
       <div className="results-content">
-        ${activeTab === "time" && html`<${TimeHistoryTab} time=${time} surfAcc=${surfAcc} pga=${signals?.pga} />`}
+        ${activeTab === "time" && html`<${TimeHistoryTab}
+          time=${time} surfAcc=${surfAcc} inputAcc=${inputAcc}
+          pga=${signals?.pga} pgaInput=${signals?.pga_input} />`}
         ${activeTab === "stress_strain" && html`<${StressStrainTab}
           hysteresis=${hysteresis} selectedLayer=${selectedLayer}
           onLayerChange=${setSelectedLayer} />`}
         ${activeTab === "spectral" && html`<${SpectralTab}
           psaPeriods=${psaPeriods} psaValues=${psaValues}
+          inputPsaPeriods=${inputPsaPeriods} inputPsaValues=${inputPsaValues}
           transferFreq=${transferFreq} transferAbs=${transferAbs} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} />`}
@@ -67,24 +73,38 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
 // ── Tab Components ───────────────────────────────────────
 
-function TimeHistoryTab({ time, surfAcc, pga: pgaFromApi }) {
+function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput }) {
   if (!time || !surfAcc) return html`<p className="muted">No time history data.</p>`;
 
   const pga = pgaFromApi || Math.max(...surfAcc.map(Math.abs));
+  const hasInput = inputAcc && inputAcc.length > 1;
+
+  // Build input time axis (same dt, same length as input)
+  const inputTime = hasInput
+    ? inputAcc.map((_, i) => i * (time[time.length - 1] / (inputAcc.length - 1)))
+    : null;
+
+  const series = [
+    { x: time, y: surfAcc, label: "Surface", color: "var(--accent)" },
+    ...(hasInput ? [{ x: inputTime, y: inputAcc, label: "Input (Base)", color: "#2980B9" }] : []),
+  ];
 
   return html`
     <div className="tab-content">
       <div className="metric-row">
-        <div className="metric-card"><span>PGA (m/s2)</span><b>${fmt(pga, 4)}</b></div>
-        <div className="metric-card"><span>PGA (g)</span><b>${fmt(pga / 9.81, 4)}</b></div>
+        <div className="metric-card"><span>Surface PGA (m/s²)</span><b>${fmt(pga, 4)}</b></div>
+        <div className="metric-card"><span>Surface PGA (g)</span><b>${fmt(pga / 9.81, 4)}</b></div>
+        ${hasInput ? html`
+          <div className="metric-card"><span>Input PGA (m/s²)</span><b>${fmt(pgaInput || Math.max(...inputAcc.map(Math.abs)), 4)}</b></div>
+          <div className="metric-card"><span>Amp. Ratio</span><b>${fmt(pga / ((pgaInput || Math.max(...inputAcc.map(Math.abs))) || 1), 3)}</b></div>
+        ` : null}
         <div className="metric-card"><span>Duration (s)</span><b>${fmt(time[time.length - 1], 2)}</b></div>
         <div className="metric-card"><span>Samples</span><b>${time.length}</b></div>
       </div>
-      <${ChartCard}
-        title="Surface Acceleration"
-        x=${time} y=${surfAcc}
-        xLabel="Time (s)" yLabel="Acceleration (m/s2)"
-        color="var(--accent)"
+      <${MultiSeriesChart}
+        title="Acceleration Time History"
+        series=${series}
+        xLabel="Time (s)" yLabel="Acceleration (m/s²)"
       />
     </div>
   `;
@@ -119,13 +139,15 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
   `;
 }
 
-function SpectralTab({ psaPeriods, psaValues, transferFreq, transferAbs }) {
+function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs }) {
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
 
+  const hasInputPsa = inputPsaPeriods && inputPsaValues && inputPsaPeriods.length > 1;
   const series = [
     { x: psaPeriods, y: psaValues, label: "Surface PSA", color: "#D35400" },
+    ...(hasInputPsa ? [{ x: inputPsaPeriods, y: inputPsaValues, label: "Input PSA", color: "#2980B9" }] : []),
   ];
 
   const hasTF = transferFreq && transferAbs;

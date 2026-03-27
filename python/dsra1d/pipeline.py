@@ -626,6 +626,7 @@ def run_analysis(
             dt_s=dt_series,
             acc_surface=acc_surface,
             ru_time=ru_t,
+            acc_input=np.asarray(processed.acc, dtype=np.float64),
             ru=ru,
             delta_u=delta_u,
             sigma_v_ref=sigma_v_ref,

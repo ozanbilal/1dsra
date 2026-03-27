@@ -249,7 +249,8 @@ def export_run_to_xlsx(
 
     # Sheet 2: Time History
     ws_th = wb.create_sheet()
-    _write_time_history_sheet(ws_th, store.time, store.acc_surface)
+    input_acc_for_export = store.acc_input if store.acc_input.size > 1 else None
+    _write_time_history_sheet(ws_th, store.time, store.acc_surface, input_acc=input_acc_for_export)
 
     # Sheet 3: Spectral
     from dsra1d.post.spectra import compute_spectra

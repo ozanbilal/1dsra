@@ -2711,6 +2711,28 @@ def create_app() -> FastAPI:
             "params": params,
         }
 
+    # ── Excel Export ──────────────────────────────────────────────
+
+    @app.get("/api/runs/{run_id}/export/xlsx")
+    def export_run_xlsx(
+        run_id: str,
+        output_root: str = Query("out/web"),
+    ) -> FileResponse:
+        from dsra1d.export.excel import export_run_to_xlsx
+
+        run_dir = _resolve_run_dir(run_id, output_root)
+        try:
+            xlsx_path = export_run_to_xlsx(run_dir)
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Excel export failed: {exc}") from exc
+        return FileResponse(
+            path=str(xlsx_path),
+            filename=f"{run_id}.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     # ── Motion Library (scan directories for earthquake records) ──
 
     MOTION_LIBRARY_DIRS: list[Path] = [

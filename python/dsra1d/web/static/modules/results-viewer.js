@@ -155,16 +155,22 @@ function ProfileTab({ profile }) {
     return html`<p className="muted">No profile data.</p>`;
   }
 
-  const depths = [];
-  const vs = [];
+  // Build step-profile arrays for depth charts
+  const depths = [], vs = [], gammaMax = [], dmin = [], tauPeak = [], maxAcc = [];
   let d = 0;
   for (const l of profile.layers) {
-    depths.push(d);
-    vs.push(l.vs || 0);
-    d += l.thickness || 0;
-    depths.push(d);
-    vs.push(l.vs || 0);
+    const thick = l.thickness || 0;
+    const vsVal = l.vs || 0;
+    const gm = l.gamma_max || 0;
+    const dm = (l.damping_min || l.dmin || 0);
+    const tp = l.tau_peak || 0;
+    const acc = l.max_acc || 0;
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dmin.push(dm); tauPeak.push(tp); maxAcc.push(acc);
+    d += thick;
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dmin.push(dm); tauPeak.push(tp); maxAcc.push(acc);
   }
+
+  const hasResponse = gammaMax.some(v => v > 0) || tauPeak.some(v => v > 0);
 
   return html`
     <div className="tab-content">
@@ -173,12 +179,27 @@ function ProfileTab({ profile }) {
           title="Vs Profile" depths=${depths} values=${vs}
           xLabel="Vs (m/s)" yLabel="Depth (m)" color="#2980B9"
         />
+        ${hasResponse ? html`
+          <${DepthProfileChart}
+            title="Max Strain" depths=${depths} values=${gammaMax.map(v => v * 100)}
+            xLabel="Strain (%)" yLabel="Depth (m)" color="#E74C3C"
+          />
+          <${DepthProfileChart}
+            title="Peak Stress" depths=${depths} values=${tauPeak}
+            xLabel="Stress (kPa)" yLabel="Depth (m)" color="#8E44AD"
+          />
+          <${DepthProfileChart}
+            title="Damping" depths=${depths} values=${dmin.map(v => v * 100)}
+            xLabel="Damping (%)" yLabel="Depth (m)" color="#27AE60"
+          />
+        ` : null}
       </div>
       <table className="tbl">
         <thead>
           <tr>
-            <th>#</th><th>Depth (m)</th><th>Thickness (m)</th>
-            <th>Vs (m/s)</th><th>Unit Wt (kN/m3)</th><th>Material</th>
+            <th>#</th><th>Depth (m)</th><th>Thick (m)</th>
+            <th>Vs (m/s)</th><th>γ_wt</th><th>Material</th>
+            <th>γ_max (%)</th><th>τ_peak (kPa)</th>
           </tr>
         </thead>
         <tbody>
@@ -192,6 +213,8 @@ function ProfileTab({ profile }) {
                 <td>${fmt(l.vs, 0)}</td>
                 <td>${fmt(l.unit_weight, 1)}</td>
                 <td>${l.material || "—"}</td>
+                <td>${l.gamma_max ? fmt(l.gamma_max * 100, 3) : "—"}</td>
+                <td>${l.tau_peak ? fmt(l.tau_peak, 1) : "—"}</td>
               </tr>
             `;
           })}

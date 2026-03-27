@@ -62,11 +62,11 @@ def test_web_static_assets_served() -> None:
     client = TestClient(create_app())
     root = client.get("/")
     assert root.status_code == 200
-    assert "/assets/app.js" in root.text
+    assert "/assets/app.v2.js" in root.text
 
-    app_js = client.get("/assets/app.js")
+    app_js = client.get("/assets/app.v2.js")
     assert app_js.status_code == 200
-    assert "WIZARD_STEPS" in app_js.text
+    assert "StrataWave" in app_js.text
 
 
 def test_web_list_config_templates_endpoint() -> None:

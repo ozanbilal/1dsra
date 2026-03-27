@@ -52,7 +52,7 @@ ResolvedBackend = Literal["linear", "eql", "nonlinear"]
 
 class RunRequest(BaseModel):
     config_path: str
-    motion_path: str
+    motion_path: str = ""
     output_root: str = "out/web"
     backend: RunBackendMode = "config"
 
@@ -2581,10 +2581,17 @@ def create_app() -> FastAPI:
     def execute_run(payload: RunRequest) -> RunResponse:
         try:
             config_path = _resolve_input_path(payload.config_path, label="Config file")
-            motion_path = _resolve_input_path(payload.motion_path, label="Motion file")
             output_root = _resolve_output_root(payload.output_root)
 
             cfg = load_project_config(config_path)
+
+            # motion_path: use request value, fall back to config
+            raw_motion = payload.motion_path.strip() if payload.motion_path else ""
+            if not raw_motion:
+                raw_motion = str(cfg.motion.filepath) if cfg.motion.filepath else ""
+            if not raw_motion:
+                raise HTTPException(status_code=400, detail="No motion_path provided and config has no motion.filepath.")
+            motion_path = _resolve_input_path(raw_motion, label="Motion file")
             backend, backend_note = _apply_runtime_backend(
                 payload.backend,
                 config_backend=cfg.analysis.solver_backend,
@@ -2709,6 +2716,7 @@ def create_app() -> FastAPI:
     MOTION_LIBRARY_DIRS: list[Path] = [
         Path(r"C:\Users\PC\Documents\DEEPSOIL 7\Input Motions"),
         Path(__file__).resolve().parent.parent.parent.parent / "examples" / "motions",
+        Path("out/ui/motions"),
     ]
 
     @app.get("/api/motions/library")

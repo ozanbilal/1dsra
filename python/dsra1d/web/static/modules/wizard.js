@@ -6,7 +6,7 @@ import { ProfileEditor } from "./profile-editor.js";
 import { MotionPanel } from "./motion-panel.js";
 import {
   SOLVER_BACKENDS, BOUNDARY_CONDITIONS, MATERIAL_TYPES,
-  defaultLayer, computeGmax,
+  defaultLayer, computeGmax, validateWizard,
 } from "./utils.js";
 import * as api from "./api.js";
 
@@ -46,7 +46,8 @@ export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setAc
     } catch (e) { console.error("Load example failed:", e); }
   }
 
-  const canRun = wizard.layers && wizard.layers.length > 0 && wizard.motion_path;
+  const validation = validateWizard(wizard);
+  const canRun = validation.valid;
 
   return html`
     <div className="wizard">
@@ -66,7 +67,8 @@ export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setAc
         ${activeStep === 3 && html`<${DampingStep} wizard=${wizard} update=${update} />`}
         ${activeStep === 4 && html`
           <${ControlStep} wizard=${wizard} update=${update}
-            canRun=${canRun} onRun=${onRun} status=${status} />
+            canRun=${canRun} onRun=${onRun} status=${status}
+            validation=${validation} />
         `}
       </div>
     </div>
@@ -166,8 +168,9 @@ function DampingStep({ wizard, update }) {
 
 // ── Step 5: Analysis Control ─────────────────────────────
 
-function ControlStep({ wizard, update, canRun, onRun, status }) {
+function ControlStep({ wizard, update, canRun, onRun, status, validation }) {
   const backend = wizard.solver_backend || "eql";
+  const { errors = [], warnings = [] } = validation || {};
 
   return html`
     <div className="step-body">
@@ -220,15 +223,22 @@ function ControlStep({ wizard, update, canRun, onRun, status }) {
         </div>
       ` : null}
 
+      ${warnings.length > 0 ? html`
+        <div className="validation-warnings" style=${{ marginTop: "0.5rem", padding: "0.5rem", background: "rgba(243,156,18,0.08)", borderRadius: "6px", border: "1px solid rgba(243,156,18,0.2)" }}>
+          ${warnings.map((w, i) => html`<p key=${i} style=${{ margin: "0.15rem 0", fontSize: "0.8rem", color: "#F39C12" }}>${w}</p>`)}
+        </div>
+      ` : null}
+      ${errors.length > 0 ? html`
+        <div className="validation-errors" style=${{ marginTop: "0.5rem", padding: "0.5rem", background: "rgba(231,76,60,0.08)", borderRadius: "6px", border: "1px solid rgba(231,76,60,0.2)" }}>
+          ${errors.map((e, i) => html`<p key=${i} style=${{ margin: "0.15rem 0", fontSize: "0.8rem", color: "#E74C3C" }}>${e}</p>`)}
+        </div>
+      ` : null}
       <div style=${{ marginTop: "1rem" }}>
         <button className="btn btn-accent btn-lg"
           disabled=${!canRun || status === "running"}
           onClick=${onRun}>
           ${status === "running" ? "Running..." : "Run Analysis"}
         </button>
-        ${!canRun ? html`<p className="muted" style=${{ marginTop: "0.25rem" }}>
-          Add soil layers and select a motion file first.
-        </p>` : null}
       </div>
     </div>
   `;

@@ -299,6 +299,8 @@ class ResultProfileLayerRow(BaseModel):
     z_bottom_m: float
     n_sub: int
     gamma_max: float | None = None
+    damping_ratio: float | None = None
+    tau_peak_kpa: float | None = None
     sigma_v0_mid_kpa: float | None = None
     ru_max: float | None = None
     delta_u_max: float | None = None
@@ -723,13 +725,15 @@ def _read_profile_layer_summary(
                 )
 
         gamma_by_idx: dict[int, float] = {}
+        damping_by_idx: dict[int, float] = {}
         if _table_exists(conn, "eql_layers"):
             eql_rows = conn.execute(
-                "SELECT layer_idx, gamma_max FROM eql_layers ORDER BY layer_idx ASC"
+                "SELECT layer_idx, gamma_max, damping FROM eql_layers ORDER BY layer_idx ASC"
             ).fetchall()
-            for idx, gamma in eql_rows:
+            for idx, gamma, damp in eql_rows:
                 try:
                     gamma_by_idx[int(idx)] = float(gamma)
+                    damping_by_idx[int(idx)] = float(damp)
                 except (TypeError, ValueError):
                     continue
 
@@ -754,6 +758,17 @@ def _read_profile_layer_summary(
             gamma_max = gamma_by_idx.get(layer_idx)
             if gamma_max is None:
                 gamma_max = gamma_by_idx.get(layer_idx + 1)
+            damping_ratio_val = damping_by_idx.get(layer_idx)
+            if damping_ratio_val is None:
+                damping_ratio_val = damping_by_idx.get(layer_idx + 1)
+            # Approximate peak shear stress: tau = gamma_max * G_eff
+            # For EQL: G_eff ~ Gmax * G/Gmax(gamma_eff); approximate as rho*Vs^2*gamma_max
+            tau_peak_kpa_val: float | None = None
+            if gamma_max is not None and gamma_max > 0:
+                vs_val = float(vs)
+                rho = float(unit_weight) / 9.81
+                gmax_pa = rho * vs_val * vs_val
+                tau_peak_kpa_val = gmax_pa * gamma_max / 1000.0  # Pa -> kPa
             unit_weight_kn_m3 = float(unit_weight)
             sigma_v0_mid_kpa = (
                 max(cum_depth, 0.0) + max(t_m, 0.0) * 0.5
@@ -780,6 +795,8 @@ def _read_profile_layer_summary(
                     z_bottom_m=float(z_bottom_m),
                     n_sub=max(1, int(n_sub)),
                     gamma_max=float(gamma_max) if gamma_max is not None else None,
+                    damping_ratio=float(damping_ratio_val) if damping_ratio_val is not None else None,
+                    tau_peak_kpa=tau_peak_kpa_val,
                     sigma_v0_mid_kpa=sigma_v0_mid_kpa,
                     ru_max=ru_max,
                     delta_u_max=delta_u_max,
@@ -2785,6 +2802,42 @@ def create_app() -> FastAPI:
                         "source": lib_dir.name,
                     })
         return results
+
+    @app.get("/api/motion/preview")
+    def motion_preview(
+        path: str = Query(..., min_length=1),
+        max_points: int = Query(default=1200, ge=100, le=10000),
+    ) -> dict[str, object]:
+        """Lightweight motion preview — read CSV/AT2, compute PGA/dt, return downsampled signal."""
+        motion_path = Path(path)
+        if not motion_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Motion file not found: {path}")
+        try:
+            from dsra1d.motion.io import load_motion_series
+            time_arr, acc_raw = load_motion_series(str(motion_path), fallback_dt=0.01)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Cannot parse motion file: {exc}") from exc
+
+        acc = np.asarray(acc_raw, dtype=np.float64)
+        dt = float(np.median(np.diff(time_arr))) if time_arr.size > 1 else 0.01
+        n = acc.size
+        pga = float(np.max(np.abs(acc))) if n > 0 else 0.0
+        duration = dt * (n - 1) if n > 1 else 0.0
+        time_list = [float(i * dt) for i in range(n)]
+        acc_list = [float(v) for v in acc]
+        time_list, acc_list = _downsample_pair(time_list, acc_list, max_points=max_points)
+
+        return {
+            "path": str(motion_path),
+            "name": motion_path.stem,
+            "npts": n,
+            "dt": dt,
+            "duration": duration,
+            "pga_m_s2": pga,
+            "pga_g": pga / 9.81,
+            "time_s": time_list,
+            "acc_m_s2": acc_list,
+        }
 
     @app.get("/api/examples")
     def list_examples() -> list[dict[str, str]]:

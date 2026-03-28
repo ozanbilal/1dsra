@@ -178,18 +178,17 @@ function ProfileTab({ profile }) {
   }
 
   // Build step-profile arrays for depth charts
-  const depths = [], vs = [], gammaMax = [], dmin = [], tauPeak = [], maxAcc = [];
+  const depths = [], vs = [], gammaMax = [], dampRatio = [], tauPeak = [];
   let d = 0;
   for (const l of profile.layers) {
-    const thick = l.thickness || 0;
-    const vsVal = l.vs || 0;
+    const thick = l.thickness_m || l.thickness || 0;
+    const vsVal = l.vs_m_s || l.vs || 0;
     const gm = l.gamma_max || 0;
-    const dm = (l.damping_min || l.dmin || 0);
-    const tp = l.tau_peak || 0;
-    const acc = l.max_acc || 0;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dmin.push(dm); tauPeak.push(tp); maxAcc.push(acc);
+    const dr = l.damping_ratio || 0;
+    const tp = l.tau_peak_kpa || l.tau_peak || 0;
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp);
     d += thick;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dmin.push(dm); tauPeak.push(tp); maxAcc.push(acc);
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp);
   }
 
   const hasResponse = gammaMax.some(v => v > 0) || tauPeak.some(v => v > 0);
@@ -211,7 +210,7 @@ function ProfileTab({ profile }) {
             xLabel="Stress (kPa)" yLabel="Depth (m)" color="#8E44AD"
           />
           <${DepthProfileChart}
-            title="Damping" depths=${depths} values=${dmin.map(v => v * 100)}
+            title="Damping" depths=${depths} values=${dampRatio.map(v => v * 100)}
             xLabel="Damping (%)" yLabel="Depth (m)" color="#27AE60"
           />
         ` : null}
@@ -226,17 +225,17 @@ function ProfileTab({ profile }) {
         </thead>
         <tbody>
           ${profile.layers.map((l, i) => {
-            const depthTop = profile.layers.slice(0, i).reduce((s, x) => s + (x.thickness || 0), 0);
+            const depthTop = profile.layers.slice(0, i).reduce((s, x) => s + (x.thickness_m || x.thickness || 0), 0);
             return html`
               <tr key=${i}>
                 <td>${i + 1}</td>
                 <td>${fmt(depthTop, 1)}</td>
-                <td>${fmt(l.thickness, 1)}</td>
-                <td>${fmt(l.vs, 0)}</td>
-                <td>${fmt(l.unit_weight, 1)}</td>
+                <td>${fmt(l.thickness_m || l.thickness, 1)}</td>
+                <td>${fmt(l.vs_m_s || l.vs, 0)}</td>
+                <td>${fmt(l.unit_weight_kN_m3 || l.unit_weight_kn_m3 || l.unit_weight, 1)}</td>
                 <td>${l.material || "—"}</td>
-                <td>${l.gamma_max ? fmt(l.gamma_max * 100, 3) : "—"}</td>
-                <td>${l.tau_peak ? fmt(l.tau_peak, 1) : "—"}</td>
+                <td>${l.gamma_max != null ? fmt(l.gamma_max * 100, 3) : "—"}</td>
+                <td>${l.tau_peak_kpa != null ? fmt(l.tau_peak_kpa, 1) : "—"}</td>
               </tr>
             `;
           })}

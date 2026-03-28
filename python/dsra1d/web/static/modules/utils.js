@@ -84,6 +84,55 @@ export const SOLVER_BACKENDS = [
   { value: "nonlinear", label: "Nonlinear", desc: "Time-domain implicit Newmark" },
 ];
 
+/** Validate the wizard state before running analysis.
+ * Returns { valid: boolean, errors: string[], warnings: string[] }
+ */
+export function validateWizard(w) {
+  const errors = [];
+  const warnings = [];
+
+  // Layers
+  if (!w.layers || w.layers.length === 0) {
+    errors.push("At least one soil layer is required.");
+  } else {
+    w.layers.forEach((l, i) => {
+      const label = l.name || `Layer ${i + 1}`;
+      const thick = l.thickness_m || l.thickness || 0;
+      const vs = l.vs_m_s || l.vs || 0;
+      const uw = l.unit_weight_kN_m3 || l.unit_weight || 0;
+      if (thick <= 0) errors.push(`${label}: thickness must be > 0`);
+      if (vs <= 0) errors.push(`${label}: Vs must be > 0`);
+      else if (vs < 10) warnings.push(`${label}: Vs = ${vs} m/s is very low`);
+      else if (vs > 5000) warnings.push(`${label}: Vs = ${vs} m/s is unusually high`);
+      if (uw <= 0) errors.push(`${label}: unit weight must be > 0`);
+    });
+  }
+
+  // Motion
+  if (!w.motion_path) {
+    errors.push("No input motion selected.");
+  }
+
+  // Analysis control
+  const dt = w.dt || 0.005;
+  const fmax = w.f_max || 25;
+  if (dt <= 0) errors.push("Time step dt must be > 0");
+  if (fmax <= 0) errors.push("Max frequency must be > 0");
+  if (dt > 1.0 / (20 * fmax)) {
+    warnings.push(`dt = ${dt}s may be too large for f_max = ${fmax} Hz (Nyquist: dt < ${(1.0 / (20 * fmax)).toFixed(4)}s)`);
+  }
+
+  // Scale factor
+  if (w.scale_mode === "factor" && (w.scale_factor == null || w.scale_factor <= 0)) {
+    errors.push("Scale factor must be > 0");
+  }
+  if (w.scale_mode === "target_pga" && (!w.target_pga_g || w.target_pga_g <= 0)) {
+    errors.push("Target PGA must be > 0");
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
 /** Boundary condition options. */
 export const BOUNDARY_CONDITIONS = [
   { value: "rigid", label: "Rigid Base" },

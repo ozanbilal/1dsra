@@ -25,6 +25,23 @@ export function MotionPanel({ wizard, update }) {
       .finally(() => setLibLoading(false));
   }, []);
 
+  // Fetch motion preview whenever motion_path changes
+  useEffect(() => {
+    if (!wizard.motion_path) { setPreview(null); return; }
+    api.fetchMotionPreview(wizard.motion_path)
+      .then(data => {
+        setPreview({
+          time: data.time_s,
+          acc: data.acc_m_s2,
+          dt: data.dt,
+          pga: data.pga_m_s2,
+          duration: data.duration,
+          npts: data.npts,
+        });
+      })
+      .catch(() => {}); // silently fail — preview is optional
+  }, [wizard.motion_path]);
+
   async function handleCSVUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -146,10 +163,11 @@ export function MotionPanel({ wizard, update }) {
       ${preview ? html`
         <div style=${{ marginTop: "0.75rem" }}>
           <div className="metric-row">
-            <div className="metric-card"><span>PGA (m/s2)</span><b>${fmt(preview.pga, 4)}</b></div>
+            <div className="metric-card"><span>PGA (m/s²)</span><b>${fmt(preview.pga, 4)}</b></div>
             <div className="metric-card"><span>PGA (g)</span><b>${fmt((preview.pga || 0) / 9.81, 4)}</b></div>
             <div className="metric-card"><span>dt (s)</span><b>${fmt(preview.dt, 5)}</b></div>
-            <div className="metric-card"><span>Duration (s)</span><b>${fmt(preview.time?.[preview.time.length - 1], 2)}</b></div>
+            <div className="metric-card"><span>Duration (s)</span><b>${fmt(preview.duration || preview.time?.[preview.time.length - 1], 2)}</b></div>
+            ${preview.npts ? html`<div className="metric-card"><span>Points</span><b>${preview.npts}</b></div>` : null}
           </div>
           <${ChartCard}
             title="Input Motion Preview"

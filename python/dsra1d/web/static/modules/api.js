@@ -124,6 +124,11 @@ export function fetchMotionLibrary() {
   return request("GET", "/api/motions/library");
 }
 
+export function fetchMotionPreview(motionPath) {
+  const qs = new URLSearchParams({ path: motionPath }).toString();
+  return request("GET", `/api/motion/preview?${qs}`);
+}
+
 // ── Calibration ──────────────────────────────────────────
 
 export function fetchCalibrationPreview(layerData) {

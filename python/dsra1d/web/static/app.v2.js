@@ -176,6 +176,16 @@ function App() {
   const [activeStep, setActiveStep] = useState(0);
   const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
   const [runFilter, setRunFilter] = useState("");
+  const [theme, setTheme] = useState(() => localStorage.getItem("stratawave_theme") || "light");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("stratawave_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(t => t === "dark" ? "light" : "dark");
+  }, []);
 
   return html`
     <div className="shell">
@@ -187,6 +197,10 @@ function App() {
             onClick=${() => setViewMode("wizard")}>Model</button>
           <button className=${"header-tab" + (viewMode === "results" ? " active" : "")}
             onClick=${() => setViewMode("results")}>Results</button>
+          <button className="theme-toggle" onClick=${toggleTheme}
+            title=${theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+            ${theme === "dark" ? "Light" : "Dark"}
+          </button>
         </div>
       </header>
 
@@ -296,6 +310,7 @@ function App() {
               signals=${signals}
               summary=${summary}
               hysteresis=${hysteresis}
+              runs=${runs}
               profile=${profile}
               outputRoot=${outputRoot}
             />

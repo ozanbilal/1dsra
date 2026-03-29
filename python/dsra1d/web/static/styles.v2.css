@@ -638,3 +638,84 @@ body {
   .profile-editor { grid-template-columns: 1fr; }
   .calib-charts { grid-template-columns: 1fr; }
 }
+
+/* ── Dark Theme ────────────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --surface: #222240;
+  --ink: #e8e8f0;
+  --ink-70: #b0b0c0;
+  --ink-60: #9090a0;
+  --ink-40: #606078;
+  --ink-10: #3a3a50;
+  --accent: #E67E22;
+  --accent-light: #F39C12;
+  --blue: #5DADE2;
+  --green: #2ECC71;
+  --red: #E74C3C;
+  --border: #3a3a50;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .header { background: #12122a; }
+[data-theme="dark"] .nav-btn.active { background: #2a2a48; color: var(--accent); }
+[data-theme="dark"] .nav-btn:hover { background: #2a2a48; }
+[data-theme="dark"] .btn { background: var(--surface); border-color: var(--ink-40); color: var(--ink); }
+[data-theme="dark"] .btn:hover { background: var(--ink-10); }
+[data-theme="dark"] .btn-accent { background: var(--accent); color: white; border-color: var(--accent); }
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+  background: var(--surface); color: var(--ink); border-color: var(--ink-40);
+}
+[data-theme="dark"] .metric-card { background: var(--surface); border-color: var(--ink-10); }
+[data-theme="dark"] .tbl th { background: var(--ink-10); color: var(--ink-70); }
+[data-theme="dark"] .tbl td { border-color: var(--ink-10); }
+[data-theme="dark"] .chart-card { background: var(--surface); }
+
+/* Theme toggle button */
+.theme-toggle {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.theme-toggle:hover { opacity: 1; }
+
+/* Help tooltip */
+.help-tip {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--ink-10);
+  color: var(--ink-60);
+  font-size: 9px;
+  text-align: center;
+  line-height: 14px;
+  cursor: help;
+  position: relative;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.help-tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: 120%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 240px;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}

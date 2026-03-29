@@ -133,6 +133,25 @@ export function validateWizard(w) {
   return { valid: errors.length === 0, errors, warnings };
 }
 
+/** Parameter help descriptions for tooltip display. */
+export const PARAM_HELP = {
+  solver_backend: "Linear: elastic frequency-domain. EQL: iterative strain-compatible. Nonlinear: time-domain Newmark-beta with MKZ/GQH backbone.",
+  boundary_condition: "Rigid: fixed base (no radiation damping). Elastic Halfspace: allows energy radiation into underlying rock.",
+  dt: "Analysis time step. Should satisfy dt < 1/(20·f_max) for numerical stability.",
+  f_max: "Maximum frequency resolved in the analysis. Controls sublayer thickness and dt requirements.",
+  thickness: "Layer thickness in meters. Auto-sublayering can split thick layers for better accuracy.",
+  vs: "Shear wave velocity (m/s). Determines layer stiffness: G_max = ρ·Vs².",
+  unit_weight: "Unit weight (kN/m³). Used to compute mass density ρ = γ/g and overburden stress.",
+  material: "MKZ: Modified Kondner-Zelasko. GQH: Generalized Quadratic Hyperbolic. Elastic: no nonlinearity.",
+  gamma_ref: "Reference strain at which G/Gmax = 0.5 (for MKZ) or the transition strain (for GQH).",
+  damping_min: "Small-strain damping ratio. Applied as baseline viscous damping.",
+  strain_ratio: "Effective/max strain ratio for EQL (typically 0.65 per Idriss & Sun 1992).",
+  convergence_tol: "EQL convergence tolerance. Iterations stop when max Vs change < this value.",
+  max_iterations: "Maximum EQL iterations before declaring non-convergence.",
+  scale_mode: "None: use as-is. Scale Factor: multiply all accelerations. Scale to PGA: adjust to target peak.",
+  damping_mode: "Frequency-independent: constant damping. Rayleigh: frequency-dependent (2 target frequencies).",
+};
+
 /** Boundary condition options. */
 export const BOUNDARY_CONDITIONS = [
   { value: "rigid", label: "Rigid Base" },

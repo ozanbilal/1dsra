@@ -6,8 +6,14 @@ import { ProfileEditor } from "./profile-editor.js";
 import { MotionPanel } from "./motion-panel.js";
 import {
   SOLVER_BACKENDS, BOUNDARY_CONDITIONS, MATERIAL_TYPES,
-  defaultLayer, computeGmax, validateWizard,
+  defaultLayer, computeGmax, validateWizard, PARAM_HELP,
 } from "./utils.js";
+
+function HelpTip({ id }) {
+  const tip = PARAM_HELP[id];
+  if (!tip) return null;
+  return html`<span className="help-tip" data-tip=${tip}>?</span>`;
+}
 import * as api from "./api.js";
 
 const STEPS = [
@@ -89,7 +95,7 @@ function AnalysisStep({ wizard, update, examples, onLoadExample, onReset }) {
       </div>
 
       <div className="field">
-        <label>Solver</label>
+        <label>Solver<${HelpTip} id="solver_backend" /></label>
         <select value=${wizard.solver_backend || "eql"}
           onChange=${e => update("solver_backend", e.target.value)}>
           ${SOLVER_BACKENDS.map(s => html`
@@ -99,7 +105,7 @@ function AnalysisStep({ wizard, update, examples, onLoadExample, onReset }) {
       </div>
 
       <div className="field">
-        <label>Boundary Condition</label>
+        <label>Boundary Condition<${HelpTip} id="boundary_condition" /></label>
         <select value=${wizard.boundary_condition || "rigid"}
           onChange=${e => update("boundary_condition", e.target.value)}>
           ${BOUNDARY_CONDITIONS.map(b => html`
@@ -142,7 +148,7 @@ function DampingStep({ wizard, update }) {
   return html`
     <div className="step-body">
       <div className="field">
-        <label>Damping Mode</label>
+        <label>Damping Mode<${HelpTip} id="damping_mode" /></label>
         <select value=${mode}
           onChange=${e => update("damping_mode", e.target.value)}>
           <option value="frequency_independent">Frequency Independent</option>
@@ -186,13 +192,13 @@ function ControlStep({ wizard, update, canRun, onRun, status, validation }) {
     <div className="step-body">
       <div className="row">
         <div className="field">
-          <label>Time Step dt (s)</label>
+          <label>Time Step dt (s)<${HelpTip} id="dt" /></label>
           <input type="number" step="0.001" min="0.0001" max="0.1"
             value=${wizard.dt || 0.005}
             onInput=${e => update("dt", parseFloat(e.target.value))} />
         </div>
         <div className="field">
-          <label>Max Frequency (Hz)</label>
+          <label>Max Frequency (Hz)<${HelpTip} id="f_max" /></label>
           <input type="number" step="1" min="1" max="100"
             value=${wizard.f_max || 25}
             onInput=${e => update("f_max", parseFloat(e.target.value))} />
@@ -202,7 +208,7 @@ function ControlStep({ wizard, update, canRun, onRun, status, validation }) {
       ${backend === "eql" ? html`
         <div className="row">
           <div className="field">
-            <label>Max Iterations</label>
+            <label>Max Iterations<${HelpTip} id="max_iterations" /></label>
             <input type="number" min="1" max="50"
               value=${wizard.max_iterations || 15}
               onInput=${e => update("max_iterations", parseInt(e.target.value))} />
@@ -214,7 +220,7 @@ function ControlStep({ wizard, update, canRun, onRun, status, validation }) {
               onInput=${e => update("convergence_tol", parseFloat(e.target.value) / 100)} />
           </div>
           <div className="field">
-            <label>Strain Ratio</label>
+            <label>Strain Ratio<${HelpTip} id="strain_ratio" /></label>
             <input type="number" step="0.05" min="0.1" max="1"
               value=${wizard.strain_ratio || 0.65}
               onInput=${e => update("strain_ratio", parseFloat(e.target.value))} />

@@ -1,14 +1,22 @@
 /**
  * StrataWave v2 — Results Viewer (6 tabs matching DEEPSOIL)
  */
-import { html, useState } from "./setup.js";
+import { html, useState, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
 import { fmt, RESULT_TABS } from "./utils.js";
-import { excelExportUrl, downloadUrl } from "./api.js";
+import { excelExportUrl, downloadUrl, fetchSignals } from "./api.js";
 
-export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot }) {
+export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs }) {
   const [activeTab, setActiveTab] = useState("time");
   const [selectedLayer, setSelectedLayer] = useState(0);
+  const [compareRunId, setCompareRunId] = useState(null);
+  const [compareSignals, setCompareSignals] = useState(null);
+
+  // Fetch compare run signals when compareRunId changes
+  useEffect(() => {
+    if (!compareRunId) { setCompareSignals(null); return; }
+    fetchSignals(compareRunId, outputRoot).then(setCompareSignals).catch(() => setCompareSignals(null));
+  }, [compareRunId]);
 
   if (!runId) {
     return html`<div className="results-empty">
@@ -37,6 +45,18 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
       <div className="results-header">
         <h3>Results — ${runId}</h3>
         <div className="results-actions">
+          ${runs && runs.length > 1 ? html`
+            <select style=${{ fontSize: "0.7rem", padding: "0.15rem 0.3rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+              value=${compareRunId || ""}
+              onChange=${e => setCompareRunId(e.target.value || null)}>
+              <option value="">Compare with...</option>
+              ${runs.filter(r => r.run_id !== runId).map(r => {
+                const ts = r.timestamp_utc || r.timestamp || "";
+                const label = ts ? "run_" + new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id;
+                return html`<option key=${r.run_id} value=${r.run_id}>${label} (${r.solver_backend || ""})</option>`;
+              })}
+            </select>
+          ` : null}
           <a href=${downloadUrl(runId, "surface_acc.csv", outputRoot)} className="btn btn-sm" download>CSV</a>
           <a href=${excelExportUrl(runId, outputRoot)} className="btn btn-sm btn-accent" download>Excel</a>
         </div>
@@ -62,7 +82,8 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
         ${activeTab === "spectral" && html`<${SpectralTab}
           psaPeriods=${psaPeriods} psaValues=${psaValues}
           inputPsaPeriods=${inputPsaPeriods} inputPsaValues=${inputPsaValues}
-          transferFreq=${transferFreq} transferAbs=${transferAbs} />`}
+          transferFreq=${transferFreq} transferAbs=${transferAbs}
+          compareSignals=${compareSignals} compareRunId=${compareRunId} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} profile=${profile} />`}
         ${activeTab === "convergence" && html`<${ConvergenceTab} summary=${summary} />`}
@@ -139,15 +160,17 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
   `;
 }
 
-function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs }) {
+function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, compareSignals, compareRunId }) {
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
 
   const hasInputPsa = inputPsaPeriods && inputPsaValues && inputPsaPeriods.length > 1;
+  const hasCompare = compareSignals && compareSignals.period_s && compareSignals.psa_m_s2;
   const series = [
     { x: psaPeriods, y: psaValues, label: "Surface PSA", color: "#D35400" },
     ...(hasInputPsa ? [{ x: inputPsaPeriods, y: inputPsaValues, label: "Input PSA", color: "#2980B9" }] : []),
+    ...(hasCompare ? [{ x: compareSignals.period_s, y: compareSignals.psa_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
   const hasTF = transferFreq && transferAbs;

@@ -160,23 +160,38 @@ export function MotionPanel({ wizard, update }) {
       </div>
 
       <!-- Preview -->
-      ${preview ? html`
-        <div style=${{ marginTop: "0.75rem" }}>
-          <div className="metric-row">
-            <div className="metric-card"><span>PGA (m/s²)</span><b>${fmt(preview.pga, 4)}</b></div>
-            <div className="metric-card"><span>PGA (g)</span><b>${fmt((preview.pga || 0) / 9.81, 4)}</b></div>
-            <div className="metric-card"><span>dt (s)</span><b>${fmt(preview.dt, 5)}</b></div>
-            <div className="metric-card"><span>Duration (s)</span><b>${fmt(preview.duration || preview.time?.[preview.time.length - 1], 2)}</b></div>
-            ${preview.npts ? html`<div className="metric-card"><span>Points</span><b>${preview.npts}</b></div>` : null}
+      ${preview ? (() => {
+        const rawPga = preview.pga || 0;
+        const scaleMode = wizard.scale_mode || "none";
+        let scaleFactor = 1.0;
+        if (scaleMode === "scale_factor" && wizard.scale_factor > 0) scaleFactor = wizard.scale_factor;
+        else if (scaleMode === "scale_to_pga" && wizard.target_pga_g > 0 && rawPga > 0) scaleFactor = (wizard.target_pga_g * 9.81) / rawPga;
+        const effectivePga = rawPga * scaleFactor;
+        const isScaled = Math.abs(scaleFactor - 1.0) > 0.001;
+        return html`
+          <div style=${{ marginTop: "0.75rem" }}>
+            <div className="metric-row">
+              <div className="metric-card"><span>${isScaled ? "Raw PGA" : "PGA"} (m/s²)</span><b>${fmt(rawPga, 4)}</b></div>
+              ${isScaled ? html`
+                <div className="metric-card"><span>Scaled PGA (m/s²)</span><b style=${{ color: "var(--accent)" }}>${fmt(effectivePga, 4)}</b></div>
+                <div className="metric-card"><span>Scaled PGA (g)</span><b style=${{ color: "var(--accent)" }}>${fmt(effectivePga / 9.81, 4)}</b></div>
+                <div className="metric-card"><span>Scale Factor</span><b>${fmt(scaleFactor, 3)}</b></div>
+              ` : html`
+                <div className="metric-card"><span>PGA (g)</span><b>${fmt(rawPga / 9.81, 4)}</b></div>
+              `}
+              <div className="metric-card"><span>dt (s)</span><b>${fmt(preview.dt, 5)}</b></div>
+              <div className="metric-card"><span>Duration (s)</span><b>${fmt(preview.duration || preview.time?.[preview.time.length - 1], 2)}</b></div>
+              ${preview.npts ? html`<div className="metric-card"><span>Points</span><b>${preview.npts}</b></div>` : null}
+            </div>
+            <${ChartCard}
+              title="Input Motion Preview"
+              x=${preview.time} y=${isScaled ? preview.acc.map(v => v * scaleFactor) : preview.acc}
+              xLabel="Time (s)" yLabel="Acceleration (m/s²)"
+              color="#2980B9"
+            />
           </div>
-          <${ChartCard}
-            title="Input Motion Preview"
-            x=${preview.time} y=${preview.acc}
-            xLabel="Time (s)" yLabel="Acceleration (m/s2)"
-            color="#2980B9"
-          />
-        </div>
-      ` : null}
+        `;
+      })() : null}
     </div>
   `;
 }

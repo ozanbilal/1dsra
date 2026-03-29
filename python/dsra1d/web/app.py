@@ -726,6 +726,7 @@ def _read_profile_layer_summary(
 
         gamma_by_idx: dict[int, float] = {}
         damping_by_idx: dict[int, float] = {}
+        tau_peak_by_idx: dict[int, float] = {}
         if _table_exists(conn, "eql_layers"):
             eql_rows = conn.execute(
                 "SELECT layer_idx, gamma_max, damping FROM eql_layers ORDER BY layer_idx ASC"
@@ -736,6 +737,17 @@ def _read_profile_layer_summary(
                     damping_by_idx[int(idx)] = float(damp)
                 except (TypeError, ValueError):
                     continue
+
+        # Fallback for nonlinear: read peak strain/stress from recorded hysteresis
+        if not gamma_by_idx and run_dir is not None:
+            for layer_idx_zero in range(len(layer_rows)):
+                hyst = _load_layer_recorded_hysteresis(run_dir, layer_index_zero_based=layer_idx_zero)
+                if hyst is not None:
+                    strain_arr, stress_arr = hyst
+                    if strain_arr.size > 0:
+                        gamma_by_idx[layer_idx_zero] = float(np.max(np.abs(strain_arr)))
+                    if stress_arr.size > 0:
+                        tau_peak_by_idx[layer_idx_zero] = float(np.max(np.abs(stress_arr))) / 1000.0  # Pa → kPa
 
         layers: list[ResultProfileLayerRow] = []
         cum_depth = 0.0
@@ -761,10 +773,9 @@ def _read_profile_layer_summary(
             damping_ratio_val = damping_by_idx.get(layer_idx)
             if damping_ratio_val is None:
                 damping_ratio_val = damping_by_idx.get(layer_idx + 1)
-            # Approximate peak shear stress: tau = gamma_max * G_eff
-            # For EQL: G_eff ~ Gmax * G/Gmax(gamma_eff); approximate as rho*Vs^2*gamma_max
-            tau_peak_kpa_val: float | None = None
-            if gamma_max is not None and gamma_max > 0:
+            # Peak shear stress: prefer recorded hysteresis, else approximate from Gmax
+            tau_peak_kpa_val: float | None = tau_peak_by_idx.get(layer_idx)
+            if tau_peak_kpa_val is None and gamma_max is not None and gamma_max > 0:
                 vs_val = float(vs)
                 rho = float(unit_weight) / 9.81
                 gmax_pa = rho * vs_val * vs_val

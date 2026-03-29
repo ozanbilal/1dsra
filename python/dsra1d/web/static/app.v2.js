@@ -98,6 +98,18 @@ function App() {
     }).catch(() => {});
   }, []);
 
+  // Delete a run
+  const handleDeleteRun = useCallback(async (runId) => {
+    try {
+      await api.deleteRun(runId, outputRoot);
+      setRuns(prev => prev.filter(r => r.run_id !== runId));
+      if (selectedRunId === runId) {
+        setSelectedRunId(null);
+        setSignals(null); setSummary(null); setHysteresis(null); setProfile(null);
+      }
+    } catch (ex) { setError("Delete failed: " + ex.message); }
+  }, [selectedRunId]);
+
   // Load run data when selection changes
   useEffect(() => {
     if (!selectedRunId) return;
@@ -120,6 +132,14 @@ function App() {
     setProgress(0);
     setError(null);
     try {
+      // Step 0: Server-side sanity check (5%)
+      setProgress(5);
+      const sanity = await api.wizardSanityCheck(wizard);
+      if (!sanity.ok) {
+        const msg = (sanity.blockers || []).join("; ") || "Server-side validation failed.";
+        throw new Error(msg);
+      }
+
       // Step 1: Generate config (10%)
       setProgress(10);
       const configResp = await api.generateConfig(wizard);
@@ -223,12 +243,16 @@ function App() {
                     const dateLabel = ts ? new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id.slice(4, 12);
                     const runLabel = "run_" + dateLabel;
                     return html`
-                      <button key=${r.run_id}
-                        className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
-                        onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
-                        <span className="nav-text run-text">${runLabel}</span>
-                        <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
-                      </button>
+                      <div key=${r.run_id} className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
+                        style=${{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                        <div style=${{ flex: 1 }} onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
+                          <span className="nav-text run-text">${runLabel}</span>
+                          <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
+                        </div>
+                        <button className="btn-icon" title="Delete run"
+                          style=${{ fontSize: "0.65rem", opacity: 0.4, padding: "0 0.2rem" }}
+                          onClick=${(e) => { e.stopPropagation(); handleDeleteRun(r.run_id); }}>✕</button>
+                      </div>
                     `;
                   })}
                 </div>

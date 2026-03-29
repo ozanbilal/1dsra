@@ -68,6 +68,46 @@ export function generateConfig(w) {
   return request("POST", "/api/config/from-wizard", body);
 }
 
+export function wizardSanityCheck(w) {
+  // Same body structure as generateConfig but sent to sanity-check endpoint
+  const layers = (w.layers || []).map(l => ({
+    name: l.name || "Layer",
+    thickness_m: l.thickness_m || l.thickness || 5.0,
+    vs_m_s: l.vs_m_s || l.vs || 150.0,
+    unit_weight_kN_m3: l.unit_weight_kN_m3 || l.unit_weight || 18.0,
+    material: l.material || "mkz",
+    material_params: l.material_params || {},
+  }));
+  const body = {
+    analysis_step: {
+      project_name: w.project_name || "wizard-project",
+      boundary_condition: w.boundary_condition || "rigid",
+      solver_backend: w.solver_backend || "eql",
+    },
+    profile_step: { layers },
+    motion_step: {
+      units: w.motion_units || "m/s2",
+      baseline: "remove_mean",
+      scale_mode: w.scale_mode || "none",
+      scale_factor: w.scale_factor || null,
+      target_pga: w.target_pga_g ? w.target_pga_g * 9.81 : null,
+      motion_path: w.motion_path || "",
+    },
+    damping_step: {
+      mode: w.damping_mode || "frequency_independent",
+      update_matrix: false,
+      mode_1: w.rayleigh_mode_1_hz || null,
+      mode_2: w.rayleigh_mode_2_hz || null,
+    },
+    control_step: {
+      dt: w.dt || 0.005,
+      f_max: w.f_max || 25.0,
+      output_dir: "out/web",
+    },
+  };
+  return request("POST", "/api/wizard/sanity-check", body);
+}
+
 export function fetchConfigTemplates() {
   return request("GET", "/api/config/templates");
 }

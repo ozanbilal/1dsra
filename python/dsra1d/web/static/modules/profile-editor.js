@@ -64,6 +64,30 @@ export function ProfileEditor({ wizard, setWizard }) {
     if (selectedIdx >= newLayers.length) setSelectedIdx(newLayers.length - 1);
   }
 
+  function copyLayer(idx) {
+    const clone = deepClone(layers[idx]);
+    clone.name = (clone.name || "Layer") + " (copy)";
+    const newLayers = [...layers.slice(0, idx + 1), clone, ...layers.slice(idx + 1)];
+    updateLayers(newLayers);
+    setSelectedIdx(idx + 1);
+  }
+
+  function moveLayerUp(idx) {
+    if (idx <= 0) return;
+    const newLayers = [...layers];
+    [newLayers[idx - 1], newLayers[idx]] = [newLayers[idx], newLayers[idx - 1]];
+    updateLayers(newLayers);
+    setSelectedIdx(idx - 1);
+  }
+
+  function moveLayerDown(idx) {
+    if (idx >= layers.length - 1) return;
+    const newLayers = [...layers];
+    [newLayers[idx], newLayers[idx + 1]] = [newLayers[idx + 1], newLayers[idx]];
+    updateLayers(newLayers);
+    setSelectedIdx(idx + 1);
+  }
+
   function updateLayer(idx, field, value) {
     const newLayers = deepClone(layers);
     const keys = field.split(".");
@@ -196,7 +220,12 @@ export function ProfileEditor({ wizard, setWizard }) {
                     ${MATERIAL_TYPES.map(m => html`<option key=${m.value} value=${m.value}>${m.value.toUpperCase()}</option>`)}
                   </select>
                 </td>
-                <td><button className="btn-icon" onClick=${e => { e.stopPropagation(); removeLayer(i); }}>✕</button></td>
+                <td className="layer-actions">
+                  <button className="btn-icon" title="Move up" onClick=${e => { e.stopPropagation(); moveLayerUp(i); }} disabled=${i === 0}>↑</button>
+                  <button className="btn-icon" title="Move down" onClick=${e => { e.stopPropagation(); moveLayerDown(i); }} disabled=${i === layers.length - 1}>↓</button>
+                  <button className="btn-icon" title="Duplicate" onClick=${e => { e.stopPropagation(); copyLayer(i); }}>⧉</button>
+                  <button className="btn-icon" title="Remove" onClick=${e => { e.stopPropagation(); removeLayer(i); }}>✕</button>
+                </td>
               </tr>
             `)}
           </tbody>

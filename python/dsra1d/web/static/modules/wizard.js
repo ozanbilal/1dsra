@@ -18,7 +18,7 @@ const STEPS = [
   { id: "control", label: "5. Analysis Control" },
 ];
 
-export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setActiveStep }) {
+export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setActiveStep, onReset }) {
   const [examples, setExamples] = useState([]);
 
   useEffect(() => {
@@ -56,6 +56,7 @@ export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setAc
           <${AnalysisStep}
             wizard=${wizard} update=${update}
             examples=${examples} onLoadExample=${loadExample}
+            onReset=${onReset}
           />
         `}
         ${activeStep === 1 && html`
@@ -77,7 +78,7 @@ export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setAc
 
 // ── Step 1: Analysis Type ────────────────────────────────
 
-function AnalysisStep({ wizard, update, examples, onLoadExample }) {
+function AnalysisStep({ wizard, update, examples, onLoadExample, onReset }) {
   return html`
     <div className="step-body">
       <div className="field">
@@ -118,6 +119,15 @@ function AnalysisStep({ wizard, update, examples, onLoadExample }) {
               </button>
             `)}
           </div>
+        </div>
+      ` : null}
+
+      ${onReset ? html`
+        <div style=${{ marginTop: "1rem", borderTop: "1px dashed var(--ink-10)", paddingTop: "0.75rem" }}>
+          <button className="btn btn-sm" onClick=${onReset}
+            style=${{ fontSize: "0.75rem", opacity: 0.7 }}>
+            Reset Wizard
+          </button>
         </div>
       ` : null}
     </div>

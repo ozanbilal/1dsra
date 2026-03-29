@@ -5,7 +5,7 @@
  * MultiSeriesChart   — multi-series overlay with log-x support
  * DepthProfileChart  — horizontal depth-oriented profile
  */
-import { html } from "./setup.js";
+import { html, useState, useCallback } from "./setup.js";
 import { fmt } from "./utils.js";
 
 // ── Geometry helpers ─────────────────────────────────────
@@ -141,6 +141,75 @@ function Axes({ geo, w, h, xLabel, yLabel, logX }) {
   `;
 }
 
+// ── Hover Crosshair ─────────────────────────────────────
+
+function nearestIndex(arr, target) {
+  let lo = 0, hi = arr.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] < target) lo = mid + 1; else hi = mid;
+  }
+  if (lo > 0 && Math.abs(arr[lo - 1] - target) < Math.abs(arr[lo] - target)) lo--;
+  return lo;
+}
+
+function svgMouseX(e, svgEl, w) {
+  if (!svgEl) return null;
+  const rect = svgEl.getBoundingClientRect();
+  return (e.clientX - rect.left) / rect.width * w;
+}
+
+function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, logX }) {
+  const [hover, setHover] = useState(null);
+
+  const onMove = useCallback((e) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * w;
+    if (mx < pad.left || mx > pad.left + plotW) { setHover(null); return; }
+    // Inverse scaleX
+    const frac = (mx - pad.left) / plotW;
+    setHover({ mx, frac });
+  }, [w, pad, plotW]);
+
+  const onLeave = useCallback(() => setHover(null), []);
+
+  if (!hover) return html`
+    <rect x=${pad.left} y=${pad.top} width=${plotW} height=${plotH}
+      fill="transparent" onMouseMove=${onMove} onMouseLeave=${onLeave} />
+  `;
+
+  // Find nearest values for each series
+  const items = seriesData.map(s => {
+    const idx = nearestIndex(s.xSorted || s.x, s.xAtFrac ? s.xAtFrac(hover.frac) : (s.x[0] + hover.frac * (s.x[s.x.length - 1] - s.x[0])));
+    return { label: s.label, color: s.color, x: s.x[idx], y: s.y[idx], sx: scaleX(s.x[idx]), sy: scaleY(s.y[idx]) };
+  }).filter(it => isFinite(it.x) && isFinite(it.y));
+
+  const cx = items.length > 0 ? items[0].sx : hover.mx;
+  const tooltipX = cx + 8 > w - 90 ? cx - 90 : cx + 8;
+
+  return html`
+    <g>
+      <rect x=${pad.left} y=${pad.top} width=${plotW} height=${plotH}
+        fill="transparent" onMouseMove=${onMove} onMouseLeave=${onLeave} />
+      <line x1=${cx} y1=${pad.top} x2=${cx} y2=${pad.top + plotH}
+        stroke="var(--ink-40)" stroke-width="0.5" stroke-dasharray="3,2" />
+      ${items.map((it, i) => html`
+        <circle key=${i} cx=${it.sx} cy=${it.sy} r="3" fill=${it.color} stroke="white" stroke-width="1" />
+      `)}
+      <g transform="translate(${tooltipX}, ${pad.top + 4})">
+        <rect x="0" y="0" width="82" height=${12 + items.length * 12} rx="3"
+          fill="var(--card, #fff)" stroke="var(--ink-10)" stroke-width="0.5" opacity="0.95" />
+        ${items.map((it, i) => html`
+          <text key=${i} x="4" y=${12 + i * 12} fill=${it.color} font-size="8" font-weight="600">
+            ${it.label ? it.label.slice(0, 8) + ": " : ""}${fmt(it.y, 4)}
+          </text>
+        `)}
+      </g>
+    </g>
+  `;
+}
+
 // ── Chart Card ───────────────────────────────────────────
 
 const COLORS = [
@@ -154,12 +223,17 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
   const geo = buildGeometry(x, y, w, h, PAD, { logX });
   if (!geo) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
+  const seriesData = [{ x, y, label: title, color: color || COLORS[0] }];
+
   return html`
     <div className="chart-card">
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
       <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
         <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
+        <${HoverOverlay} pad=${PAD} plotW=${geo.plotW} plotH=${geo.plotH}
+          w=${w} h=${h} seriesData=${seriesData}
+          scaleX=${geo.scaleX} scaleY=${geo.scaleY} logX=${logX} />
       </svg>
     </div>
   `;
@@ -182,6 +256,11 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
 
   const geos = series.map(s => buildGeometry(s.x, s.y, w, totalH, padLegend, { logX, xMin: gxMin, xMax: gxMax, yMin: gyMin, yMax: gyMax }));
 
+  const seriesData = series.map((s, i) => ({
+    x: s.x, y: s.y, label: s.label || `Series ${i + 1}`,
+    color: s.color || COLORS[i % COLORS.length],
+  }));
+
   return html`
     <div className="chart-card">
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
@@ -191,6 +270,9 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
           <polyline key=${i} points=${geo.points} fill="none"
             stroke=${series[i].color || COLORS[i % COLORS.length]} stroke-width="1.5" />
         ` : null)}
+        <${HoverOverlay} pad=${padLegend} plotW=${geos[0]?.plotW || 0} plotH=${geos[0]?.plotH || 0}
+          w=${w} h=${totalH} seriesData=${seriesData}
+          scaleX=${geos[0]?.scaleX} scaleY=${geos[0]?.scaleY} logX=${logX} />
         <!-- Legend -->
         ${series.map((s, i) => html`
           <g key=${"leg" + i} transform="translate(${PAD.left + 10}, ${totalH - series.length * 14 + i * 14})">

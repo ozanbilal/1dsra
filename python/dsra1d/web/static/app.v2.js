@@ -20,7 +20,9 @@ import { defaultLayer, computeGmax } from "./modules/utils.js";
 
 // ── Initial State ────────────────────────────────────────
 
-function initialWizard() {
+const WIZARD_STORAGE_KEY = "stratawave_wizard_v1";
+
+function defaultWizardState() {
   const layer1 = defaultLayer(0);
   layer1.material_params.gmax = computeGmax(layer1.vs, layer1.unit_weight);
   return {
@@ -42,6 +44,19 @@ function initialWizard() {
   };
 }
 
+function initialWizard() {
+  try {
+    const saved = localStorage.getItem(WIZARD_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Exclude motion_path — server-side path may be stale across sessions
+      parsed.motion_path = "";
+      if (parsed.layers && parsed.layers.length > 0) return parsed;
+    }
+  } catch { /* ignore parse errors */ }
+  return defaultWizardState();
+}
+
 // ── App Component ────────────────────────────────────────
 
 function App() {
@@ -57,6 +72,20 @@ function App() {
   const [error, setError] = useState(null);
 
   const outputRoot = "out/web";
+
+  // Persist wizard state to localStorage (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try { localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(wizard)); } catch { /* quota exceeded */ }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [wizard]);
+
+  const resetWizard = useCallback(() => {
+    localStorage.removeItem(WIZARD_STORAGE_KEY);
+    setWizard(defaultWizardState());
+    setActiveStep(0);
+  }, []);
 
   // Load runs on mount
   useEffect(() => {
@@ -202,6 +231,7 @@ function App() {
               status=${status}
               activeStep=${activeStep}
               setActiveStep=${setActiveStep}
+              onReset=${resetWizard}
             />
           ` : html`
             <${ResultsViewer}

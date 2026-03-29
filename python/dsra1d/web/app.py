@@ -2318,6 +2318,23 @@ def create_app() -> FastAPI:
             )
         return items
 
+    @app.delete("/api/runs/{run_id}")
+    def delete_run(
+        run_id: str,
+        output_root: str = Query(default=""),
+    ) -> dict[str, str]:
+        """Delete a run directory permanently."""
+        import re
+        import shutil
+
+        if not re.match(r"^run-[a-f0-9]{12}$", run_id):
+            raise HTTPException(status_code=400, detail=f"Invalid run_id format: {run_id}")
+        run_dir = _resolve_run_dir(run_id, output_root)
+        if not run_dir.is_dir():
+            raise HTTPException(status_code=404, detail=f"Run directory not found: {run_id}")
+        shutil.rmtree(run_dir, ignore_errors=True)
+        return {"status": "deleted", "run_id": run_id}
+
     @app.get("/api/runs/tree")
     def runs_tree(output_root: str = Query(default="")) -> dict[str, object]:
         root = _safe_real_path(output_root) if output_root else _default_output_root()

@@ -155,6 +155,7 @@ function App() {
 
   const [activeStep, setActiveStep] = useState(0);
   const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
+  const [runFilter, setRunFilter] = useState("");
 
   return html`
     <div className="shell">
@@ -186,21 +187,53 @@ function App() {
 
           <div className="nav-divider" />
 
-          <div className="nav-section">
-            <div className="nav-label">RUNS</div>
-            ${runs.slice(0, 15).map(r => {
-              const ts = r.timestamp_utc || r.timestamp || "";
-              const dateLabel = ts ? new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id.slice(4, 12);
-              const runLabel = "run_" + dateLabel;
-              return html`
-                <button key=${r.run_id}
-                  className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
-                  onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
-                  <span className="nav-text run-text">${runLabel}</span>
-                  <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
-                </button>
-              `;
-            })}
+          <div className="nav-section nav-runs-section">
+            <div className="nav-label">RUNS (${runs.length})</div>
+            ${runs.length > 5 ? html`
+              <input type="text" className="nav-search" placeholder="Filter..."
+                value=${runFilter} onInput=${e => setRunFilter(e.target.value)}
+                style=${{ fontSize: "0.7rem", padding: "0.2rem 0.4rem", margin: "0 0.5rem 0.25rem", width: "calc(100% - 1rem)", border: "1px solid var(--ink-10)", borderRadius: "4px" }} />
+            ` : null}
+            ${(() => {
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+              const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+              const filterLc = runFilter.toLowerCase();
+              const filtered = runs.filter(r => {
+                if (!filterLc) return true;
+                const backend = (r.solver_backend || r.backend || "").toLowerCase();
+                const rid = r.run_id.toLowerCase();
+                return backend.includes(filterLc) || rid.includes(filterLc);
+              });
+              const groups = { "Today": [], "Yesterday": [], "This Week": [], "Older": [] };
+              for (const r of filtered) {
+                const ts = r.timestamp_utc || r.timestamp || "";
+                const d = ts ? new Date(ts) : null;
+                if (d && d >= today) groups["Today"].push(r);
+                else if (d && d >= yesterday) groups["Yesterday"].push(r);
+                else if (d && d >= weekAgo) groups["This Week"].push(r);
+                else groups["Older"].push(r);
+              }
+              return Object.entries(groups).filter(([, arr]) => arr.length > 0).map(([label, arr]) => html`
+                <div key=${label}>
+                  <div className="nav-group-label" style=${{ fontSize: "0.6rem", color: "var(--ink-40)", padding: "0.25rem 0.75rem 0.1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>${label}</div>
+                  ${arr.map(r => {
+                    const ts = r.timestamp_utc || r.timestamp || "";
+                    const dateLabel = ts ? new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id.slice(4, 12);
+                    const runLabel = "run_" + dateLabel;
+                    return html`
+                      <button key=${r.run_id}
+                        className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
+                        onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
+                        <span className="nav-text run-text">${runLabel}</span>
+                        <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
+                      </button>
+                    `;
+                  })}
+                </div>
+              `);
+            })()}
           </div>
 
           ${status === "running" ? html`

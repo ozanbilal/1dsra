@@ -159,6 +159,10 @@ export function fetchRunTree(outputRoot = "out/web") {
   return request("GET", `/api/runs/tree?output_root=${encodeURIComponent(outputRoot)}`);
 }
 
+export function deleteRun(runId, outputRoot = "out/web") {
+  return request("DELETE", `/api/runs/${runId}?output_root=${encodeURIComponent(outputRoot)}`);
+}
+
 // ── Results ──────────────────────────────────────────────
 
 export function fetchSignals(runId, outputRoot = "out/web") {

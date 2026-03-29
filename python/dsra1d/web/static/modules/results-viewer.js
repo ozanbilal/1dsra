@@ -64,7 +64,7 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           inputPsaPeriods=${inputPsaPeriods} inputPsaValues=${inputPsaValues}
           transferFreq=${transferFreq} transferAbs=${transferAbs} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
-        ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} />`}
+        ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} profile=${profile} />`}
         ${activeTab === "convergence" && html`<${ConvergenceTab} summary=${summary} />`}
       </div>
     </div>
@@ -245,21 +245,78 @@ function ProfileTab({ profile }) {
   `;
 }
 
-function MobilizedTab({ hysteresis }) {
-  if (!hysteresis || !hysteresis.layers) {
-    return html`<p className="muted">No mobilized strength data. Run a nonlinear analysis.</p>`;
+function MobilizedTab({ hysteresis, profile }) {
+  if (!hysteresis || !hysteresis.layers || !hysteresis.layers.length) {
+    return html`<p className="muted">No mobilized strength data. Run a nonlinear or EQL analysis.</p>`;
+  }
+
+  const layers = hysteresis.layers;
+
+  // Build depth arrays for mobilized strength ratio chart
+  const depths = [], mobRatios = [], gOverGmax = [], dampingVals = [];
+  let d = 0;
+  const profileLayers = profile?.layers || [];
+  for (let i = 0; i < layers.length; i++) {
+    const pl = profileLayers[i];
+    const thick = pl ? (pl.thickness_m || pl.thickness || 1) : 1;
+    const mob = layers[i].mobilized_strength_ratio || 0;
+    const gg = layers[i].g_over_gmax || 0;
+    const dp = layers[i].damping_proxy || 0;
+    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp);
+    d += thick;
+    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp);
   }
 
   return html`
     <div className="tab-content">
       <div className="metric-row">
-        ${hysteresis.layers.map((l, i) => html`
+        ${layers.map((l, i) => html`
           <div className="metric-card" key=${i}>
-            <span>Layer ${i + 1}</span>
-            <b>Energy: ${fmt(l.energy_dissipation, 4)}</b>
+            <span>${l.layer_name || `Layer ${i + 1}`}</span>
+            <b>Mob: ${fmt(l.mobilized_strength_ratio, 3)}</b>
           </div>
         `)}
       </div>
+      <div className="profile-charts-grid">
+        <${DepthProfileChart}
+          title="Mobilized Strength Ratio"
+          depths=${depths} values=${mobRatios}
+          xLabel="τ_mob / σ'v₀" yLabel="Depth (m)" color="#E74C3C"
+        />
+        <${DepthProfileChart}
+          title="G/Gmax"
+          depths=${depths} values=${gOverGmax}
+          xLabel="G/Gmax" yLabel="Depth (m)" color="#2980B9"
+        />
+        <${DepthProfileChart}
+          title="Damping Ratio"
+          depths=${depths} values=${dampingVals.map(v => v * 100)}
+          xLabel="Damping (%)" yLabel="Depth (m)" color="#27AE60"
+        />
+      </div>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>#</th><th>Layer</th><th>Material</th>
+            <th>γ_amp</th><th>G/Gmax</th><th>Mob. Ratio</th>
+            <th>Damping</th><th>Loop Energy</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${layers.map((l, i) => html`
+            <tr key=${i}>
+              <td>${i + 1}</td>
+              <td>${l.layer_name || "—"}</td>
+              <td>${l.material || "—"}</td>
+              <td>${fmt(l.strain_amplitude, 5)}</td>
+              <td>${fmt(l.g_over_gmax, 4)}</td>
+              <td>${fmt(l.mobilized_strength_ratio, 4)}</td>
+              <td>${fmt(l.damping_proxy * 100, 2)}%</td>
+              <td>${fmt(l.loop_energy, 2)}</td>
+            </tr>
+          `)}
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -267,13 +324,16 @@ function MobilizedTab({ hysteresis }) {
 function ConvergenceTab({ summary }) {
   if (!summary) return html`<p className="muted">No convergence data.</p>`;
 
+  const conv = summary.convergence || {};
   const eql = summary.eql_summary;
+
+  // EQL convergence
   if (eql) {
     return html`
       <div className="tab-content">
         <div className="metric-row">
           <div className="metric-card"><span>Iterations</span><b>${eql.iterations}</b></div>
-          <div className="metric-card"><span>Converged</span><b>${eql.converged ? "Yes" : "No"}</b></div>
+          <div className="metric-card"><span>Converged</span><b style=${{ color: eql.converged ? "#27AE60" : "#E74C3C" }}>${eql.converged ? "Yes" : "No"}</b></div>
           <div className="metric-card"><span>Final Change</span><b>${fmt((eql.max_change_history || []).slice(-1)[0] * 100, 2)}%</b></div>
         </div>
         ${eql.max_change_history ? html`
@@ -289,13 +349,39 @@ function ConvergenceTab({ summary }) {
     `;
   }
 
-  // Nonlinear diagnostics
+  // Nonlinear convergence diagnostics
+  const severity = conv.convergence_severity || "unknown";
+  const sevColor = severity === "ok" ? "#27AE60" : severity === "warning" ? "#F39C12" : severity === "error" ? "#E74C3C" : "var(--ink-60)";
+  const warnCount = conv.solver_warning_count;
+  const failCount = conv.solver_failed_converge_count;
+  const analyzeFailCount = conv.solver_analyze_failed_count;
+  const divZeroCount = conv.solver_divide_by_zero_count;
+  const fallbackCount = conv.solver_dynamic_fallback_failed_count;
+
   return html`
     <div className="tab-content">
       <div className="metric-row">
-        <div className="metric-card"><span>Solver</span><b>${summary.backend || "nonlinear"}</b></div>
+        <div className="metric-card"><span>Solver</span><b>${summary.solver_backend || "nonlinear"}</b></div>
         <div className="metric-card"><span>Status</span><b>${summary.status || "ok"}</b></div>
+        <div className="metric-card">
+          <span>Severity</span>
+          <b style=${{ color: sevColor, textTransform: "uppercase" }}>${severity}</b>
+        </div>
       </div>
+      ${(warnCount != null || failCount != null) ? html`
+        <div className="metric-row" style=${{ marginTop: "0.5rem" }}>
+          ${warnCount != null ? html`<div className="metric-card"><span>Warnings</span><b style=${{ color: warnCount > 0 ? "#F39C12" : "inherit" }}>${warnCount}</b></div>` : null}
+          ${failCount != null ? html`<div className="metric-card"><span>Failed Converge</span><b style=${{ color: failCount > 0 ? "#E74C3C" : "inherit" }}>${failCount}</b></div>` : null}
+          ${analyzeFailCount != null ? html`<div className="metric-card"><span>Analyze Failed</span><b style=${{ color: analyzeFailCount > 0 ? "#E74C3C" : "inherit" }}>${analyzeFailCount}</b></div>` : null}
+          ${divZeroCount != null ? html`<div className="metric-card"><span>Div by Zero</span><b style=${{ color: divZeroCount > 0 ? "#E74C3C" : "inherit" }}>${divZeroCount}</b></div>` : null}
+          ${fallbackCount != null ? html`<div className="metric-card"><span>Fallback Failed</span><b style=${{ color: fallbackCount > 0 ? "#E74C3C" : "inherit" }}>${fallbackCount}</b></div>` : null}
+        </div>
+      ` : null}
+      ${summary.solver_notes ? html`
+        <div style=${{ marginTop: "0.5rem", padding: "0.5rem", background: "rgba(0,0,0,0.03)", borderRadius: "6px", fontSize: "0.8rem", color: "var(--ink-60)" }}>
+          ${summary.solver_notes}
+        </div>
+      ` : null}
     </div>
   `;
 }

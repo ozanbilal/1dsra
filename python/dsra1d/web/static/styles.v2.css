@@ -685,6 +685,10 @@ body {
 }
 .theme-toggle:hover { opacity: 1; }
 
+/* Step completion badges */
+.nav-num.step-ok { background: #27AE60; color: white; }
+.nav-num.step-blocked { background: var(--ink-10); color: var(--ink-40); }
+
 /* Help tooltip */
 .help-tip {
   display: inline-block;

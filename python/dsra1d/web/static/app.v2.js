@@ -218,14 +218,26 @@ function App() {
         <nav className="nav-rail">
           <div className="nav-section">
             <div className="nav-label">WIZARD</div>
-            ${["Analysis Type", "Soil Profile", "Input Motion", "Damping", "Analysis Control"].map((label, i) => html`
+            ${(() => {
+              // Step completion status
+              const hasLayers = wizard.layers && wizard.layers.length > 0;
+              const hasMotion = !!wizard.motion_path;
+              const stepStatus = [
+                wizard.solver_backend ? "ok" : "pending",        // 1. Analysis Type
+                hasLayers ? "ok" : "pending",                     // 2. Soil Profile
+                hasMotion ? "ok" : "pending",                     // 3. Input Motion
+                "ok",                                             // 4. Damping (always has defaults)
+                hasLayers && hasMotion ? "ok" : "blocked",        // 5. Analysis Control
+              ];
+              return ["Analysis Type", "Soil Profile", "Input Motion", "Damping", "Analysis Control"].map((label, i) => html`
               <button key=${i}
                 className=${"nav-btn" + (viewMode === "wizard" && activeStep === i ? " active" : "")}
                 onClick=${() => { setViewMode("wizard"); setActiveStep(i); }}>
-                <span className="nav-num">${i + 1}</span>
+                <span className=${"nav-num" + (stepStatus[i] === "ok" ? " step-ok" : stepStatus[i] === "blocked" ? " step-blocked" : "")}>${stepStatus[i] === "ok" ? "\u2713" : i + 1}</span>
                 <span className="nav-text">${label}</span>
               </button>
-            `)}
+            `);
+            })()}
           </div>
 
           <div className="nav-divider" />

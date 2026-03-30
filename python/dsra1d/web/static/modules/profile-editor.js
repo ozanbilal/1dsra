@@ -88,6 +88,59 @@ export function ProfileEditor({ wizard, setWizard }) {
     setSelectedIdx(idx + 1);
   }
 
+  function exportLayersCSV() {
+    const header = "name,thickness_m,vs_m_s,unit_weight_kN_m3,material,gamma_ref,damping_min,damping_max";
+    const rows = layers.map(l => {
+      const mp = l.material_params || {};
+      return [
+        l.name || "Layer", l.thickness || l.thickness_m || 5, l.vs || l.vs_m_s || 150,
+        l.unit_weight || l.unit_weight_kN_m3 || 18, l.material || "mkz",
+        mp.gamma_ref || 0.035, mp.damping_min || 0.01, mp.damping_max || 0.15,
+      ].join(",");
+    });
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "soil_profile.csv";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importLayersCSV(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const lines = reader.result.split("\n").filter(l => l.trim());
+      if (lines.length < 2) return;
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      const imported = [];
+      for (let i = 1; i < lines.length; i++) {
+        const vals = lines[i].split(",").map(v => v.trim());
+        const get = (key) => vals[headers.indexOf(key)] || "";
+        const layer = defaultLayer(i - 1);
+        layer.name = get("name") || `Layer ${i}`;
+        layer.thickness = parseFloat(get("thickness_m")) || 5;
+        layer.vs = parseFloat(get("vs_m_s") || get("vs")) || 150;
+        layer.unit_weight = parseFloat(get("unit_weight_kn_m3") || get("unit_weight")) || 18;
+        layer.material = get("material") || "mkz";
+        layer.material_params.gamma_ref = parseFloat(get("gamma_ref")) || 0.035;
+        layer.material_params.damping_min = parseFloat(get("damping_min")) || 0.01;
+        layer.material_params.damping_max = parseFloat(get("damping_max")) || 0.15;
+        layer.material_params.gmax = computeGmax(layer.vs, layer.unit_weight);
+        imported.push(layer);
+      }
+      if (imported.length > 0) {
+        updateLayers(imported);
+        setSelectedIdx(0);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
   function updateLayer(idx, field, value) {
     const newLayers = deepClone(layers);
     const keys = field.split(".");
@@ -163,6 +216,12 @@ export function ProfileEditor({ wizard, setWizard }) {
           <h4>Soil Layers (${layers.length})</h4>
           <div style=${{ display: "flex", gap: "0.35rem" }}>
             <button className="btn btn-sm" onClick=${addLayer}>+ Add</button>
+            <button className="btn btn-sm" onClick=${exportLayersCSV} title="Export layers to CSV">Export</button>
+            <label className="btn btn-sm" style=${{ cursor: "pointer", margin: 0 }} title="Import layers from CSV">
+              Import
+              <input type="file" accept=".csv,.txt" onChange=${importLayersCSV}
+                style=${{ display: "none" }} />
+            </label>
           </div>
         </div>
         <details className="auto-profile-details">

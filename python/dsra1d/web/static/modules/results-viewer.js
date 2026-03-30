@@ -45,7 +45,17 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
   return html`
     <div className="results-viewer">
       <div className="results-header">
-        <h3>Results — ${runId}</h3>
+        <div>
+          <h3 style=${{ margin: 0 }}>Results — ${runId}</h3>
+          ${summary ? html`
+            <div style=${{ fontSize: "0.75rem", color: "var(--ink-60)", marginTop: "0.15rem", display: "flex", gap: "0.75rem" }}>
+              ${summary.solver_backend ? html`<span>Solver: <b>${summary.solver_backend}</b></span>` : null}
+              ${summary.project_name ? html`<span>Project: <b>${summary.project_name}</b></span>` : null}
+              ${summary.input_motion ? html`<span>Motion: <b>${summary.input_motion.split(/[/\\]/).pop()}</b></span>` : null}
+              ${summary.status ? html`<span>Status: <b style=${{ color: summary.status === "ok" ? "var(--green)" : "var(--red)" }}>${summary.status}</b></span>` : null}
+            </div>
+          ` : null}
+        </div>
         <div className="results-actions">
           ${runs && runs.length > 1 ? html`
             <select style=${{ fontSize: "0.7rem", padding: "0.15rem 0.3rem", borderRadius: "4px", border: "1px solid var(--border)" }}

@@ -3,7 +3,7 @@
  */
 import { html, useState, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
-import { fmt, RESULT_TABS } from "./utils.js";
+import { fmt, RESULT_TABS, STANDARD_PERIODS } from "./utils.js";
 import { excelExportUrl, downloadUrl, fetchSignals } from "./api.js";
 
 export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs }) {
@@ -113,6 +113,26 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
     ...(hasCompare ? [{ x: compareSignals.time_s, y: compareSignals.surface_acc_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
+  // Arias Intensity: Ia = (π / 2g) × ∫ a²(t) dt — cumulative
+  const dt = time.length > 1 ? time[1] - time[0] : 0.01;
+  const ariasTime = [], ariasNorm = [];
+  let cumIa = 0;
+  for (let i = 0; i < surfAcc.length; i++) {
+    cumIa += surfAcc[i] * surfAcc[i] * dt;
+    ariasTime.push(time[i]);
+    ariasNorm.push(cumIa);
+  }
+  const iaTotal = cumIa * Math.PI / (2 * 9.81);
+  // Normalize to 0-1 for Husid plot
+  const iaNormalized = ariasNorm.map(v => cumIa > 0 ? v / cumIa : 0);
+  // Significant duration D5-95
+  let t5 = 0, t95 = 0;
+  for (let i = 0; i < iaNormalized.length; i++) {
+    if (iaNormalized[i] >= 0.05 && t5 === 0) t5 = ariasTime[i];
+    if (iaNormalized[i] >= 0.95 && t95 === 0) { t95 = ariasTime[i]; break; }
+  }
+  const d595 = t95 - t5;
+
   return html`
     <div className="tab-content">
       <div className="metric-row">
@@ -122,13 +142,21 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
           <div className="metric-card"><span>Input PGA (m/s²)</span><b>${fmt(pgaInput || Math.max(...inputAcc.map(Math.abs)), 4)}</b></div>
           <div className="metric-card"><span>Amp. Ratio</span><b>${fmt(pga / ((pgaInput || Math.max(...inputAcc.map(Math.abs))) || 1), 3)}</b></div>
         ` : null}
+        <div className="metric-card"><span>Arias Int. (m/s)</span><b>${fmt(iaTotal, 4)}</b></div>
+        <div className="metric-card"><span>D5-95 (s)</span><b>${fmt(d595, 2)}</b></div>
         <div className="metric-card"><span>Duration (s)</span><b>${fmt(time[time.length - 1], 2)}</b></div>
-        <div className="metric-card"><span>Samples</span><b>${time.length}</b></div>
       </div>
       <${MultiSeriesChart}
         title="Acceleration Time History"
         series=${series}
         xLabel="Time (s)" yLabel="Acceleration (m/s²)"
+      />
+      <${ChartCard}
+        title="Husid Plot (Normalized Arias Intensity)"
+        subtitle="D5-95 = ${fmt(d595, 2)}s"
+        x=${ariasTime} y=${iaNormalized}
+        xLabel="Time (s)" yLabel="Normalized Ia"
+        color="#27AE60"
       />
     </div>
   `;
@@ -163,6 +191,23 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
   `;
 }
 
+function interpolateAtPeriods(periods, values, targetPeriods) {
+  // Linear interpolation in log-space for spectral data
+  return targetPeriods.map(tp => {
+    if (!periods || periods.length < 2) return null;
+    let lo = 0;
+    for (let i = 1; i < periods.length; i++) {
+      if (periods[i] >= tp) { lo = i - 1; break; }
+      lo = i;
+    }
+    if (lo >= periods.length - 1) return values[periods.length - 1];
+    if (lo < 0) return values[0];
+    const hi = lo + 1;
+    const frac = (tp - periods[lo]) / (periods[hi] - periods[lo] || 1);
+    return values[lo] + frac * (values[hi] - values[lo]);
+  });
+}
+
 function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, compareSignals, compareRunId }) {
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
@@ -178,14 +223,42 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
 
   const hasTF = transferFreq && transferAbs;
 
+  // Spectral Amplification Ratio (surface / input)
+  const hasAmpRatio = hasInputPsa && psaPeriods.length > 2;
+  let ampRatioPeriods = null, ampRatioValues = null;
+  if (hasAmpRatio) {
+    const inputInterp = interpolateAtPeriods(inputPsaPeriods, inputPsaValues, psaPeriods);
+    ampRatioPeriods = [];
+    ampRatioValues = [];
+    for (let i = 0; i < psaPeriods.length; i++) {
+      const inp = inputInterp[i];
+      if (inp != null && inp > 0.001) {
+        ampRatioPeriods.push(psaPeriods[i]);
+        ampRatioValues.push(psaValues[i] / inp);
+      }
+    }
+  }
+
+  // PSA Summary Table at standard periods
+  const surfAtStd = interpolateAtPeriods(psaPeriods, psaValues, STANDARD_PERIODS);
+  const inputAtStd = hasInputPsa ? interpolateAtPeriods(inputPsaPeriods, inputPsaValues, STANDARD_PERIODS) : null;
+
   return html`
     <div className="tab-content">
       <${MultiSeriesChart}
         title="Response Spectra (5% damping)"
         series=${series}
-        xLabel="Period (s)" yLabel="PSA (m/s2)"
+        xLabel="Period (s)" yLabel="PSA (m/s²)"
         logX=${true}
       />
+      ${hasAmpRatio && ampRatioPeriods.length > 2 ? html`
+        <${ChartCard}
+          title="Spectral Amplification Ratio (Surface / Input)"
+          x=${ampRatioPeriods} y=${ampRatioValues}
+          xLabel="Period (s)" yLabel="Amplification"
+          color="#E74C3C" logX=${true}
+        />
+      ` : null}
       ${hasTF ? html`
         <${ChartCard}
           title="Transfer Function |H(f)|"
@@ -194,6 +267,39 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
           color="#2980B9" logX=${true}
         />
       ` : null}
+      <div style=${{ marginTop: "0.75rem" }}>
+        <h4 style=${{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>PSA Summary at Standard Periods</h4>
+        <div style=${{ maxHeight: "300px", overflowY: "auto" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Period (s)</th><th>Freq (Hz)</th>
+                <th>Surface PSA (m/s²)</th><th>Surface PSA (g)</th>
+                ${hasInputPsa ? html`<th>Input PSA (m/s²)</th><th>Amp. Ratio</th>` : null}
+              </tr>
+            </thead>
+            <tbody>
+              ${STANDARD_PERIODS.map((T, i) => {
+                const sv = surfAtStd[i];
+                const iv = inputAtStd ? inputAtStd[i] : null;
+                const ratio = iv != null && iv > 0.001 ? sv / iv : null;
+                return html`
+                  <tr key=${T}>
+                    <td>${fmt(T, 3)}</td>
+                    <td>${fmt(1 / T, 2)}</td>
+                    <td>${sv != null ? fmt(sv, 4) : "—"}</td>
+                    <td>${sv != null ? fmt(sv / 9.81, 4) : "—"}</td>
+                    ${hasInputPsa ? html`
+                      <td>${iv != null ? fmt(iv, 4) : "—"}</td>
+                      <td>${ratio != null ? fmt(ratio, 3) : "—"}</td>
+                    ` : null}
+                  </tr>
+                `;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   `;
 }

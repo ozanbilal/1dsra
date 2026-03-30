@@ -4,14 +4,21 @@
  */
 import { html, useState, useEffect, useRef } from "./setup.js";
 import { ChartCard } from "./charts.js";
-import { fmt } from "./utils.js";
+import { fmt, PARAM_HELP } from "./utils.js";
 import * as api from "./api.js";
+
+function HelpTip({ id }) {
+  const tip = PARAM_HELP[id];
+  if (!tip) return null;
+  return html`<span className="help-tip" data-tip=${tip}>?</span>`;
+}
 
 export function MotionPanel({ wizard, update }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [library, setLibrary] = useState([]);
+  const [batchMode, setBatchMode] = useState(false);
   const [libLoading, setLibLoading] = useState(false);
   const csvRef = useRef(null);
   const at2Ref = useRef(null);
@@ -120,11 +127,58 @@ export function MotionPanel({ wizard, update }) {
         </div>
       ` : libLoading ? html`<p className="muted" style=${{ marginTop: "0.5rem" }}>Loading motion library...</p>` : null}
 
+      <!-- Batch mode toggle -->
+      ${library.length > 1 ? html`
+        <div style=${{ marginTop: "0.5rem" }}>
+          <label style=${{ fontSize: "0.8rem", cursor: "pointer" }}>
+            <input type="checkbox" checked=${batchMode}
+              onChange=${e => {
+                setBatchMode(e.target.checked);
+                if (e.target.checked) {
+                  // Initialize batch_motions with current selection if any
+                  const initial = wizard.motion_path ? [wizard.motion_path] : [];
+                  update("batch_motions", initial);
+                } else {
+                  update("batch_motions", null);
+                }
+              }} />
+            ${" "}Batch mode — run with multiple motions
+          </label>
+        </div>
+      ` : null}
+
+      ${batchMode && library.length > 0 ? html`
+        <div style=${{ marginTop: "0.25rem", maxHeight: "180px", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.25rem" }}>
+          ${library.map(m => {
+            const checked = (wizard.batch_motions || []).includes(m.path);
+            return html`
+              <label key=${m.path} style=${{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.15rem 0.25rem", fontSize: "0.75rem", cursor: "pointer" }}>
+                <input type="checkbox" checked=${checked}
+                  onChange=${e => {
+                    const prev = wizard.batch_motions || [];
+                    const next = e.target.checked ? [...prev, m.path] : prev.filter(p => p !== m.path);
+                    update("batch_motions", next);
+                    if (next.length > 0 && !wizard.motion_path) update("motion_path", next[0]);
+                  }} />
+                ${m.name} (${m.format.toUpperCase()})
+              </label>
+            `;
+          })}
+          <div style=${{ fontSize: "0.7rem", color: "var(--ink-60)", marginTop: "0.2rem", padding: "0 0.25rem" }}>
+            ${(wizard.batch_motions || []).length} motion(s) selected
+          </div>
+        </div>
+      ` : null}
+
       <!-- Current selection -->
       ${wizard.motion_path ? html`
         <div className="field" style=${{ marginTop: "0.5rem" }}>
           <label>Selected Motion</label>
-          <input type="text" value=${wizard.motion_path} readOnly style=${{ color: "var(--ink-60)", fontSize: "0.75rem" }} />
+          <div style=${{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+            <input type="text" value=${wizard.motion_path} readOnly style=${{ color: "var(--ink-60)", fontSize: "0.75rem", flex: 1 }} />
+            <button className="btn btn-sm" onClick=${() => { update("motion_path", ""); setPreview(null); }}
+              style=${{ fontSize: "0.65rem", padding: "0.15rem 0.4rem" }}>Clear</button>
+          </div>
         </div>
       ` : null}
 
@@ -133,7 +187,7 @@ export function MotionPanel({ wizard, update }) {
       <!-- Scaling -->
       <div className="row" style=${{ marginTop: "0.75rem" }}>
         <div className="field">
-          <label>Scale Mode</label>
+          <label>Scale Mode<${HelpTip} id="scale_mode" /></label>
           <select value=${wizard.scale_mode || "none"}
             onChange=${e => update("scale_mode", e.target.value)}>
             <option value="none">No Scaling</option>

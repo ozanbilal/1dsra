@@ -75,7 +75,8 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
       <div className="results-content">
         ${activeTab === "time" && html`<${TimeHistoryTab}
           time=${time} surfAcc=${surfAcc} inputAcc=${inputAcc}
-          pga=${signals?.pga} pgaInput=${signals?.pga_input} />`}
+          pga=${signals?.pga} pgaInput=${signals?.pga_input}
+          compareSignals=${compareSignals} compareRunId=${compareRunId} />`}
         ${activeTab === "stress_strain" && html`<${StressStrainTab}
           hysteresis=${hysteresis} selectedLayer=${selectedLayer}
           onLayerChange=${setSelectedLayer} />`}
@@ -94,11 +95,12 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
 // ── Tab Components ───────────────────────────────────────
 
-function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput }) {
+function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, compareSignals, compareRunId }) {
   if (!time || !surfAcc) return html`<p className="muted">No time history data.</p>`;
 
   const pga = pgaFromApi || Math.max(...surfAcc.map(Math.abs));
   const hasInput = inputAcc && inputAcc.length > 1;
+  const hasCompare = compareSignals && compareSignals.time_s && compareSignals.surface_acc_m_s2;
 
   // Build input time axis (same dt, same length as input)
   const inputTime = hasInput
@@ -108,6 +110,7 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput }) 
   const series = [
     { x: time, y: surfAcc, label: "Surface", color: "var(--accent)" },
     ...(hasInput ? [{ x: inputTime, y: inputAcc, label: "Input (Base)", color: "#2980B9" }] : []),
+    ...(hasCompare ? [{ x: compareSignals.time_s, y: compareSignals.surface_acc_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
   return html`

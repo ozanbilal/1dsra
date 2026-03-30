@@ -126,18 +126,23 @@ function App() {
     });
   }, [selectedRunId]);
 
-  // Run analysis
+  // Run analysis (single or batch)
   const handleRun = useCallback(async () => {
     setStatus("running");
     setProgress(0);
     setError(null);
+
+    const batchMotions = wizard.batch_motions && wizard.batch_motions.length > 1
+      ? wizard.batch_motions
+      : [wizard.motion_path || ""];
+    const isBatch = batchMotions.length > 1;
+
     try {
-      // Step 0: Server-side sanity check (5%)
+      // Step 0: Sanity check (5%)
       setProgress(5);
       const sanity = await api.wizardSanityCheck(wizard);
       if (!sanity.ok) {
-        const msg = (sanity.blockers || []).join("; ") || "Server-side validation failed.";
-        throw new Error(msg);
+        throw new Error((sanity.blockers || []).join("; ") || "Server-side validation failed.");
       }
 
       // Step 1: Generate config (10%)
@@ -145,27 +150,31 @@ function App() {
       const configResp = await api.generateConfig(wizard);
       const configPath = configResp.config_path || configResp.path;
 
-      // Step 2: Submit run (30%)
-      setProgress(30);
-      const runResp = await api.executeRun({
-        config_path: configPath,
-        motion_path: wizard.motion_path || "",
-        output_root: outputRoot,
-        backend: wizard.solver_backend,
-      });
+      let lastRunId = null;
+      for (let i = 0; i < batchMotions.length; i++) {
+        const motionPath = batchMotions[i];
+        const pct = 15 + Math.round((i / batchMotions.length) * 75);
+        setProgress(pct);
+        if (isBatch) setError(`Running ${i + 1}/${batchMotions.length}...`);
 
-      // Step 3: Run completed (90%)
-      setProgress(90);
-      const newRunId = runResp.run_id;
-      setSelectedRunId(newRunId);
+        const runResp = await api.executeRun({
+          config_path: configPath,
+          motion_path: motionPath,
+          output_root: outputRoot,
+          backend: wizard.solver_backend,
+        });
+        lastRunId = runResp.run_id;
+      }
+
+      // Done
+      setProgress(95);
+      setSelectedRunId(lastRunId);
       setViewMode("results");
-
-      // Step 4: Refresh list (100%)
       const runsData = await api.fetchRuns(outputRoot);
-      const refreshedRuns = Array.isArray(runsData) ? runsData : (runsData.runs || []);
-      setRuns(refreshedRuns);
+      setRuns(Array.isArray(runsData) ? runsData : (runsData.runs || []));
       setProgress(100);
       setStatus("done");
+      setError(isBatch ? `Batch complete: ${batchMotions.length} runs` : null);
     } catch (ex) {
       setError(ex.message);
       setStatus("error");

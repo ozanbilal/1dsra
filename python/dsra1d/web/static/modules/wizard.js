@@ -214,7 +214,7 @@ function ControlStep({ wizard, update, canRun, onRun, status, validation }) {
               onInput=${e => update("max_iterations", parseInt(e.target.value))} />
           </div>
           <div className="field">
-            <label>Convergence Tol (%)</label>
+            <label>Convergence Tol (%)<${HelpTip} id="convergence_tol" /></label>
             <input type="number" step="0.1" min="0.1" max="10"
               value=${(wizard.convergence_tol || 0.03) * 100}
               onInput=${e => update("convergence_tol", parseFloat(e.target.value) / 100)} />

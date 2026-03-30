@@ -196,6 +196,37 @@ function App() {
     setTheme(t => t === "dark" ? "light" : "dark");
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKeyDown(e) {
+      // Only in wizard mode, not when typing in input/select/textarea
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+
+      if (viewMode === "wizard") {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          e.preventDefault();
+          setActiveStep(s => Math.min(s + 1, 4));
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          e.preventDefault();
+          setActiveStep(s => Math.max(s - 1, 0));
+        }
+      }
+      // Ctrl+Enter to run analysis
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && status !== "running") {
+        e.preventDefault();
+        handleRun();
+      }
+      // Ctrl+D to toggle dark mode
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        toggleTheme();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewMode, status, handleRun, toggleTheme]);
+
   return html`
     <div className="shell">
       <header className="header">
@@ -311,6 +342,12 @@ function App() {
           ` : null}
 
           ${error ? html`<div className="nav-error">${error}</div>` : null}
+
+          <div className="nav-shortcuts" style=${{ padding: "0.5rem 0.75rem", borderTop: "1px solid var(--border)", fontSize: "0.6rem", color: "var(--ink-40)", lineHeight: "1.6" }}>
+            <div>← → Steps</div>
+            <div>Ctrl+Enter Run</div>
+            <div>Ctrl+D Theme</div>
+          </div>
         </nav>
 
         <!-- Col 2+3: Content -->

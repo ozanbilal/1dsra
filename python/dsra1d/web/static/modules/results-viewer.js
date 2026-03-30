@@ -121,6 +121,17 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
   let cavTotal = 0;
   for (let i = 0; i < surfAcc.length; i++) cavTotal += Math.abs(surfAcc[i]) * dt;
 
+  // Velocity (trapezoidal integration of acc) and Displacement (integration of vel)
+  const vel = new Array(surfAcc.length);
+  const disp = new Array(surfAcc.length);
+  vel[0] = 0; disp[0] = 0;
+  for (let i = 1; i < surfAcc.length; i++) {
+    vel[i] = vel[i - 1] + 0.5 * (surfAcc[i - 1] + surfAcc[i]) * dt;
+    disp[i] = disp[i - 1] + 0.5 * (vel[i - 1] + vel[i]) * dt;
+  }
+  const pgv = Math.max(...vel.map(Math.abs));
+  const pgd = Math.max(...disp.map(Math.abs));
+
   // Arias Intensity: Ia = (π / 2g) × ∫ a²(t) dt — cumulative
   const ariasTime = [], ariasNorm = [];
   let cumIa = 0;
@@ -149,7 +160,9 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
           <div className="metric-card"><span>Input PGA (m/s²)</span><b>${fmt(pgaInput || Math.max(...inputAcc.map(Math.abs)), 4)}</b></div>
           <div className="metric-card"><span>Amp. Ratio</span><b>${fmt(pga / ((pgaInput || Math.max(...inputAcc.map(Math.abs))) || 1), 3)}</b></div>
         ` : null}
-        <div className="metric-card"><span>Arias Int. (m/s)</span><b>${fmt(iaTotal, 4)}</b></div>
+        <div className="metric-card"><span>PGV (cm/s)</span><b>${fmt(pgv * 100, 2)}</b></div>
+        <div className="metric-card"><span>PGD (cm)</span><b>${fmt(pgd * 100, 3)}</b></div>
+        <div className="metric-card"><span>Arias (m/s)</span><b>${fmt(iaTotal, 4)}</b></div>
         <div className="metric-card"><span>CAV (m/s)</span><b>${fmt(cavTotal, 3)}</b></div>
         <div className="metric-card"><span>D5-95 (s)</span><b>${fmt(d595, 2)}</b></div>
         <div className="metric-card"><span>Duration (s)</span><b>${fmt(time[time.length - 1], 2)}</b></div>
@@ -158,6 +171,20 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
         title="Acceleration Time History"
         series=${series}
         xLabel="Time (s)" yLabel="Acceleration (m/s²)"
+      />
+      <${ChartCard}
+        title="Velocity Time History"
+        subtitle="PGV = ${fmt(pgv * 100, 2)} cm/s"
+        x=${time} y=${vel.map(v => v * 100)}
+        xLabel="Time (s)" yLabel="Velocity (cm/s)"
+        color="#2980B9"
+      />
+      <${ChartCard}
+        title="Displacement Time History"
+        subtitle="PGD = ${fmt(pgd * 100, 3)} cm"
+        x=${time} y=${disp.map(v => v * 100)}
+        xLabel="Time (s)" yLabel="Displacement (cm)"
+        color="#8E44AD"
       />
       <${ChartCard}
         title="Husid Plot (Normalized Arias Intensity)"
@@ -179,19 +206,26 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
 
   return html`
     <div className="tab-content">
-      <div className="row" style=${{ gap: "0.5rem", marginBottom: "0.5rem" }}>
+      <div className="row" style=${{ gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
         <label>Layer:
           <select value=${selectedLayer} onChange=${e => onLayerChange(Number(e.target.value))}>
             ${hysteresis.layers.map((l, i) => html`
-              <option key=${i} value=${i}>Layer ${i + 1} (${l.material || "—"})</option>
+              <option key=${i} value=${i}>${l.layer_name || `Layer ${i + 1}`} (${l.material || "—"})</option>
             `)}
           </select>
         </label>
       </div>
+      <div className="metric-row" style=${{ marginBottom: "0.5rem" }}>
+        <div className="metric-card"><span>Max Strain</span><b>${fmt(layer.strain_amplitude, 5)}</b></div>
+        <div className="metric-card"><span>G/Gmax</span><b>${fmt(layer.g_over_gmax, 4)}</b></div>
+        <div className="metric-card"><span>Damping</span><b>${fmt((layer.damping_proxy || 0) * 100, 2)}%</b></div>
+        <div className="metric-card"><span>Loop Energy</span><b>${fmt(layer.loop_energy, 2)}</b></div>
+        <div className="metric-card"><span>Mob. Ratio</span><b>${fmt(layer.mobilized_strength_ratio, 4)}</b></div>
+      </div>
       <${ChartCard}
         title="Stress-Strain Loop"
-        subtitle=${`Layer ${selectedLayer + 1}`}
-        x=${layer.strain || []} y=${layer.stress || []}
+        subtitle=${layer.layer_name || `Layer ${selectedLayer + 1}`}
+        x=${layer.strain || []} y=${(layer.stress || []).map(s => s / 1000)}
         xLabel="Shear Strain" yLabel="Shear Stress (kPa)"
         color="#D35400"
       />

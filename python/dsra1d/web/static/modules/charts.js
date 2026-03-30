@@ -5,7 +5,7 @@
  * MultiSeriesChart   — multi-series overlay with log-x support
  * DepthProfileChart  — horizontal depth-oriented profile
  */
-import { html, useState, useCallback } from "./setup.js";
+import { html, useState, useCallback, useRef } from "./setup.js";
 import { fmt } from "./utils.js";
 
 // ── Geometry helpers ─────────────────────────────────────
@@ -210,6 +210,31 @@ function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, log
   `;
 }
 
+// ── SVG Export ──────────────────────────────────────────
+
+function downloadSvg(svgEl, filename) {
+  if (!svgEl) return;
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(svgEl);
+  const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename || "chart.svg";
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ExportButton({ svgRef, title }) {
+  return html`
+    <button className="chart-export-btn" title="Download SVG"
+      onClick=${() => downloadSvg(svgRef.current, (title || "chart").replace(/\s+/g, "_") + ".svg")}
+      style=${{ position: "absolute", top: "4px", right: "4px", background: "var(--surface, #fff)", border: "1px solid var(--ink-10)", borderRadius: "3px", padding: "1px 5px", fontSize: "9px", cursor: "pointer", opacity: 0.5, color: "var(--ink-60)" }}>
+      SVG
+    </button>
+  `;
+}
+
 // ── Chart Card ───────────────────────────────────────────
 
 const COLORS = [
@@ -221,14 +246,16 @@ const PAD = { top: 20, right: 20, bottom: 36, left: 52 };
 
 export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, w = 480, h = 240 }) {
   const geo = buildGeometry(x, y, w, h, PAD, { logX });
+  const svgRef = useRef(null);
   if (!geo) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   const seriesData = [{ x, y, label: title, color: color || COLORS[0] }];
 
   return html`
-    <div className="chart-card">
+    <div className="chart-card" style=${{ position: "relative" }}>
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
-      <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
+      <${ExportButton} svgRef=${svgRef} title=${title} />
+      <svg ref=${svgRef} viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
         <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
         <${HoverOverlay} pad=${PAD} plotW=${geo.plotW} plotH=${geo.plotH}
@@ -240,6 +267,7 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
 }
 
 export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, w = 480, h = 260 }) {
+  const svgRef = useRef(null);
   if (!series || !series.length) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   // Compute global bounds
@@ -262,9 +290,10 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
   }));
 
   return html`
-    <div className="chart-card">
+    <div className="chart-card" style=${{ position: "relative" }}>
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
-      <svg viewBox="0 0 ${w} ${totalH}" width="100%" preserveAspectRatio="xMidYMid meet">
+      <${ExportButton} svgRef=${svgRef} title=${title} />
+      <svg ref=${svgRef} viewBox="0 0 ${w} ${totalH}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geos[0]} w=${w} h=${totalH} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
         ${geos.map((geo, i) => geo ? html`
           <polyline key=${i} points=${geo.points} fill="none"

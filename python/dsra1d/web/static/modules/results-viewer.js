@@ -34,6 +34,8 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
   const inputPsaValues = signals?.input_psa_m_s2;
   const transferFreq = signals?.transfer_freq || signals?.freq_hz;
   const transferAbs = signals?.transfer_abs;
+  const fasFreq = signals?.fas_freq_hz;
+  const fasAmp = signals?.fas_amplitude;
 
   const hasSignals = time && surfAcc;
   const hasPSA = psaPeriods && psaValues;
@@ -84,6 +86,7 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           psaPeriods=${psaPeriods} psaValues=${psaValues}
           inputPsaPeriods=${inputPsaPeriods} inputPsaValues=${inputPsaValues}
           transferFreq=${transferFreq} transferAbs=${transferAbs}
+          fasFreq=${fasFreq} fasAmp=${fasAmp}
           compareSignals=${compareSignals} compareRunId=${compareRunId} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} profile=${profile} />`}
@@ -113,8 +116,12 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
     ...(hasCompare ? [{ x: compareSignals.time_s, y: compareSignals.surface_acc_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
-  // Arias Intensity: Ia = (π / 2g) × ∫ a²(t) dt — cumulative
+  // CAV = ∫|a(t)|dt
   const dt = time.length > 1 ? time[1] - time[0] : 0.01;
+  let cavTotal = 0;
+  for (let i = 0; i < surfAcc.length; i++) cavTotal += Math.abs(surfAcc[i]) * dt;
+
+  // Arias Intensity: Ia = (π / 2g) × ∫ a²(t) dt — cumulative
   const ariasTime = [], ariasNorm = [];
   let cumIa = 0;
   for (let i = 0; i < surfAcc.length; i++) {
@@ -143,6 +150,7 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
           <div className="metric-card"><span>Amp. Ratio</span><b>${fmt(pga / ((pgaInput || Math.max(...inputAcc.map(Math.abs))) || 1), 3)}</b></div>
         ` : null}
         <div className="metric-card"><span>Arias Int. (m/s)</span><b>${fmt(iaTotal, 4)}</b></div>
+        <div className="metric-card"><span>CAV (m/s)</span><b>${fmt(cavTotal, 3)}</b></div>
         <div className="metric-card"><span>D5-95 (s)</span><b>${fmt(d595, 2)}</b></div>
         <div className="metric-card"><span>Duration (s)</span><b>${fmt(time[time.length - 1], 2)}</b></div>
       </div>
@@ -208,7 +216,7 @@ function interpolateAtPeriods(periods, values, targetPeriods) {
   });
 }
 
-function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, compareSignals, compareRunId }) {
+function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId }) {
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
@@ -267,6 +275,14 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
           color="#2980B9" logX=${true}
         />
       ` : null}
+      ${fasFreq && fasAmp && fasFreq.length > 2 ? html`
+        <${ChartCard}
+          title="Fourier Amplitude Spectrum"
+          x=${fasFreq} y=${fasAmp}
+          xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
+          color="#16A085" logX=${true}
+        />
+      ` : null}
       <div style=${{ marginTop: "0.75rem" }}>
         <h4 style=${{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>PSA Summary at Standard Periods</h4>
         <div style=${{ maxHeight: "300px", overflowY: "auto" }}>
@@ -310,7 +326,7 @@ function ProfileTab({ profile }) {
   }
 
   // Build step-profile arrays for depth charts
-  const depths = [], vs = [], gammaMax = [], dampRatio = [], tauPeak = [];
+  const depths = [], vs = [], gammaMax = [], dampRatio = [], tauPeak = [], sigmaV0 = [], ruMax = [];
   let d = 0;
   for (const l of profile.layers) {
     const thick = l.thickness_m || l.thickness || 0;
@@ -318,12 +334,15 @@ function ProfileTab({ profile }) {
     const gm = l.gamma_max || 0;
     const dr = l.damping_ratio || 0;
     const tp = l.tau_peak_kpa || l.tau_peak || 0;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp);
+    const sv = l.sigma_v0_mid_kpa || 0;
+    const ru = l.ru_max || 0;
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru);
     d += thick;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp);
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru);
   }
 
   const hasResponse = gammaMax.some(v => v > 0) || tauPeak.some(v => v > 0);
+  const hasRu = ruMax.some(v => v > 0);
 
   return html`
     <div className="tab-content">
@@ -344,6 +363,16 @@ function ProfileTab({ profile }) {
           <${DepthProfileChart}
             title="Damping" depths=${depths} values=${dampRatio.map(v => v * 100)}
             xLabel="Damping (%)" yLabel="Depth (m)" color="#27AE60"
+          />
+        ` : null}
+        <${DepthProfileChart}
+          title="Overburden Stress" depths=${depths} values=${sigmaV0}
+          xLabel="σ'v0 (kPa)" yLabel="Depth (m)" color="#2C3E50"
+        />
+        ${hasRu ? html`
+          <${DepthProfileChart}
+            title="Max Pore Pressure Ratio" depths=${depths} values=${ruMax}
+            xLabel="ru_max" yLabel="Depth (m)" color="#E74C3C"
           />
         ` : null}
       </div>

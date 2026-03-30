@@ -2404,6 +2404,15 @@ def create_app() -> FastAPI:
         tf_list = [float(v) for v in rs.transfer_abs]
         freq_list, tf_list = _downsample_pair(freq_list, tf_list, max_points=max_spectral_points)
 
+        # Fourier Amplitude Spectrum (surface)
+        n_fft = int(2 ** np.ceil(np.log2(rs.acc_surface.size))) if rs.acc_surface.size > 1 else 2
+        fas_complex = np.fft.rfft(rs.acc_surface, n=n_fft)
+        fas_freq = np.fft.rfftfreq(n_fft, d=dt_s)
+        fas_amp = np.abs(fas_complex) * dt_s  # amplitude spectrum
+        fas_freq_list = [float(v) for v in fas_freq[1:]]  # skip DC
+        fas_amp_list = [float(v) for v in fas_amp[1:]]
+        fas_freq_list, fas_amp_list = _downsample_pair(fas_freq_list, fas_amp_list, max_points=max_spectral_points)
+
         def make_time_axis(size: int) -> list[float]:
             if size <= 0:
                 return []
@@ -2480,6 +2489,8 @@ def create_app() -> FastAPI:
             "delta_t_s": float(dt_s),
             "freq_hz": freq_list,
             "transfer_abs": tf_list,
+            "fas_freq_hz": fas_freq_list,
+            "fas_amplitude": fas_amp_list,
             "ru_time_s": ru_time_list,
             "ru_t": ru_time_list,
             "ru": ru_list,

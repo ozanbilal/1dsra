@@ -98,8 +98,9 @@ function App() {
     }).catch(() => {});
   }, []);
 
-  // Delete a run
+  // Delete a run (with confirmation)
   const handleDeleteRun = useCallback(async (runId) => {
+    if (!confirm(`Delete run ${runId.slice(4, 16)}? This cannot be undone.`)) return;
     try {
       await api.deleteRun(runId, outputRoot);
       setRuns(prev => prev.filter(r => r.run_id !== runId));

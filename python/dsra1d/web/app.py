@@ -738,7 +738,7 @@ def _read_profile_layer_summary(
                 except (TypeError, ValueError):
                     continue
 
-        # Fallback for nonlinear: read peak strain/stress from recorded hysteresis
+        # Fallback for nonlinear: read peak strain/stress from recorded hysteresis files
         if not gamma_by_idx and run_dir is not None:
             for layer_idx_zero in range(len(layer_rows)):
                 hyst = _load_layer_recorded_hysteresis(run_dir, layer_index_zero_based=layer_idx_zero)
@@ -748,6 +748,23 @@ def _read_profile_layer_summary(
                         gamma_by_idx[layer_idx_zero] = float(np.max(np.abs(strain_arr)))
                     if stress_arr.size > 0:
                         tau_peak_by_idx[layer_idx_zero] = float(np.max(np.abs(stress_arr))) / 1000.0  # Pa → kPa
+
+        # Second fallback: use hysteresis proxy builder if still no data
+        if not gamma_by_idx and run_dir is not None:
+            try:
+                hyst_resp = _build_hysteresis_response(
+                    run_id=run_dir.name,
+                    run_dir=run_dir,
+                    sqlite_path=sqlite_path,
+                    max_points=50,
+                )
+                for hl in hyst_resp.layers:
+                    gamma_by_idx[hl.layer_index] = hl.strain_amplitude
+                    if hl.stress:
+                        tau_peak_by_idx[hl.layer_index] = float(max(abs(s) for s in hl.stress)) / 1000.0
+                    damping_by_idx[hl.layer_index] = hl.damping_proxy
+            except Exception:
+                pass  # non-critical fallback
 
         layers: list[ResultProfileLayerRow] = []
         cum_depth = 0.0

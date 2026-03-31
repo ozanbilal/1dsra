@@ -530,16 +530,23 @@ function ConvergenceTab({ summary }) {
   if (!summary) return html`<p className="muted">No convergence data.</p>`;
 
   const conv = summary.convergence || {};
-  const eql = summary.eql_summary;
+  const eql = summary.eql_summary || (conv.iterations != null ? conv : null);
 
   // EQL convergence
-  if (eql) {
+  if (eql && eql.iterations != null) {
+    const maxChangeLast = eql.max_change_last != null ? eql.max_change_last :
+      (eql.max_change_history ? eql.max_change_history[eql.max_change_history.length - 1] : null);
     return html`
       <div className="tab-content">
         <div className="metric-row">
           <div className="metric-card"><span>Iterations</span><b>${eql.iterations}</b></div>
           <div className="metric-card"><span>Converged</span><b style=${{ color: eql.converged ? "#27AE60" : "#E74C3C" }}>${eql.converged ? "Yes" : "No"}</b></div>
-          <div className="metric-card"><span>Final Change</span><b>${fmt((eql.max_change_history || []).slice(-1)[0] * 100, 2)}%</b></div>
+          ${maxChangeLast != null ? html`
+            <div className="metric-card"><span>Final Change</span><b>${fmt(maxChangeLast * 100, 2)}%</b></div>
+          ` : null}
+          ${eql.max_change_max != null ? html`
+            <div className="metric-card"><span>Max Change</span><b>${fmt(eql.max_change_max * 100, 2)}%</b></div>
+          ` : null}
         </div>
         ${eql.max_change_history ? html`
           <${ChartCard}

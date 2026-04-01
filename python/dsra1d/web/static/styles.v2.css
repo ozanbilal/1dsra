@@ -747,3 +747,66 @@ body {
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
+
+/* ── Pro Plan Gating ───────────────────────────────── */
+
+.pro-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #D35400, #E67E22);
+  color: white;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+}
+
+.pro-guard {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+.pro-guard-blurred {
+  filter: blur(3px);
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+.pro-guard-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  background: rgba(255,255,255,0.05);
+}
+.pro-guard-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.pro-guard-icon { font-size: 1.5rem; }
+.pro-guard-label { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+.pro-guard-hint { font-size: 0.7rem; color: var(--ink-60); }
+
+.plan-toggle {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.plan-toggle:hover { opacity: 0.8; }

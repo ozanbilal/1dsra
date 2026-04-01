@@ -17,6 +17,7 @@ import { Wizard } from "./modules/wizard.js";
 import { ResultsViewer } from "./modules/results-viewer.js";
 import * as api from "./modules/api.js";
 import { defaultLayer, computeGmax } from "./modules/utils.js";
+import { getStoredPlan, setStoredPlan, isPro, canUseFeature, PlanToggle } from "./modules/plans.js";
 
 // ── Initial State ────────────────────────────────────────
 
@@ -187,6 +188,15 @@ function App() {
   const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
   const [runFilter, setRunFilter] = useState("");
   const [theme, setTheme] = useState(() => localStorage.getItem("stratawave_theme") || "light");
+  const [plan, setPlan] = useState(getStoredPlan);
+
+  const togglePlan = useCallback(() => {
+    setPlan(p => {
+      const next = p === "pro" ? "free" : "pro";
+      setStoredPlan(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -238,10 +248,13 @@ function App() {
             onClick=${() => setViewMode("wizard")}>Model</button>
           <button className=${"header-tab" + (viewMode === "results" ? " active" : "")}
             onClick=${() => setViewMode("results")}>Results</button>
-          <button className="theme-toggle" onClick=${toggleTheme}
-            title=${theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-            ${theme === "dark" ? "Light" : "Dark"}
-          </button>
+          <${PlanToggle} plan=${plan} onToggle=${togglePlan} />
+          ${canUseFeature(plan, "dark_mode") ? html`
+            <button className="theme-toggle" onClick=${toggleTheme}
+              title=${theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              ${theme === "dark" ? "☀" : "☾"}
+            </button>
+          ` : null}
         </div>
       </header>
 
@@ -362,6 +375,7 @@ function App() {
               activeStep=${activeStep}
               setActiveStep=${setActiveStep}
               onReset=${resetWizard}
+              plan=${plan}
             />
           ` : html`
             <${ResultsViewer}
@@ -370,6 +384,7 @@ function App() {
               summary=${summary}
               hysteresis=${hysteresis}
               runs=${runs}
+              plan=${plan}
               profile=${profile}
               outputRoot=${outputRoot}
             />

@@ -5,8 +5,9 @@ import { html, useState, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
 import { fmt, RESULT_TABS, STANDARD_PERIODS } from "./utils.js";
 import { excelExportUrl, downloadUrl, fetchSignals } from "./api.js";
+import { canUseFeature, ProGuard, ProBadge } from "./plans.js";
 
-export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs }) {
+export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs, plan }) {
   const [activeTab, setActiveTab] = useState("time");
   const [selectedLayer, setSelectedLayer] = useState(0);
   const [compareRunId, setCompareRunId] = useState(null);
@@ -57,7 +58,7 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           ` : null}
         </div>
         <div className="results-actions">
-          ${runs && runs.length > 1 ? html`
+          ${canUseFeature(plan, "run_comparison") && runs && runs.length > 1 ? html`
             <select style=${{ fontSize: "0.7rem", padding: "0.15rem 0.3rem", borderRadius: "4px", border: "1px solid var(--border)" }}
               value=${compareRunId || ""}
               onChange=${e => setCompareRunId(e.target.value || null)}>
@@ -70,7 +71,11 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
             </select>
           ` : null}
           <a href=${downloadUrl(runId, "surface_acc.csv", outputRoot)} className="btn btn-sm" download>CSV</a>
-          <a href=${excelExportUrl(runId, outputRoot)} className="btn btn-sm btn-accent" download>Excel</a>
+          ${canUseFeature(plan, "excel_export") ? html`
+            <a href=${excelExportUrl(runId, outputRoot)} className="btn btn-sm btn-accent" download>Excel</a>
+          ` : html`
+            <span className="btn btn-sm" style=${{ opacity: 0.5, cursor: "not-allowed" }} title="Pro feature">Excel <${ProBadge} /></span>
+          `}
         </div>
       </div>
 

@@ -24,7 +24,7 @@ const STEPS = [
   { id: "control", label: "5. Analysis Control" },
 ];
 
-export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setActiveStep, onReset }) {
+export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setActiveStep, onReset, plan }) {
   const [examples, setExamples] = useState([]);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function Wizard({ wizard, setWizard, onRun, status, activeStep = 0, setAc
           <${ProfileEditor} wizard=${wizard} setWizard=${setWizard} />
         `}
         ${activeStep === 2 && html`
-          <${MotionPanel} wizard=${wizard} update=${update} />
+          <${MotionPanel} wizard=${wizard} update=${update} plan=${plan} />
         `}
         ${activeStep === 3 && html`<${DampingStep} wizard=${wizard} update=${update} />`}
         ${activeStep === 4 && html`

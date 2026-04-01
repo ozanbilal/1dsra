@@ -6,6 +6,7 @@ import { html, useState, useEffect, useRef } from "./setup.js";
 import { ChartCard } from "./charts.js";
 import { fmt, PARAM_HELP } from "./utils.js";
 import * as api from "./api.js";
+import { canUseFeature, ProBadge } from "./plans.js";
 
 function HelpTip({ id }) {
   const tip = PARAM_HELP[id];
@@ -13,7 +14,7 @@ function HelpTip({ id }) {
   return html`<span className="help-tip" data-tip=${tip}>?</span>`;
 }
 
-export function MotionPanel({ wizard, update }) {
+export function MotionPanel({ wizard, update, plan }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -127,8 +128,8 @@ export function MotionPanel({ wizard, update }) {
         </div>
       ` : libLoading ? html`<p className="muted" style=${{ marginTop: "0.5rem" }}>Loading motion library...</p>` : null}
 
-      <!-- Batch mode toggle -->
-      ${library.length > 1 ? html`
+      <!-- Batch mode toggle (Pro) -->
+      ${canUseFeature(plan, "batch_analysis") && library.length > 1 ? html`
         <div style=${{ marginTop: "0.5rem" }}>
           <label style=${{ fontSize: "0.8rem", cursor: "pointer" }}>
             <input type="checkbox" checked=${batchMode}

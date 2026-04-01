@@ -2039,6 +2039,26 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/plan")
+    def get_plan() -> dict[str, object]:
+        """Return current plan info. In demo mode, plan is controlled client-side."""
+        return {
+            "plan": "demo",
+            "features": {
+                "psv_psd": True,
+                "kappa": True,
+                "site_period": True,
+                "smoothed_tf": True,
+                "excel_export": True,
+                "batch_analysis": True,
+                "run_comparison": True,
+                "svg_export": True,
+                "dark_mode": True,
+            },
+            "runs_per_day": -1,
+            "demo_mode": True,
+        }
+
     @app.get("/api/config/templates")
     def list_config_templates() -> dict[str, list[str]]:
         return {"templates": list(available_config_templates())}

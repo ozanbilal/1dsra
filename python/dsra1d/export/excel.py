@@ -63,6 +63,7 @@ def _write_summary_sheet(
     run_meta: dict[str, Any],
     config_snapshot: dict[str, Any],
     pga: float,
+    pro_metrics: dict[str, Any] | None = None,
 ) -> None:
     """Write project summary sheet."""
     ws.title = "Summary"
@@ -79,6 +80,17 @@ def _write_summary_sheet(
         ("Motion File", config_snapshot.get("motion", {}).get("file", "N/A")),
         ("Damping Mode", config_snapshot.get("analysis", {}).get("damping_mode", "N/A")),
     ]
+
+    # Pro metrics
+    if pro_metrics:
+        if pro_metrics.get("site_period_s") is not None:
+            info_rows.append(("Site Period T₀ (s)", f"{pro_metrics['site_period_s']:.4f}"))
+        if pro_metrics.get("vs_avg_m_s") is not None:
+            info_rows.append(("Average Vs (m/s)", f"{pro_metrics['vs_avg_m_s']:.1f}"))
+        if pro_metrics.get("kappa") is not None:
+            info_rows.append(("Kappa κ (s)", f"{pro_metrics['kappa']:.6f}"))
+        if pro_metrics.get("kappa_r2") is not None:
+            info_rows.append(("Kappa R²", f"{pro_metrics['kappa_r2']:.4f}"))
 
     _write_header_row(ws, 1, ["Parameter", "Value"])
     for row_idx, (param, value) in enumerate(info_rows, 2):
@@ -118,16 +130,21 @@ def _write_spectral_sheet(
     periods: np.ndarray,
     psa_surface: np.ndarray,
     psa_input: np.ndarray | None = None,
+    include_psv_psd: bool = True,
 ) -> None:
-    """Write response spectra data."""
+    """Write response spectra data with optional PSV/PSD columns."""
     ws.title = "Spectral"
 
     headers = ["Period (s)", "Frequency (Hz)", "PSA Surface (m/s2)", "PSA Surface (g)"]
+    if include_psv_psd:
+        headers.extend(["PSV Surface (m/s)", "PSD Surface (m)"])
     if psa_input is not None:
         headers.extend(["PSA Input (m/s2)", "PSA Input (g)", "Amplification"])
 
     _write_header_row(ws, 1, headers)
 
+    two_pi = 2.0 * 3.141592653589793
+    four_pi2 = 4.0 * 3.141592653589793 ** 2
     for i in range(len(periods)):
         row = i + 2
         p = float(periods[i])
@@ -136,12 +153,17 @@ def _write_spectral_sheet(
         sa = float(psa_surface[i]) if i < len(psa_surface) else 0.0
         ws.cell(row=row, column=3, value=sa)
         ws.cell(row=row, column=4, value=sa / 9.81)
+        col = 5
+        if include_psv_psd:
+            ws.cell(row=row, column=col, value=sa * p / two_pi)       # PSV
+            ws.cell(row=row, column=col + 1, value=sa * p ** 2 / four_pi2)  # PSD
+            col += 2
         if psa_input is not None and i < len(psa_input):
             sa_in = float(psa_input[i])
-            ws.cell(row=row, column=5, value=sa_in)
-            ws.cell(row=row, column=6, value=sa_in / 9.81)
+            ws.cell(row=row, column=col, value=sa_in)
+            ws.cell(row=row, column=col + 1, value=sa_in / 9.81)
             amp = sa / sa_in if sa_in > 1e-12 else 0.0
-            ws.cell(row=row, column=7, value=amp)
+            ws.cell(row=row, column=col + 2, value=amp)
 
 
 def _write_profile_sheet(
@@ -240,12 +262,28 @@ def export_run_to_xlsx(
 
     pga = float(np.max(np.abs(store.acc_surface))) if store.acc_surface.size > 0 else 0.0
 
+    # Compute Pro metrics
+    pro_metrics: dict[str, Any] = {}
+    try:
+        prof_layers = config_snapshot.get("profile", {}).get("layers", [])
+        if prof_layers:
+            total_h = sum(float(la.get("thickness_m", 0)) for la in prof_layers)
+            travel_time = sum(
+                float(la.get("thickness_m", 0)) / max(float(la.get("vs_m_s", 100)), 1.0)
+                for la in prof_layers
+            )
+            if travel_time > 0 and total_h > 0:
+                pro_metrics["vs_avg_m_s"] = total_h / travel_time
+                pro_metrics["site_period_s"] = 4.0 * total_h / pro_metrics["vs_avg_m_s"]
+    except Exception:
+        pass
+
     wb = Workbook()
 
     # Sheet 1: Summary
     ws_summary = wb.active
     assert ws_summary is not None
-    _write_summary_sheet(ws_summary, run_meta, config_snapshot, pga)
+    _write_summary_sheet(ws_summary, run_meta, config_snapshot, pga, pro_metrics=pro_metrics)
 
     # Sheet 2: Time History
     ws_th = wb.create_sheet()

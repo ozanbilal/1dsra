@@ -2511,6 +2511,95 @@ def create_app() -> FastAPI:
         ru_max = float(np.max(rs.ru)) if rs.ru.size > 0 else 0.0
         delta_u_max = float(np.max(rs.delta_u)) if rs.delta_u.size > 0 else 0.0
         sigma_v_eff_min = float(np.min(rs.sigma_v_eff)) if rs.sigma_v_eff.size > 0 else 0.0
+
+        # ── Pro Features ─────────────────────────────────
+
+        # B1: Site Period T₀ = 4H / Vs_avg
+        site_period_s: float | None = None
+        vs_avg_m_s: float | None = None
+        try:
+            cfg_path = run_dir / "config_snapshot.json"
+            cfg_snap: dict[str, object] = {}
+            if cfg_path.exists():
+                cfg_snap = json.loads(cfg_path.read_text(encoding="utf-8"))
+            prof_layers = cfg_snap.get("profile", {}).get("layers", [])
+            if prof_layers:
+                total_h = sum(float(la.get("thickness_m", 0)) for la in prof_layers)
+                travel_time = sum(
+                    float(la.get("thickness_m", 0)) / max(float(la.get("vs_m_s", 100)), 1.0)
+                    for la in prof_layers
+                )
+                if travel_time > 0 and total_h > 0:
+                    vs_avg_m_s = float(total_h / travel_time)
+                    site_period_s = float(4.0 * total_h / vs_avg_m_s)
+        except Exception:
+            pass
+
+        # B2: PSV + PSD from PSA
+        psv_list = [float(psa_list[i] * period_list[i] / (2.0 * np.pi)) for i in range(len(psa_list))]
+        psd_list = [float(psa_list[i] * period_list[i] ** 2 / (4.0 * np.pi ** 2)) for i in range(len(psa_list))]
+
+        # B3: Kappa (κ) estimator — linear regression on FAS log-log slope
+        kappa_val: float | None = None
+        kappa_r2: float | None = None
+        kappa_fit_freq: list[float] = []
+        kappa_fit_amp: list[float] = []
+        try:
+            fas_f_full = np.array(fas_freq[1:], dtype=np.float64)
+            fas_a_full = np.array(fas_amp[1:], dtype=np.float64)
+            mask = (fas_f_full >= 10.0) & (fas_f_full <= 40.0) & (fas_a_full > 0)
+            if int(np.count_nonzero(mask)) >= 5:
+                log_f = np.log(fas_f_full[mask])
+                log_a = np.log(fas_a_full[mask])
+                n_pts = log_f.size
+                sum_x = float(np.sum(log_f))
+                sum_y = float(np.sum(log_a))
+                sum_xy = float(np.sum(log_f * log_a))
+                sum_x2 = float(np.sum(log_f ** 2))
+                denom = n_pts * sum_x2 - sum_x ** 2
+                if abs(denom) > 1e-15:
+                    slope = (n_pts * sum_xy - sum_x * sum_y) / denom
+                    intercept = (sum_y - slope * sum_x) / n_pts
+                    kappa_val = float(-slope / np.pi)  # κ = -slope / π
+                    # R²
+                    ss_res = float(np.sum((log_a - (slope * log_f + intercept)) ** 2))
+                    ss_tot = float(np.sum((log_a - np.mean(log_a)) ** 2))
+                    kappa_r2 = float(1.0 - ss_res / max(ss_tot, 1e-30))
+                    # Fitted line for visualization
+                    fit_f = np.array([10.0, 40.0])
+                    fit_a = np.exp(slope * np.log(fit_f) + intercept)
+                    kappa_fit_freq = [float(v) for v in fit_f]
+                    kappa_fit_amp = [float(v) for v in fit_a * dt_s]
+        except Exception:
+            pass
+
+        # B4: Konno-Ohmachi smoothed transfer function
+        tf_smooth_list: list[float] = []
+        try:
+            if len(freq_list) > 10:
+                tf_arr = np.array(tf_list, dtype=np.float64)
+                f_arr = np.array(freq_list, dtype=np.float64)
+                bandwidth = 40.0
+                smoothed = np.zeros_like(tf_arr)
+                log_f = np.log10(np.maximum(f_arr, 1e-10))
+                for i in range(len(f_arr)):
+                    if f_arr[i] <= 0:
+                        smoothed[i] = tf_arr[i]
+                        continue
+                    diff = log_f - log_f[i]
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        arg = bandwidth * diff
+                        w = np.where(
+                            np.abs(arg) < 1e-6,
+                            1.0,
+                            (np.sin(arg * np.log(10)) / (arg * np.log(10))) ** 4,
+                        )
+                    w_sum = float(np.sum(w))
+                    smoothed[i] = float(np.sum(w * tf_arr) / max(w_sum, 1e-30))
+                tf_smooth_list = [float(v) for v in smoothed]
+        except Exception:
+            pass
+
         return {
             "run_id": run_id,
             "time_s": time_list,
@@ -2528,6 +2617,15 @@ def create_app() -> FastAPI:
             "transfer_abs": tf_list,
             "fas_freq_hz": fas_freq_list,
             "fas_amplitude": fas_amp_list,
+            "psv_m_s": psv_list,
+            "psd_m": psd_list,
+            "site_period_s": site_period_s,
+            "vs_avg_m_s": vs_avg_m_s,
+            "kappa": kappa_val,
+            "kappa_r2": kappa_r2,
+            "kappa_fit_freq": kappa_fit_freq,
+            "kappa_fit_amp": kappa_fit_amp,
+            "transfer_abs_smooth": tf_smooth_list,
             "ru_time_s": ru_time_list,
             "ru_t": ru_time_list,
             "ru": ru_list,

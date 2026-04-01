@@ -54,6 +54,8 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
               ${summary.project_name ? html`<span>Project: <b>${summary.project_name}</b></span>` : null}
               ${summary.input_motion ? html`<span>Motion: <b>${summary.input_motion.split(/[/\\]/).pop()}</b></span>` : null}
               ${summary.status ? html`<span>Status: <b style=${{ color: summary.status === "ok" ? "var(--green)" : "var(--red)" }}>${summary.status}</b></span>` : null}
+              ${signals?.site_period_s != null ? html`<span>T₀: <b>${fmt(signals.site_period_s, 3)}s</b></span>` : null}
+              ${signals?.kappa != null ? html`<span>κ: <b>${fmt(signals.kappa, 5)}</b></span>` : null}
             </div>
           ` : null}
         </div>
@@ -102,7 +104,8 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           inputPsaPeriods=${inputPsaPeriods} inputPsaValues=${inputPsaValues}
           transferFreq=${transferFreq} transferAbs=${transferAbs}
           fasFreq=${fasFreq} fasAmp=${fasAmp}
-          compareSignals=${compareSignals} compareRunId=${compareRunId} />`}
+          compareSignals=${compareSignals} compareRunId=${compareRunId}
+          plan=${plan} signals=${signals} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} profile=${profile} />`}
         ${activeTab === "convergence" && html`<${ConvergenceTab} summary=${summary} />`}
@@ -265,7 +268,7 @@ function interpolateAtPeriods(periods, values, targetPeriods) {
   });
 }
 
-function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId }) {
+function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId, plan, signals }) {
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
@@ -326,12 +329,71 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
       ` : null}
       ${fasFreq && fasAmp && fasFreq.length > 2 ? html`
         <${ChartCard}
-          title="Fourier Amplitude Spectrum"
+          title=${signals?.kappa != null ? `Fourier Amplitude Spectrum (κ = ${fmt(signals.kappa, 4)})` : "Fourier Amplitude Spectrum"}
           x=${fasFreq} y=${fasAmp}
           xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
           color="#16A085" logX=${true}
         />
       ` : null}
+
+      <!-- Pro Features -->
+      ${(() => {
+        const psv = signals?.psv_m_s;
+        const psd = signals?.psd_m;
+        const kappa = signals?.kappa;
+        const kappaR2 = signals?.kappa_r2;
+        const tfSmooth = signals?.transfer_abs_smooth;
+        const T0 = signals?.site_period_s;
+        const hasPro = psv || kappa != null || (tfSmooth && tfSmooth.length > 0);
+        if (!hasPro) return null;
+
+        return html`
+          <${ProGuard} plan=${plan} feature="psv_psd">
+            ${psv && psv.length > 2 ? html`
+              <${ChartCard}
+                title="Pseudo-Velocity Spectrum (PSV)"
+                x=${psaPeriods} y=${psv}
+                xLabel="Period (s)" yLabel="PSV (m/s)"
+                color="#E67E22" logX=${true}
+              />
+            ` : null}
+            ${psd && psd.length > 2 ? html`
+              <${ChartCard}
+                title="Pseudo-Displacement Spectrum (PSD)"
+                x=${psaPeriods} y=${psd}
+                xLabel="Period (s)" yLabel="PSD (m)"
+                color="#9B59B6" logX=${true}
+              />
+            ` : null}
+          <//>
+
+          ${kappa != null ? html`
+            <${ProGuard} plan=${plan} feature="kappa">
+              <div className="metric-row" style=${{ marginTop: "0.5rem" }}>
+                <div className="metric-card"><span>Kappa (κ)</span><b>${fmt(kappa, 5)}</b></div>
+                <div className="metric-card"><span>κ R²</span><b>${fmt(kappaR2, 4)}</b></div>
+                ${T0 != null ? html`<div className="metric-card"><span>Site Period T₀ (s)</span><b>${fmt(T0, 3)}</b></div>` : null}
+                ${signals?.vs_avg_m_s != null ? html`<div className="metric-card"><span>Vs_avg (m/s)</span><b>${fmt(signals.vs_avg_m_s, 1)}</b></div>` : null}
+              </div>
+            <//>
+          ` : null}
+
+          ${tfSmooth && tfSmooth.length > 2 && transferFreq ? html`
+            <${ProGuard} plan=${plan} feature="smoothed_tf">
+              <${MultiSeriesChart}
+                title="Transfer Function — Raw vs Smoothed"
+                series=${[
+                  { x: transferFreq, y: transferAbs, label: "Raw", color: "#BDC3C7" },
+                  { x: transferFreq, y: tfSmooth, label: "Smoothed (KO b=40)", color: "#E74C3C" },
+                ]}
+                xLabel="Frequency (Hz)" yLabel="|H(f)|"
+                logX=${true}
+              />
+            <//>
+          ` : null}
+        `;
+      })()}
+
       <div style=${{ marginTop: "0.75rem" }}>
         <h4 style=${{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>PSA Summary at Standard Periods</h4>
         <div style=${{ maxHeight: "300px", overflowY: "auto" }}>

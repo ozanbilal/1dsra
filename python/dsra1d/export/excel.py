@@ -226,6 +226,7 @@ def _write_eql_convergence_sheet(
 def export_run_to_xlsx(
     run_dir: Path,
     output_path: Path | None = None,
+    include_pro_sheets: bool = True,
 ) -> Path:
     """Export a StrataWave run to multi-sheet Excel workbook.
 
@@ -298,7 +299,7 @@ def export_run_to_xlsx(
     spectra_result = compute_spectra(store.acc_surface, dt, damping=0.05, periods=periods)
     psa_surface = spectra_result.psa
     ws_spec = wb.create_sheet()
-    _write_spectral_sheet(ws_spec, periods, psa_surface)
+    _write_spectral_sheet(ws_spec, periods, psa_surface, include_psv_psd=include_pro_sheets)
 
     # Sheet 4: Profile
     layers_data = config_snapshot.get("profile", {}).get("layers", [])

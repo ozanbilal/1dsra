@@ -750,11 +750,11 @@ body {
 
 /* ── Pro Plan Gating ───────────────────────────────── */
 
-.pro-badge {
+.pro-badge, .tier-badge {
   display: inline-block;
   background: linear-gradient(135deg, #D35400, #E67E22);
   color: white;
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 700;
   padding: 1px 4px;
   border-radius: 3px;

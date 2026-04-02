@@ -5,7 +5,7 @@ import { html, useState, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
 import { fmt, RESULT_TABS, STANDARD_PERIODS } from "./utils.js";
 import { excelExportUrl, downloadUrl, fetchSignals } from "./api.js";
-import { canUseFeature, ProGuard, ProBadge } from "./plans.js";
+import { canUseFeature, ProGuard, TierBadge } from "./plans.js";
 
 export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs, plan }) {
   const [activeTab, setActiveTab] = useState("time");
@@ -74,9 +74,9 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           ` : null}
           <a href=${downloadUrl(runId, "surface_acc.csv", outputRoot)} className="btn btn-sm" download>CSV</a>
           ${canUseFeature(plan, "excel_export") ? html`
-            <a href=${excelExportUrl(runId, outputRoot)} className="btn btn-sm btn-accent" download>Excel</a>
+            <a href=${excelExportUrl(runId, outputRoot, plan)} className="btn btn-sm btn-accent" download>Excel</a>
           ` : html`
-            <span className="btn btn-sm" style=${{ opacity: 0.5, cursor: "not-allowed" }} title="Pro feature">Excel <${ProBadge} /></span>
+            <span className="btn btn-sm" style=${{ opacity: 0.5, cursor: "not-allowed" }}>Excel <${TierBadge} feature="excel_export" /></span>
           `}
         </div>
       </div>
@@ -303,6 +303,10 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
   const surfAtStd = interpolateAtPeriods(psaPeriods, psaValues, STANDARD_PERIODS);
   const inputAtStd = hasInputPsa ? interpolateAtPeriods(inputPsaPeriods, inputPsaValues, STANDARD_PERIODS) : null;
 
+  // T₀ vertical line for spectral charts
+  const T0 = signals?.site_period_s;
+  const t0Lines = T0 ? [{ x: T0, label: `T₀=${fmt(T0, 3)}s`, color: "#E74C3C" }] : [];
+
   return html`
     <div className="tab-content">
       <${MultiSeriesChart}
@@ -310,6 +314,7 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
         series=${series}
         xLabel="Period (s)" yLabel="PSA (m/s²)"
         logX=${true}
+        vLines=${t0Lines}
       />
       ${hasAmpRatio && ampRatioPeriods.length > 2 ? html`
         <${ChartCard}
@@ -327,14 +332,33 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
           color="#2980B9" logX=${true}
         />
       ` : null}
-      ${fasFreq && fasAmp && fasFreq.length > 2 ? html`
-        <${ChartCard}
-          title=${signals?.kappa != null ? `Fourier Amplitude Spectrum (κ = ${fmt(signals.kappa, 4)})` : "Fourier Amplitude Spectrum"}
-          x=${fasFreq} y=${fasAmp}
-          xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
-          color="#16A085" logX=${true}
-        />
-      ` : null}
+      ${fasFreq && fasAmp && fasFreq.length > 2 ? (() => {
+        const kappaFitFreq = signals?.kappa_fit_freq;
+        const kappaFitAmp = signals?.kappa_fit_amp;
+        const hasKappaFit = kappaFitFreq && kappaFitAmp && kappaFitFreq.length === 2;
+        const fasTitle = signals?.kappa != null ? `Fourier Amplitude Spectrum (κ = ${fmt(signals.kappa, 4)})` : "Fourier Amplitude Spectrum";
+        if (hasKappaFit) {
+          return html`
+            <${MultiSeriesChart}
+              title=${fasTitle}
+              series=${[
+                { x: fasFreq, y: fasAmp, label: "FAS", color: "#16A085" },
+                { x: kappaFitFreq, y: kappaFitAmp, label: "κ fit (10-40 Hz)", color: "#E74C3C" },
+              ]}
+              xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
+              logX=${true}
+            />
+          `;
+        }
+        return html`
+          <${ChartCard}
+            title=${fasTitle}
+            x=${fasFreq} y=${fasAmp}
+            xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
+            color="#16A085" logX=${true}
+          />
+        `;
+      })() : null}
 
       <!-- Pro Features -->
       ${(() => {
@@ -355,6 +379,7 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
                 x=${psaPeriods} y=${psv}
                 xLabel="Period (s)" yLabel="PSV (m/s)"
                 color="#E67E22" logX=${true}
+                vLines=${t0Lines}
               />
             ` : null}
             ${psd && psd.length > 2 ? html`
@@ -363,6 +388,7 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
                 x=${psaPeriods} y=${psd}
                 xLabel="Period (s)" yLabel="PSD (m)"
                 color="#9B59B6" logX=${true}
+                vLines=${t0Lines}
               />
             ` : null}
           <//>

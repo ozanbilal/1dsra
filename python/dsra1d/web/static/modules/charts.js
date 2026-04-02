@@ -244,7 +244,24 @@ const COLORS = [
 
 const PAD = { top: 20, right: 20, bottom: 36, left: 52 };
 
-export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, w = 480, h = 240 }) {
+function VerticalLines({ lines, scaleX, pad, plotH }) {
+  if (!lines || !lines.length) return null;
+  return lines.map((vl, i) => {
+    const vx = scaleX(vl.x);
+    if (vx < pad.left || vx > pad.left + (plotH * 3)) return null;
+    return html`
+      <g key=${"vl" + i}>
+        <line x1=${vx} y1=${pad.top} x2=${vx} y2=${pad.top + plotH}
+          stroke=${vl.color || "#E74C3C"} stroke-width="1" stroke-dasharray="4,3" />
+        ${vl.label ? html`
+          <text x=${vx + 3} y=${pad.top + 10} fill=${vl.color || "#E74C3C"} font-size="8" font-weight="600">${vl.label}</text>
+        ` : null}
+      </g>
+    `;
+  });
+}
+
+export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, w = 480, h = 240, vLines }) {
   const geo = buildGeometry(x, y, w, h, PAD, { logX });
   const svgRef = useRef(null);
   if (!geo) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
@@ -258,6 +275,7 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
       <svg ref=${svgRef} viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
         <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
+        <${VerticalLines} lines=${vLines} scaleX=${geo.scaleX} pad=${PAD} plotH=${geo.plotH} />
         <${HoverOverlay} pad=${PAD} plotW=${geo.plotW} plotH=${geo.plotH}
           w=${w} h=${h} seriesData=${seriesData}
           scaleX=${geo.scaleX} scaleY=${geo.scaleY} logX=${logX} />
@@ -266,7 +284,7 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
   `;
 }
 
-export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, w = 480, h = 260 }) {
+export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, w = 480, h = 260, vLines }) {
   const svgRef = useRef(null);
   if (!series || !series.length) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
@@ -299,6 +317,7 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
           <polyline key=${i} points=${geo.points} fill="none"
             stroke=${series[i].color || COLORS[i % COLORS.length]} stroke-width="1.5" />
         ` : null)}
+        <${VerticalLines} lines=${vLines} scaleX=${geos[0]?.scaleX} pad=${padLegend} plotH=${geos[0]?.plotH || 0} />
         <${HoverOverlay} pad=${padLegend} plotW=${geos[0]?.plotW || 0} plotH=${geos[0]?.plotH || 0}
           w=${w} h=${totalH} seriesData=${seriesData}
           scaleX=${geos[0]?.scaleX} scaleY=${geos[0]?.scaleY} logX=${logX} />

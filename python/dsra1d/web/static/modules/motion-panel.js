@@ -6,7 +6,7 @@ import { html, useState, useEffect, useRef } from "./setup.js";
 import { ChartCard } from "./charts.js";
 import { fmt, PARAM_HELP } from "./utils.js";
 import * as api from "./api.js";
-import { canUseFeature, ProBadge } from "./plans.js";
+import { canUseFeature } from "./plans.js";
 
 function HelpTip({ id }) {
   const tip = PARAM_HELP[id];

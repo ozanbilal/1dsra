@@ -17,7 +17,7 @@ import { Wizard } from "./modules/wizard.js";
 import { ResultsViewer } from "./modules/results-viewer.js";
 import * as api from "./modules/api.js";
 import { defaultLayer, computeGmax } from "./modules/utils.js";
-import { getStoredPlan, setStoredPlan, isPro, canUseFeature, PlanToggle } from "./modules/plans.js";
+import { getStoredPlan, setStoredPlan, nextPlan, canUseFeature, PlanToggle } from "./modules/plans.js";
 
 // ── Initial State ────────────────────────────────────────
 
@@ -140,7 +140,14 @@ function App() {
     const isBatch = batchMotions.length > 1;
 
     try {
-      // Step 0: Sanity check (5%)
+      // Step 0: Plan run limit check
+      setProgress(3);
+      const planInfo = await fetch(`/api/plan?plan=${plan}&output_root=${encodeURIComponent(outputRoot)}`).then(r => r.json());
+      if (!planInfo.can_run) {
+        throw new Error(`Daily run limit reached (${planInfo.runs_today}/${planInfo.runs_per_day}). Upgrade your plan for more runs.`);
+      }
+
+      // Step 0b: Sanity check (5%)
       setProgress(5);
       const sanity = await api.wizardSanityCheck(wizard);
       if (!sanity.ok) {
@@ -192,7 +199,7 @@ function App() {
 
   const togglePlan = useCallback(() => {
     setPlan(p => {
-      const next = p === "pro" ? "free" : "pro";
+      const next = nextPlan(p);
       setStoredPlan(next);
       return next;
     });

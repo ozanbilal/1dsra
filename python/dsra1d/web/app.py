@@ -2039,23 +2039,44 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    PLAN_LIMITS = {"free": 3, "starter": 10, "pro": 999999}
+
+    def _count_today_runs(output_root: Path) -> int:
+        """Count runs created today."""
+        from datetime import datetime, timezone
+
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        count = 0
+        if not output_root.is_dir():
+            return 0
+        for d in output_root.iterdir():
+            if not d.is_dir() or not d.name.startswith("run-"):
+                continue
+            meta_path = d / "run_meta.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    ts = meta.get("timestamp_utc", "")
+                    if ts.startswith(today_str):
+                        count += 1
+                except Exception:
+                    pass
+        return count
+
     @app.get("/api/plan")
-    def get_plan() -> dict[str, object]:
-        """Return current plan info. In demo mode, plan is controlled client-side."""
+    def get_plan(
+        plan: str = Query(default="free"),
+        output_root: str = Query(default=""),
+    ) -> dict[str, object]:
+        """Return plan info with today's run count."""
+        root = _safe_real_path(output_root) if output_root else _default_output_root()
+        today_runs = _count_today_runs(root)
+        limit = PLAN_LIMITS.get(plan, 3)
         return {
-            "plan": "demo",
-            "features": {
-                "psv_psd": True,
-                "kappa": True,
-                "site_period": True,
-                "smoothed_tf": True,
-                "excel_export": True,
-                "batch_analysis": True,
-                "run_comparison": True,
-                "svg_export": True,
-                "dark_mode": True,
-            },
-            "runs_per_day": -1,
+            "plan": plan,
+            "runs_today": today_runs,
+            "runs_per_day": limit,
+            "can_run": today_runs < limit,
             "demo_mode": True,
         }
 
@@ -2933,12 +2954,14 @@ def create_app() -> FastAPI:
     def export_run_xlsx(
         run_id: str,
         output_root: str = Query("out/web"),
+        tier: str = Query(default="pro"),
     ) -> FileResponse:
         from dsra1d.export.excel import export_run_to_xlsx
 
         run_dir = _resolve_run_dir(run_id, output_root)
+        include_pro = tier == "pro"
         try:
-            xlsx_path = export_run_to_xlsx(run_dir)
+            xlsx_path = export_run_to_xlsx(run_dir, include_pro_sheets=include_pro)
         except ImportError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         except Exception as exc:

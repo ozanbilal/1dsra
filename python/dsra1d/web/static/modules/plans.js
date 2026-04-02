@@ -1,10 +1,10 @@
 /**
- * StrataWave v3 — Plan & Feature Gating
+ * StrataWave v3 — 3-Tier Plan & Feature Gating
  *
- * Defines Free vs Pro feature tiers.
- * In demo mode, plan can be toggled via localStorage.
+ * Free → Starter → Pro
+ * Demo mode: plan toggled via localStorage.
  */
-import { html, useState, useEffect } from "./setup.js";
+import { html } from "./setup.js";
 
 // ── Plan Definitions ────────────────────────────────────
 
@@ -13,36 +13,62 @@ export const PLANS = {
     id: "free",
     label: "Free",
     color: "#95a5a6",
-    runsPerDay: 5,
+    runsPerDay: 3,
+    order: 0,
+  },
+  starter: {
+    id: "starter",
+    label: "Starter",
+    color: "#2980B9",
+    runsPerDay: 10,
+    order: 1,
   },
   pro: {
     id: "pro",
     label: "Pro",
     color: "#D35400",
     runsPerDay: Infinity,
+    order: 2,
   },
 };
 
-// Features that require Pro plan
-export const PRO_FEATURES = {
-  psv_psd: "PSV / PSD Spectral Charts",
-  kappa: "Kappa (κ) Estimator",
-  site_period: "Site Period (T₀)",
-  smoothed_tf: "Smoothed Transfer Function",
-  excel_export: "Excel Export (Multi-Sheet)",
-  batch_analysis: "Batch Analysis",
-  run_comparison: "Run Comparison",
-  svg_export: "SVG Chart Export",
-  dark_mode: "Dark Mode",
+// Minimum plan required per feature
+const FEATURE_MIN_PLAN = {
+  // Starter features
+  excel_export:    "starter",
+  run_comparison:  "starter",
+  dark_mode:       "starter",
+  svg_export:      "starter",
+  batch_analysis:  "starter",
+  // Pro features
+  psv_psd:         "pro",
+  kappa:           "pro",
+  site_period:     "pro",
+  smoothed_tf:     "pro",
+};
+
+// Human-readable labels
+export const FEATURE_LABELS = {
+  excel_export:    "Excel Export (Multi-Sheet)",
+  run_comparison:  "Run Comparison",
+  dark_mode:       "Dark Mode",
+  svg_export:      "SVG Chart Export",
+  batch_analysis:  "Batch Analysis",
+  psv_psd:         "PSV / PSD Spectral Charts",
+  kappa:           "Kappa (κ) Estimator",
+  site_period:     "Site Period (T₀)",
+  smoothed_tf:     "Smoothed Transfer Function",
 };
 
 // ── Plan State ──────────────────────────────────────────
 
 const PLAN_STORAGE_KEY = "stratawave_plan";
+const PLAN_CYCLE = ["free", "starter", "pro"];
 
 export function getStoredPlan() {
   try {
-    return localStorage.getItem(PLAN_STORAGE_KEY) || "free";
+    const val = localStorage.getItem(PLAN_STORAGE_KEY);
+    return PLAN_CYCLE.includes(val) ? val : "free";
   } catch { return "free"; }
 }
 
@@ -50,42 +76,52 @@ export function setStoredPlan(planId) {
   try { localStorage.setItem(PLAN_STORAGE_KEY, planId); } catch {}
 }
 
+export function nextPlan(current) {
+  const idx = PLAN_CYCLE.indexOf(current);
+  return PLAN_CYCLE[(idx + 1) % PLAN_CYCLE.length];
+}
+
 // ── Helpers ─────────────────────────────────────────────
 
-export function isPro(currentPlan) {
-  return currentPlan === "pro";
+export function planOrder(planId) {
+  return (PLANS[planId] || PLANS.free).order;
 }
 
 export function canUseFeature(currentPlan, featureKey) {
-  if (currentPlan === "pro") return true;
-  return !(featureKey in PRO_FEATURES);
+  const minPlan = FEATURE_MIN_PLAN[featureKey];
+  if (!minPlan) return true; // not gated
+  return planOrder(currentPlan) >= planOrder(minPlan);
+}
+
+export function requiredPlanFor(featureKey) {
+  return FEATURE_MIN_PLAN[featureKey] || "free";
 }
 
 // ── UI Components ───────────────────────────────────────
 
-/**
- * ProBadge — small "PRO" label next to feature names
- */
-export function ProBadge() {
+/** Small tier badge (STARTER / PRO) next to feature names */
+export function TierBadge({ feature }) {
+  const minPlan = FEATURE_MIN_PLAN[feature];
+  if (!minPlan) return null;
+  const info = PLANS[minPlan];
   return html`
-    <span className="pro-badge">PRO</span>
+    <span className="tier-badge" style=${{ background: info.color }}>${info.label.toUpperCase()}</span>
   `;
 }
 
-/**
- * ProGuard — wraps content, shows lock overlay if not Pro
- */
+/** Wraps content — shows lock overlay if plan too low */
 export function ProGuard({ plan, feature, children }) {
-  if (isPro(plan)) return children;
+  if (canUseFeature(plan, feature)) return children;
 
-  const label = PRO_FEATURES[feature] || feature;
+  const label = FEATURE_LABELS[feature] || feature;
+  const required = PLANS[requiredPlanFor(feature)];
   return html`
     <div className="pro-guard">
       <div className="pro-guard-overlay">
         <div className="pro-guard-content">
           <span className="pro-guard-icon">🔒</span>
           <span className="pro-guard-label">${label}</span>
-          <span className="pro-guard-hint">Upgrade to Pro to unlock</span>
+          <span className="pro-guard-hint">Requires <b style=${{ color: required.color }}>${required.label}</b> plan</span>
         </div>
       </div>
       <div className="pro-guard-blurred">
@@ -95,16 +131,19 @@ export function ProGuard({ plan, feature, children }) {
   `;
 }
 
-/**
- * PlanToggle — demo toggle in header for switching plans
- */
+/** For backward compat — simple PRO badge */
+export function ProBadge() {
+  return html`<span className="tier-badge" style=${{ background: "#D35400" }}>PRO</span>`;
+}
+
+/** Plan toggle button in header — cycles Free → Starter → Pro */
 export function PlanToggle({ plan, onToggle }) {
-  const planInfo = PLANS[plan] || PLANS.free;
+  const info = PLANS[plan] || PLANS.free;
   return html`
     <button className="plan-toggle" onClick=${onToggle}
-      style=${{ borderColor: planInfo.color, color: planInfo.color }}
-      title="Click to toggle plan (demo)">
-      ${planInfo.label}
+      style=${{ borderColor: info.color, color: info.color }}
+      title="Click to cycle plan (demo): Free → Starter → Pro">
+      ${info.label}
     </button>
   `;
 }

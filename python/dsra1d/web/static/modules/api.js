@@ -227,6 +227,6 @@ export function downloadUrl(runId, artifact, outputRoot = "out/web") {
   return `${BASE}/api/runs/${runId}/download/${artifact}?output_root=${encodeURIComponent(outputRoot)}`;
 }
 
-export function excelExportUrl(runId, outputRoot = "out/web") {
-  return `${BASE}/api/runs/${runId}/export/xlsx?output_root=${encodeURIComponent(outputRoot)}`;
+export function excelExportUrl(runId, outputRoot = "out/web", tier = "pro") {
+  return `${BASE}/api/runs/${runId}/export/xlsx?output_root=${encodeURIComponent(outputRoot)}&tier=${tier}`;
 }

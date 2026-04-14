@@ -1,4 +1,4 @@
-# StrataWave Teknik Dogrulama Raporu
+# GeoWave Teknik Dogrulama Raporu
 
 - Uretim tarihi: `2026-03-23T11:49:42.156789+00:00`
 - Repo kok dizini: `H:\Drive'ım\GitHub_Repo\Deepsoil\1DSRA`
@@ -6,7 +6,7 @@
 
 ## 1. Amac ve Kapsam
 
-Bu rapor, StrataWave reposundaki mevcut kanitlari toplayarak yazilimin bugunku teknik olgunluk seviyesini belgelemek icin uretilmistir.
+Bu rapor, GeoWave reposundaki mevcut kanitlari toplayarak yazilimin bugunku teknik olgunluk seviyesini belgelemek icin uretilmistir.
 Rapor, urunun kendisine yeni bir dogrulama modu eklemez; yalnizca mevcut example, benchmark, parity ve dokumantasyon artifactlerini derler.
 
 ## 2. Mimari Ozet

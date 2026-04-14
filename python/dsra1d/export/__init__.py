@@ -1,4 +1,4 @@
-"""Export utilities for StrataWave results."""
+"""Export utilities for GeoWave results."""
 
 from dsra1d.export.excel import export_run_to_xlsx
 

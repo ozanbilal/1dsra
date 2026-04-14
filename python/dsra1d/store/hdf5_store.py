@@ -62,11 +62,17 @@ def write_hdf5(
     mesh_n_sub: np.ndarray,
     eql_summary: dict[str, object] | None = None,
     acc_input: np.ndarray | None = None,
+    acc_applied_input: np.ndarray | None = None,
+    input_dt_s: float | None = None,
+    node_depth_m: np.ndarray | None = None,
+    nodal_displacement_m: np.ndarray | None = None,
 ) -> Path:
     with h5py.File(path, "w") as h5:
         h5.create_dataset("/time", data=time)
         meta = h5.create_group("/meta")
         meta.create_dataset("delta_t_s", data=np.array([dt_s], dtype=np.float64))
+        if input_dt_s is not None:
+            meta.create_dataset("input_delta_t_s", data=np.array([input_dt_s], dtype=np.float64))
         depth = np.array([0.0], dtype=np.float64)
         h5.create_dataset("/depth", data=depth)
 
@@ -74,6 +80,10 @@ def write_hdf5(
         signals.create_dataset("surface_acc", data=acc_surface)
         if acc_input is not None:
             signals.create_dataset("input_acc", data=acc_input)
+        if acc_applied_input is not None:
+            signals.create_dataset("applied_input_acc", data=acc_applied_input)
+        if nodal_displacement_m is not None:
+            signals.create_dataset("nodal_disp_m", data=nodal_displacement_m)
 
         pwp = h5.create_group("/pwp")
         pwp.create_dataset("time", data=ru_time)
@@ -94,6 +104,8 @@ def write_hdf5(
         mesh.create_dataset("z_bot", data=mesh_z_bot)
         mesh.create_dataset("dz", data=mesh_dz)
         mesh.create_dataset("n_sub", data=mesh_n_sub)
+        if node_depth_m is not None:
+            mesh.create_dataset("node_depth_m", data=node_depth_m)
 
         if eql_summary is not None:
             eql = h5.create_group("/eql")

@@ -31,16 +31,29 @@ import numpy.typing as npt
 from dsra1d.config import BoundaryCondition, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials.mrdf import mrdf_coefficients_from_params
+from dsra1d.motion import effective_input_acceleration
 from dsra1d.nonlinear import (
     _ElementConstitutiveState,
     _assemble_tridiagonal_from_element_values,
     _integrate_acc_to_velocity,
     _layer_damping,
+    _modal_matched_damping_matrix,
     _rayleigh_coefficients,
 )
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
+
+
+def _solver_column_area(config: ProjectConfig) -> float:
+    legacy = getattr(config, "opensees", None)
+    if legacy is not None:
+        width = float(getattr(legacy, "column_width_m", 1.0))
+        thickness = float(getattr(legacy, "thickness_m", 1.0))
+        area = width * thickness
+        if np.isfinite(area) and area > 0.0:
+            return area
+    return 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +197,8 @@ def solve_nonlinear_implicit_newmark(
     points_per_wavelength: float = 10.0,
     min_dz_m: float = 0.25,
     substeps: int | None = None,
-) -> tuple[FloatArray, FloatArray]:
+    return_nodal_displacement: bool = False,
+) -> tuple[FloatArray, FloatArray] | tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
     """Solve nonlinear 1-D SH response using implicit Newmark-beta integration.
 
     Uses the average-acceleration method (β=0.25, γ=0.5) which is
@@ -229,9 +243,7 @@ def solve_nonlinear_implicit_newmark(
 
     layer_by_idx = {layer.index: layer for layer in layer_slices}
     cfg_layers = config.profile.layers
-    area = float(config.opensees.column_width_m * config.opensees.thickness_m)
-    if area <= 0.0:
-        area = 1.0
+    area = _solver_column_area(config)
 
     n_elem = len(element_slices)
     n_nodes = n_elem + 1
@@ -241,7 +253,11 @@ def solve_nonlinear_implicit_newmark(
     n_free = n_nodes if use_elastic_halfspace else (n_nodes - 1)
     if n_free == 0:
         t = np.arange(motion.acc.size, dtype=np.float64) * float(motion.dt)
-        return t, motion.acc.copy()
+        if not return_nodal_displacement:
+            return t, motion.acc.copy()
+        node_depth_m = np.zeros(n_nodes, dtype=np.float64)
+        nodal_displacement_m = np.zeros((n_nodes, motion.acc.size), dtype=np.float64)
+        return t, motion.acc.copy(), node_depth_m, nodal_displacement_m
 
     # ---- element properties ----
     m_elem = np.zeros(n_elem, dtype=np.float64)
@@ -286,21 +302,14 @@ def solve_nonlinear_implicit_newmark(
     m_mat = np.diag(m_diag)
 
     # ---- initial damping matrix ----
-    c_elem_init = np.array(
-        [2.0 * xi_elem[j] * np.sqrt(max(k_elem[j] * m_elem[j], 1.0e-12))
-         for j in range(n_elem)],
-        dtype=np.float64,
-    )
-    c_full = _assemble_tridiagonal_from_element_values(c_elem_init, n_nodes)
     dashpot_c = 0.0
     base_rho = 0.0
     base_vs = 0.0
     if use_elastic_halfspace:
-        base_layer = cfg_layers[-1]
-        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
-        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        bedrock = config.effective_bedrock()
+        base_rho = float(max(bedrock.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(bedrock.vs_m_s, 1.0e-6))
         dashpot_c = base_rho * base_vs * area
-        c_full[-1, -1] += dashpot_c
 
     # ---- damping mode ----
     use_rayleigh = config.analysis.damping_mode == "rayleigh"
@@ -317,7 +326,14 @@ def solve_nonlinear_implicit_newmark(
         k_init_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
         c_mat = (alpha_r * m_mat) + (beta_r * k_init_full[:n_free, :n_free])
     else:
-        c_mat = c_full[:n_free, :n_free]
+        xi_target = float(
+            np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12))
+        )
+        k_init_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
+        c_mat = _modal_matched_damping_matrix(m_diag, k_init_full[:n_free, :n_free], xi_target)
+        if use_elastic_halfspace:
+            c_mat = c_mat.copy()
+            c_mat[-1, -1] += dashpot_c
 
     # ---- Newmark constants (average acceleration: beta=0.25, gamma=0.5) ----
     dt = float(motion.dt)
@@ -332,7 +348,7 @@ def solve_nonlinear_implicit_newmark(
     a5 = dt_sub * ((gamma_nm / (2.0 * beta_nm)) - 1.0)
 
     # ---- external force array ----
-    acc_g = np.asarray(motion.acc, dtype=np.float64)
+    acc_g = effective_input_acceleration(config, motion.acc)
     n_steps = acc_g.size
     time = np.arange(n_steps, dtype=np.float64) * dt
     input_vel = _integrate_acc_to_velocity(acc_g, dt) if use_elastic_halfspace else None
@@ -342,6 +358,7 @@ def solve_nonlinear_implicit_newmark(
     v = np.zeros(n_free, dtype=np.float64)
     a_rel = np.zeros(n_free, dtype=np.float64)
     a_rel_hist = np.zeros((n_free, n_steps), dtype=np.float64)
+    u_hist_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
 
     # ---- initial internal force (zero displacement → zero) ----
     f_int_prev = np.zeros(n_free, dtype=np.float64)
@@ -357,6 +374,7 @@ def solve_nonlinear_implicit_newmark(
     rhs0 = f_ext_0 - (c_mat @ v) - f_int_prev
     a_rel = rhs0 / m_diag
     a_rel_hist[:, 0] = a_rel
+    u_hist_full[:n_free, 0] = u
 
     # ---- implicit Newmark time integration ----
     for i in range(1, n_steps):
@@ -372,11 +390,17 @@ def solve_nonlinear_implicit_newmark(
             # 2) Update damping if viscous update mode
             c_step = c_mat
             if viscous_update:
-                c_step = _update_viscous_damping(
-                    constitutive_states, u, dz_elem, xi_elem, m_elem,
-                    area, n_elem, n_nodes, n_free,
-                    dashpot_c, use_elastic_halfspace,
+                k_sec = _assemble_tangent_stiffness(
+                    constitutive_states, u, dz_elem, area,
+                    n_elem, n_nodes, n_free,
                 )
+                xi_target = float(
+                    np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12))
+                )
+                c_step = _modal_matched_damping_matrix(m_diag, k_sec, xi_target)
+                if use_elastic_halfspace:
+                    c_step = c_step.copy()
+                    c_step[-1, -1] += dashpot_c
 
             # 3) Effective stiffness: K_eff = K_t + a0*M + a1*C
             k_eff = k_t + (a0 * m_mat) + (a1 * c_step)
@@ -420,6 +444,7 @@ def solve_nonlinear_implicit_newmark(
             a_rel = a_new
 
         a_rel_hist[:, i] = a_rel
+        u_hist_full[:n_free, i] = u
 
     # ---- check for non-finite response ----
     if not np.all(np.isfinite(a_rel_hist)):
@@ -433,7 +458,13 @@ def solve_nonlinear_implicit_newmark(
     else:
         surface_acc = a_rel_hist[0, :] + acc_g
 
-    return time, surface_acc
+    if not return_nodal_displacement:
+        return time, surface_acc
+
+    node_depth_m = np.zeros(n_nodes, dtype=np.float64)
+    for j, elem in enumerate(element_slices):
+        node_depth_m[j + 1] = node_depth_m[j] + float(max(elem.dz_m, 0.0))
+    return time, surface_acc, node_depth_m, u_hist_full
 
 
 # ===================================================================
@@ -447,7 +478,8 @@ def solve_nonlinear_newmark(
     points_per_wavelength: float = 10.0,
     min_dz_m: float = 0.25,
     substeps: int | None = None,
-) -> tuple[FloatArray, FloatArray]:
+    return_nodal_displacement: bool = False,
+) -> tuple[FloatArray, FloatArray] | tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
     """Solve nonlinear 1-D SH response using velocity-Verlet integration.
 
     .. deprecated::
@@ -474,9 +506,7 @@ def solve_nonlinear_newmark(
 
     layer_by_idx = {layer.index: layer for layer in layer_slices}
     cfg_layers = config.profile.layers
-    area = float(config.opensees.column_width_m * config.opensees.thickness_m)
-    if area <= 0.0:
-        area = 1.0
+    area = _solver_column_area(config)
 
     n_elem = len(element_slices)
     n_nodes = n_elem + 1
@@ -527,21 +557,14 @@ def solve_nonlinear_newmark(
         raise ValueError("Non-positive nodal mass encountered.")
 
     # ---- initial damping matrix ----
-    c_elem_init = np.array(
-        [2.0 * xi_elem[j] * np.sqrt(max(k_elem[j] * m_elem[j], 1.0e-12))
-         for j in range(n_elem)],
-        dtype=np.float64,
-    )
-    c_full = _assemble_tridiagonal_from_element_values(c_elem_init, n_nodes)
     dashpot_c = 0.0
     base_rho = 0.0
     base_vs = 0.0
     if use_elastic_halfspace:
-        base_layer = cfg_layers[-1]
-        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
-        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        bedrock = config.effective_bedrock()
+        base_rho = float(max(bedrock.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(bedrock.vs_m_s, 1.0e-6))
         dashpot_c = base_rho * base_vs * area
-        c_full[-1, -1] += dashpot_c
 
     # ---- damping mode ----
     use_rayleigh = config.analysis.damping_mode == "rayleigh"
@@ -561,12 +584,19 @@ def solve_nonlinear_newmark(
         k_init_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
         c_mat = (alpha_r * m_mat) + (beta_r * k_init_full[:n_free, :n_free])
     else:
-        c_mat = c_full[:n_free, :n_free]
+        xi_target = float(
+            np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12))
+        )
+        k_init_full = _assemble_tridiagonal_from_element_values(k_elem, n_nodes)
+        c_mat = _modal_matched_damping_matrix(m_diag, k_init_full[:n_free, :n_free], xi_target)
+        if use_elastic_halfspace:
+            c_mat = c_mat.copy()
+            c_mat[-1, -1] += dashpot_c
 
     # ---- time stepping setup ----
     dt = float(motion.dt)
     dt_sub = dt / float(n_sub)
-    acc_g = np.asarray(motion.acc, dtype=np.float64)
+    acc_g = effective_input_acceleration(config, motion.acc)
     n_steps = acc_g.size
     time = np.arange(n_steps, dtype=np.float64) * dt
     input_vel = _integrate_acc_to_velocity(acc_g, dt) if use_elastic_halfspace else None
@@ -576,6 +606,7 @@ def solve_nonlinear_newmark(
     vel = np.zeros(n_free, dtype=np.float64)
     a_prev = np.zeros(n_free, dtype=np.float64)
     a_rel_hist = np.zeros((n_free, n_steps), dtype=np.float64)
+    u_hist_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
 
     # ---- velocity-Verlet time integration ----
     for i in range(n_steps):
@@ -600,29 +631,24 @@ def solve_nonlinear_newmark(
 
             c_step = c_mat
             if viscous_update:
-                c_upd = np.zeros(n_elem, dtype=np.float64)
-                for j in range(n_elem):
-                    dz = float(max(dz_elem[j], 1.0e-9))
-                    gamma_j = float((u_full[j] - u_full[j + 1]) / dz)
-                    tau_j = constitutive_states[j].tau_prev
-                    if abs(gamma_j) > 1.0e-10:
-                        g_sec = abs(tau_j / gamma_j)
-                    else:
-                        g_sec = constitutive_states[j].gmax_fallback
-                    k_sec_j = max(g_sec * area / dz, 1.0e-9)
-                    c_upd[j] = 2.0 * xi_elem[j] * np.sqrt(
-                        max(k_sec_j * m_elem[j], 1.0e-12)
-                    )
-                c_upd_full = _assemble_tridiagonal_from_element_values(c_upd, n_nodes)
+                k_sec = _assemble_tangent_stiffness(
+                    constitutive_states, u, dz_elem, area,
+                    n_elem, n_nodes, n_free,
+                )
+                xi_target = float(
+                    np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12))
+                )
+                c_step = _modal_matched_damping_matrix(m_diag, k_sec, xi_target)
                 if use_elastic_halfspace:
-                    c_upd_full[-1, -1] += dashpot_c
-                c_step = c_upd_full[:n_free, :n_free]
+                    c_step = c_step.copy()
+                    c_step[-1, -1] += dashpot_c
 
             a_new = (f_ext - (c_step @ v_half) - f_int) / m_diag
             vel = v_half + 0.5 * dt_sub * a_new
             a_prev = a_new
 
         a_rel_hist[:, i] = a_prev
+        u_hist_full[:n_free, i] = u
 
     # ---- surface acceleration ----
     if n_free == 0:
@@ -632,4 +658,10 @@ def solve_nonlinear_newmark(
     else:
         surface_acc = a_rel_hist[0, :] + acc_g
 
-    return time, surface_acc
+    if not return_nodal_displacement:
+        return time, surface_acc
+
+    node_depth_m = np.zeros(n_nodes, dtype=np.float64)
+    for j, elem in enumerate(element_slices):
+        node_depth_m[j + 1] = node_depth_m[j] + float(max(elem.dz_m, 0.0))
+    return time, surface_acc, node_depth_m, u_hist_full

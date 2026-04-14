@@ -2,7 +2,7 @@
 
 Produces a grid of YAML configs varying reload_factor, gamma_ref scaling, and
 damping bounds.  Each config targets the Example 5A rigid-base nonlinear case
-so that StrataWave `run` + `compare-deepsoil` can be called per candidate.
+so that GeoWave `run` + `compare-deepsoil` can be called per candidate.
 
 Usage:
     python scripts/sweep_mkz_calibration.py [--out <dir>] [--base-config <yaml>]
@@ -141,7 +141,7 @@ def _build_config(
     substeps: int,
     sweep_id: str,
 ) -> dict:
-    """Build a full StrataWave YAML config dict for a sweep candidate."""
+    """Build a full GeoWave YAML config dict for a sweep candidate."""
     profile_layers = []
     for layer_def in layers:
         params = _calibrate_layer(layer_def, reload_factor, gamma_ref_scale, damping_max)

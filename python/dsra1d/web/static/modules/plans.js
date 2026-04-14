@@ -1,5 +1,5 @@
 /**
- * StrataWave v3 — 3-Tier Plan & Feature Gating
+ * GeoWave v3 — 3-Tier Plan & Feature Gating
  *
  * Free → Starter → Pro
  * Demo mode: plan toggled via localStorage.
@@ -140,7 +140,8 @@ export function ProBadge() {
 export function PlanToggle({ plan, onToggle }) {
   const info = PLANS[plan] || PLANS.free;
   return html`
-    <button className="plan-toggle" onClick=${onToggle}
+    <button type="button" className="plan-toggle" onClick=${onToggle}
+      aria-label="Cycle demo subscription plan"
       style=${{ borderColor: info.color, color: info.color }}
       title="Click to cycle plan (demo): Free → Starter → Pro">
       ${info.label}

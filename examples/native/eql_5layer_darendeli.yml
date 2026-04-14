@@ -1,4 +1,4 @@
-# StrataWave Native Example: EQL 5-Layer Mixed Profile
+# GeoWave Native Example: EQL 5-Layer Mixed Profile
 # Reference curves: Darendeli (2001) calibrated MKZ
 # Boundary: Elastic halfspace
 # Solver: Equivalent-Linear (iterative strain-compatible)

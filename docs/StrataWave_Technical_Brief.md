@@ -1,4 +1,4 @@
-# StrataWave — 1D Site Response Analysis Platform
+# GeoWave — 1D Site Response Analysis Platform
 
 ## Technical Brief & Product Overview
 
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-StrataWave is a web-based **1D Site Response Analysis (SRA)** platform designed for geotechnical earthquake engineers. It performs total stress analysis (TSA) using three native solvers — Linear, Equivalent-Linear (EQL), and Nonlinear — without any external binary dependency. The platform delivers DEEPSOIL-equivalent analysis capability through a modern browser interface with a 3-tier SaaS monetization model.
+GeoWave is a web-based **1D Site Response Analysis (SRA)** platform designed for geotechnical earthquake engineers. It performs total stress analysis (TSA) using three native solvers — Linear, Equivalent-Linear (EQL), and Nonlinear — without any external binary dependency. The platform delivers DEEPSOIL-equivalent analysis capability through a modern browser interface with a 3-tier SaaS monetization model.
 
 **Key differentiators:**
 - Zero-install, browser-based operation (no MATLAB/Fortran dependency)
@@ -327,7 +327,7 @@ The nonlinear solver implements time-domain integration of the equation of motio
 
 ### 8.3 DEEPSOIL Parity
 
-StrataWave native solvers have been validated against DEEPSOIL for:
+GeoWave native solvers have been validated against DEEPSOIL for:
 - 4 canonical example profiles (linear, EQL, nonlinear MKZ, nonlinear GQH)
 - PGA agreement within 5% for standard benchmark motions
 - Transfer function shape and peak frequency alignment
@@ -369,7 +369,7 @@ Single-server deployment:
 
 ## 10. Competitive Positioning
 
-| Feature | DEEPSOIL | SHAKE | Strata | **StrataWave** |
+| Feature | DEEPSOIL | SHAKE | Strata | **GeoWave** |
 |---------|----------|-------|--------|---------------|
 | Platform | Desktop (Win) | Desktop | Desktop | **Web (any browser)** |
 | Install | Required | Required | Required | **Zero-install** |
@@ -407,4 +407,4 @@ Single-server deployment:
 
 ---
 
-*StrataWave is built with Python, React, and engineering rigor. Every solver implements peer-reviewed methods. Every metric follows established seismological conventions.*
+*GeoWave is built with Python, React, and engineering rigor. Every solver implements peer-reviewed methods. Every metric follows established seismological conventions.*

@@ -13,13 +13,18 @@ class ResultStore:
     hdf5_path: Path
     sqlite_path: Path
     dt_s: float
+    input_dt_s: float
     time: np.ndarray
+    input_time: np.ndarray
     acc_surface: np.ndarray
     acc_input: np.ndarray
+    acc_applied_input: np.ndarray
     spectra_periods: np.ndarray
     spectra_psa: np.ndarray
     transfer_freq_hz: np.ndarray
     transfer_abs: np.ndarray
+    node_depth_m: np.ndarray
+    nodal_displacement_m: np.ndarray
     ru_time: np.ndarray
     ru: np.ndarray
     delta_u: np.ndarray
@@ -46,11 +51,21 @@ def load_result(output_dir: str | Path) -> ResultStore:
             if "/meta/delta_t_s" in h5
             else np.array([], dtype=np.float64)
         )
+        input_dt_meta_arr = (
+            np.array(h5["/meta/input_delta_t_s"], dtype=np.float64)
+            if "/meta/input_delta_t_s" in h5
+            else np.array([], dtype=np.float64)
+        )
         time = np.array(h5["/time"], dtype=np.float64) if "/time" in h5 else np.array([])
         acc = np.array(h5["/signals/surface_acc"], dtype=np.float64)
         acc_input = (
             np.array(h5["/signals/input_acc"], dtype=np.float64)
             if "/signals/input_acc" in h5
+            else np.array([], dtype=np.float64)
+        )
+        acc_applied_input = (
+            np.array(h5["/signals/applied_input_acc"], dtype=np.float64)
+            if "/signals/applied_input_acc" in h5
             else np.array([], dtype=np.float64)
         )
         periods = np.array(h5["/spectra/periods"], dtype=np.float64)
@@ -63,6 +78,16 @@ def load_result(output_dir: str | Path) -> ResultStore:
         transfer_abs = (
             np.array(h5["/spectra/transfer_abs"], dtype=np.float64)
             if "/spectra/transfer_abs" in h5
+            else np.array([], dtype=np.float64)
+        )
+        node_depth_m = (
+            np.array(h5["/mesh/node_depth_m"], dtype=np.float64)
+            if "/mesh/node_depth_m" in h5
+            else np.array([], dtype=np.float64)
+        )
+        nodal_displacement_m = (
+            np.array(h5["/signals/nodal_disp_m"], dtype=np.float64)
+            if "/signals/nodal_disp_m" in h5
             else np.array([], dtype=np.float64)
         )
         ru_time = np.array(h5["/pwp/time"], dtype=np.float64) if "/pwp/time" in h5 else np.array([])
@@ -148,6 +173,19 @@ def load_result(output_dir: str | Path) -> ResultStore:
     else:
         dt_s = 1.0
 
+    if input_dt_meta_arr.size > 0 and np.isfinite(input_dt_meta_arr.reshape(-1)[0]):
+        input_dt_s = float(input_dt_meta_arr.reshape(-1)[0])
+    elif acc_input.size > 0 and time.size == acc_input.size and dt_s > 0.0:
+        input_dt_s = float(dt_s)
+    else:
+        input_dt_s = float(dt_s)
+
+    input_time = (
+        np.arange(acc_input.size, dtype=np.float64) * float(input_dt_s)
+        if acc_input.size > 0
+        else np.array([], dtype=np.float64)
+    )
+
     sigma_v_ref = (
         float(sigma_v_ref_arr.reshape(-1)[0])
         if sigma_v_ref_arr.size > 0
@@ -169,13 +207,18 @@ def load_result(output_dir: str | Path) -> ResultStore:
         hdf5_path=hdf5_path,
         sqlite_path=sqlite_path,
         dt_s=dt_s,
+        input_dt_s=input_dt_s,
         time=time,
+        input_time=input_time,
         acc_surface=acc,
         acc_input=acc_input,
+        acc_applied_input=acc_applied_input,
         spectra_periods=periods,
         spectra_psa=psa,
         transfer_freq_hz=transfer_freq_hz,
         transfer_abs=transfer_abs,
+        node_depth_m=node_depth_m,
+        nodal_displacement_m=nodal_displacement_m,
         ru_time=ru_time,
         ru=ru,
         delta_u=delta_u,

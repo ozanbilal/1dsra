@@ -14,9 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dsra1d.calibration import (
+    calibrate_gqh_strength_control_from_reference,
     calibrate_gqh_from_darendeli,
     calibrate_mkz_from_darendeli,
     generate_darendeli_curves,
+    get_reference_curves,
 )
 from dsra1d.config import (
     available_config_templates,
@@ -26,27 +28,44 @@ from dsra1d.config import (
 )
 from dsra1d.config.models import (
     BaselineMode,
+    BedrockProperties,
     BoundaryCondition,
     DarendeliCalibration,
     MaterialType,
     MotionConfig,
+    MotionProcessingConfig,
     ProjectConfig,
     ScaleMode,
 )
 from dsra1d.materials import (
     bounded_damping_from_reduction,
+    compute_masing_damping_ratio,
+    evaluate_mrdf_factor,
     generate_masing_loop,
-    gqh_modulus_reduction,
+    gqh_mode_from_params,
+    gqh_modulus_reduction_from_params,
     mkz_modulus_reduction,
+    mrdf_coefficients_from_params,
 )
-from dsra1d.motion import import_peer_at2_to_csv, load_motion, load_motion_series, preprocess_motion
-from dsra1d.pipeline import load_result, run_analysis
+from dsra1d.motion import (
+    import_peer_at2_to_csv,
+    load_motion,
+    load_motion_series,
+    preprocess_motion,
+    process_motion_components,
+)
+from dsra1d.pipeline import load_result, run_analysis, run_batch
 from dsra1d.post import compute_spectra, compute_transfer_function
+from dsra1d.profile_diagnostics import (
+    compute_layer_stress_states,
+    compute_profile_diagnostics,
+    mean_effective_stress_from_k0,
+)
 from dsra1d.store import ResultStore
 from dsra1d.types import Motion
 from dsra1d.units import accel_factor_to_si
 
-RunBackendMode = Literal["config", "linear", "eql", "nonlinear"]
+RunBackendMode = Literal["linear", "eql", "nonlinear"]
 ResolvedBackend = Literal["linear", "eql", "nonlinear"]
 
 
@@ -54,7 +73,7 @@ class RunRequest(BaseModel):
     config_path: str
     motion_path: str = ""
     output_root: str = "out/web"
-    backend: RunBackendMode = "config"
+    backend: RunBackendMode = "nonlinear"
 
 
 class RunResponse(BaseModel):
@@ -64,6 +83,25 @@ class RunResponse(BaseModel):
     status: str
     message: str
     backend: str
+
+
+class RunBatchRequest(BaseModel):
+    config_path: str
+    motion_paths: list[str] = Field(default_factory=list)
+    output_root: str = "out/web"
+    backend: RunBackendMode = "nonlinear"
+    n_jobs: int = Field(default=1, ge=1, le=256)
+
+
+class RunBatchResponse(BaseModel):
+    output_root: str
+    backend: str
+    status: str
+    message: str
+    motion_count: int
+    unique_run_count: int
+    n_jobs: int
+    results: list[RunResponse] = Field(default_factory=list)
 
 
 class RunSummary(BaseModel):
@@ -92,10 +130,11 @@ class RunSummary(BaseModel):
 
 class ConfigTemplateRequest(BaseModel):
     template: Literal[
+        "linear-3layer-sand",
         "mkz-gqh-eql",
         "mkz-gqh-nonlinear",
         "mkz-gqh-darendeli",
-    ] = "mkz-gqh-eql"
+    ] = "mkz-gqh-nonlinear"
     output_dir: str = ""
     file_name: str = ""
 
@@ -109,7 +148,7 @@ class ConfigTemplateResponse(BaseModel):
 
 class WizardAnalysisStep(BaseModel):
     project_name: str = "wizard-project"
-    boundary_condition: BoundaryCondition = BoundaryCondition.ELASTIC_HALFSPACE
+    boundary_condition: BoundaryCondition = BoundaryCondition.RIGID
     solver_backend: RunBackendMode = "nonlinear"
 
 
@@ -121,23 +160,29 @@ class WizardLayer(BaseModel):
     unit_weight_kn_m3: float = Field(gt=0.0, alias="unit_weight_kN_m3")
     vs_m_s: float = Field(gt=0.0)
     material: MaterialType
+    reference_curve: str | None = None
+    fit_stale: bool = False
     material_params: dict[str, float] = Field(default_factory=dict)
     material_optional_args: list[float] = Field(default_factory=list)
     calibration: DarendeliCalibration | None = None
 
 
 class WizardProfileStep(BaseModel):
+    water_table_depth_m: float | None = Field(default=None, ge=0.0)
+    bedrock: BedrockProperties | None = None
     layers: list[WizardLayer] = Field(default_factory=list)
 
 
 class WizardMotionStep(BaseModel):
     units: str = "m/s2"
+    input_type: Literal["within", "outcrop"] = "outcrop"
     dt_override: float | None = Field(default=None, gt=0.0)
     baseline: BaselineMode = BaselineMode.REMOVE_MEAN
     scale_mode: ScaleMode = ScaleMode.NONE
     scale_factor: float | None = None
     target_pga: float | None = None
     motion_path: str = ""
+    processing: MotionProcessingConfig | None = None
 
 
 class WizardDampingStep(BaseModel):
@@ -177,6 +222,9 @@ class WizardConfigResponse(BaseModel):
 
 class LayerCalibrationPreviewRequest(BaseModel):
     layer: WizardLayer
+    layers: list[WizardLayer] | None = None
+    layer_index: int | None = Field(default=None, ge=0)
+    water_table_depth_m: float | None = Field(default=None, ge=0.0)
 
 
 class LayerCalibrationPreviewResponse(BaseModel):
@@ -192,6 +240,17 @@ class LayerCalibrationPreviewResponse(BaseModel):
     material_params: dict[str, float] = Field(default_factory=dict)
     calibrated_material_params: dict[str, float] = Field(default_factory=dict)
     fit_rmse: float | None = None
+    modulus_rmse: float | None = None
+    damping_rmse: float | None = None
+    strength_ratio_achieved: float | None = None
+    fit_procedure: str | None = None
+    fit_limits_applied: dict[str, float | bool | str] | None = None
+    fit_stale: bool = False
+    gqh_mode: str | None = None
+    sigma_v_eff_mid_kpa: float | None = None
+    implied_strength_kpa: float | None = None
+    normalized_implied_strength: float | None = None
+    implied_friction_angle_deg: float | None = None
     loop_strain: list[float] = Field(default_factory=list)
     loop_stress: list[float] = Field(default_factory=list)
     loop_strain_amplitude: float | None = None
@@ -238,7 +297,48 @@ class MotionUploadPeerAT2Request(BaseModel):
     output_name: str = ""
 
 
-class MotionProcessRequest(BaseModel):
+class MotionParseOptionsModel(BaseModel):
+    format_hint: Literal["auto", "time_acc", "single", "numeric_stream"] = "auto"
+    delimiter: str | None = None
+    skip_rows: int = Field(default=0, ge=0, le=5000)
+    time_col: int = Field(default=0, ge=0, le=100)
+    acc_col: int = Field(default=1, ge=0, le=100)
+    has_time: bool = True
+
+
+class MotionProcessingOptionsModel(BaseModel):
+    processing_order: Literal["filter_first", "baseline_first"] = "filter_first"
+    baseline_on: bool = False
+    baseline_method: str = "poly4"
+    baseline_degree: int = Field(default=4, ge=0, le=10)
+    filter_on: bool = False
+    filter_domain: Literal["time", "frequency"] = "time"
+    filter_config: str = "bandpass"
+    filter_type: Literal["butter", "cheby", "bessel"] = "butter"
+    f_low: float = Field(default=0.1, ge=0.0)
+    f_high: float = Field(default=25.0, ge=0.0)
+    filter_order: int = Field(default=4, ge=1, le=16)
+    acausal: bool = True
+    window_on: bool = False
+    window_type: str = "hanning"
+    window_param: float = Field(default=0.1, ge=0.0)
+    window_duration: float | None = Field(default=None, gt=0.0)
+    window_apply_to: Literal["start", "end", "both"] = "both"
+    trim_start: float = Field(default=0.0, ge=0.0)
+    trim_end: float = Field(default=0.0, ge=0.0)
+    trim_taper: bool = False
+    pad_front: float = Field(default=0.0, ge=0.0)
+    pad_end: float = Field(default=0.0, ge=0.0)
+    pad_method: str = "zeros"
+    pad_method_front: str | None = None
+    pad_method_end: str | None = None
+    pad_smooth: bool = False
+    residual_fix: bool = False
+    spectrum_damping_ratio: float = Field(default=0.05, gt=0.0, lt=1.0)
+    show_uncorrected_preview: bool = True
+
+
+class MotionProcessRequest(MotionParseOptionsModel, MotionProcessingOptionsModel):
     motion_path: str
     units_hint: str = "m/s2"
     dt_override: float | None = Field(default=None, gt=0.0)
@@ -255,8 +355,48 @@ class MotionProcessResponse(BaseModel):
     processed_motion_path: str
     metrics_path: str
     metrics: dict[str, float]
-    spectra_preview: dict[str, list[float]]
+    spectra_preview: dict[str, object]
     status: str
+
+
+class MotionTimeStepReductionRequest(MotionParseOptionsModel):
+    motion_path: str
+    units_hint: str = "m/s2"
+    dt_override: float | None = Field(default=None, gt=0.0)
+    target_dt: float | None = Field(default=None, gt=0.0)
+    reduction_factor: int = Field(default=2, ge=2, le=20)
+    max_points: int = Field(default=4000, ge=200, le=40000)
+
+
+class MotionTimeStepReductionResponse(BaseModel):
+    dt_original: float
+    dt_reduced: float
+    reduction_factor: int
+    pga_original_m_s2: float
+    pga_reduced_m_s2: float
+    time_s: list[float] = Field(default_factory=list)
+    acc_original_m_s2: list[float] = Field(default_factory=list)
+    acc_reduced_m_s2: list[float] = Field(default_factory=list)
+    note: str = ""
+
+
+class MotionKappaRequest(MotionParseOptionsModel):
+    motion_path: str
+    units_hint: str = "m/s2"
+    dt_override: float | None = Field(default=None, gt=0.0)
+    freq_min_hz: float = Field(default=10.0, gt=0.0)
+    freq_max_hz: float = Field(default=40.0, gt=0.0)
+    max_points: int = Field(default=2400, ge=100, le=40000)
+
+
+class MotionKappaResponse(BaseModel):
+    kappa: float | None = None
+    kappa_r2: float | None = None
+    freq_hz: list[float] = Field(default_factory=list)
+    fas_amplitude: list[float] = Field(default_factory=list)
+    fit_freq_hz: list[float] = Field(default_factory=list)
+    fit_amplitude: list[float] = Field(default_factory=list)
+    note: str = ""
 
 
 class ResultSummaryResponse(BaseModel):
@@ -286,6 +426,37 @@ class WizardSanityResponse(BaseModel):
     derived: dict[str, object] = Field(default_factory=dict)
 
 
+class ProfileDiagnosticsRequest(BaseModel):
+    profile_step: WizardProfileStep
+
+
+class ProfileDiagnosticsLayerRow(BaseModel):
+    idx: int
+    name: str
+    material: str
+    thickness_m: float
+    unit_weight_kn_m3: float = Field(serialization_alias="unit_weight_kN_m3")
+    vs_m_s: float
+    z_top_m: float
+    z_bottom_m: float
+    sigma_v0_mid_kpa: float
+    sigma_v_eff_mid_kpa: float
+    pore_water_pressure_kpa: float
+    small_strain_damping_ratio: float | None = None
+    max_frequency_hz: float | None = None
+    implied_strength_kpa: float | None = None
+    normalized_implied_strength: float | None = None
+    implied_friction_angle_deg: float | None = None
+    gqh_mode: str | None = None
+
+
+class ProfileDiagnosticsResponse(BaseModel):
+    layer_count: int
+    total_thickness_m: float
+    water_table_depth_m: float | None = None
+    layers: list[ProfileDiagnosticsLayerRow] = Field(default_factory=list)
+
+
 class ResultProfileLayerRow(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -301,7 +472,17 @@ class ResultProfileLayerRow(BaseModel):
     gamma_max: float | None = None
     damping_ratio: float | None = None
     tau_peak_kpa: float | None = None
+    secant_g_pa: float | None = None
+    secant_g_over_gmax: float | None = None
     sigma_v0_mid_kpa: float | None = None
+    sigma_v_eff_mid_kpa: float | None = None
+    pore_water_pressure_kpa: float | None = None
+    small_strain_damping_ratio: float | None = None
+    max_frequency_hz: float | None = None
+    implied_strength_kpa: float | None = None
+    normalized_implied_strength: float | None = None
+    implied_friction_angle_deg: float | None = None
+    gqh_mode: str | None = None
     ru_max: float | None = None
     delta_u_max: float | None = None
     sigma_v_eff_min: float | None = None
@@ -317,11 +498,77 @@ class ResultProfileSummaryResponse(BaseModel):
     layers: list[ResultProfileLayerRow] = Field(default_factory=list)
 
 
+class DisplacementAnimationRequest(BaseModel):
+    run_id: str
+    output_root: str = "out/web"
+    frame_count: int = Field(default=120, ge=20, le=1200)
+    max_depth_points: int = Field(default=200, ge=10, le=2000)
+
+
+class DisplacementAnimationResponse(BaseModel):
+    run_id: str
+    approximate: bool = True
+    depth_m: list[float] = Field(default_factory=list)
+    frame_time_s: list[float] = Field(default_factory=list)
+    displacement_cm: list[list[float]] = Field(default_factory=list)
+    relative_displacement_cm: list[list[float]] = Field(default_factory=list)
+    peak_surface_displacement_cm: float | None = None
+    peak_profile_displacement_cm: float | None = None
+    peak_surface_relative_displacement_cm: float | None = None
+    peak_profile_relative_displacement_cm: float | None = None
+    note: str = ""
+
+
+class SpectraSummaryRow(BaseModel):
+    period_s: float
+    frequency_hz: float
+    surface_psa_m_s2: float | None = None
+    surface_psa_g: float | None = None
+    input_psa_m_s2: float | None = None
+    amplification_ratio: float | None = None
+
+
+class ResponseSpectraSummaryResponse(BaseModel):
+    run_id: str
+    damping_ratio: float
+    row_count: int
+    rows: list[SpectraSummaryRow] = Field(default_factory=list)
+    max_surface_psa_m_s2: float | None = None
+    max_amplification_ratio: float | None = None
+
+
+SPECTRA_STANDARD_PERIODS: tuple[float, ...] = (
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.075,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.4,
+    0.5,
+    0.75,
+    1.0,
+    1.5,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+)
+
+
 def _profile_summary_csv_text(summary: ResultProfileSummaryResponse) -> str:
     lines = [
         (
             "idx,name,material,z_top_m,z_bottom_m,thickness_m,vs_m_s,"
-            "unit_weight_kN_m3,n_sub,gamma_max,sigma_v0_mid_kpa,ru_max,delta_u_max,sigma_v_eff_min"
+            "unit_weight_kN_m3,n_sub,gamma_max,tau_peak_kpa,secant_g_pa,secant_g_over_gmax,"
+            "sigma_v0_mid_kpa,sigma_v_eff_mid_kpa,"
+            "pore_water_pressure_kpa,small_strain_damping_ratio,max_frequency_hz,"
+            "implied_strength_kpa,normalized_implied_strength,implied_friction_angle_deg,"
+            "gqh_mode,ru_max,delta_u_max,sigma_v_eff_min"
         )
     ]
     for layer in summary.layers:
@@ -336,7 +583,24 @@ def _profile_summary_csv_text(summary: ResultProfileSummaryResponse) -> str:
             f"{layer.unit_weight_kn_m3:.8f}",
             layer.n_sub,
             "" if layer.gamma_max is None else f"{layer.gamma_max:.10e}",
+            "" if layer.tau_peak_kpa is None else f"{layer.tau_peak_kpa:.10e}",
+            "" if layer.secant_g_pa is None else f"{layer.secant_g_pa:.10e}",
+            "" if layer.secant_g_over_gmax is None else f"{layer.secant_g_over_gmax:.10e}",
             "" if layer.sigma_v0_mid_kpa is None else f"{layer.sigma_v0_mid_kpa:.10e}",
+            "" if layer.sigma_v_eff_mid_kpa is None else f"{layer.sigma_v_eff_mid_kpa:.10e}",
+            "" if layer.pore_water_pressure_kpa is None else f"{layer.pore_water_pressure_kpa:.10e}",
+            ""
+            if layer.small_strain_damping_ratio is None
+            else f"{layer.small_strain_damping_ratio:.10e}",
+            "" if layer.max_frequency_hz is None else f"{layer.max_frequency_hz:.10e}",
+            "" if layer.implied_strength_kpa is None else f"{layer.implied_strength_kpa:.10e}",
+            ""
+            if layer.normalized_implied_strength is None
+            else f"{layer.normalized_implied_strength:.10e}",
+            ""
+            if layer.implied_friction_angle_deg is None
+            else f"{layer.implied_friction_angle_deg:.10e}",
+            "" if layer.gqh_mode is None else layer.gqh_mode,
             "" if layer.ru_max is None else f"{layer.ru_max:.10e}",
             "" if layer.delta_u_max is None else f"{layer.delta_u_max:.10e}",
             "" if layer.sigma_v_eff_min is None else f"{layer.sigma_v_eff_min:.10e}",
@@ -419,6 +683,203 @@ def _resolve_input_path(path_value: str, *, label: str) -> Path:
     raise FileNotFoundError(f"{label} not found: {path_value}")
 
 
+def _motion_parse_kwargs_from_model(payload: object) -> dict[str, object]:
+    def pick(name: str, default: object) -> object:
+        if isinstance(payload, dict):
+            return payload.get(name, default)
+        return getattr(payload, name, default)
+
+    return {
+        "format_hint": pick("format_hint", "auto"),
+        "delimiter": pick("delimiter", None),
+        "skip_rows": pick("skip_rows", 0),
+        "time_col": pick("time_col", 0),
+        "acc_col": pick("acc_col", 1),
+        "has_time": pick("has_time", True),
+    }
+
+
+def _motion_processing_kwargs_from_model(payload: object) -> dict[str, object]:
+    def pick(name: str, default: object) -> object:
+        if isinstance(payload, dict):
+            return payload.get(name, default)
+        return getattr(payload, name, default)
+
+    return {
+        "processing_order": pick("processing_order", "filter_first"),
+        "baseline_on": pick("baseline_on", False),
+        "baseline_method": pick("baseline_method", "poly4"),
+        "baseline_degree": pick("baseline_degree", 4),
+        "filter_on": pick("filter_on", False),
+        "filter_domain": pick("filter_domain", "time"),
+        "filter_config": pick("filter_config", "bandpass"),
+        "filter_type": pick("filter_type", "butter"),
+        "f_low": pick("f_low", 0.1),
+        "f_high": pick("f_high", 25.0),
+        "filter_order": pick("filter_order", 4),
+        "acausal": pick("acausal", True),
+        "window_on": pick("window_on", False),
+        "window_type": pick("window_type", "hanning"),
+        "window_param": pick("window_param", 0.1),
+        "window_duration": pick("window_duration", None),
+        "window_apply_to": pick("window_apply_to", "both"),
+        "trim_start": pick("trim_start", 0.0),
+        "trim_end": pick("trim_end", 0.0),
+        "trim_taper": pick("trim_taper", False),
+        "pad_front": pick("pad_front", 0.0),
+        "pad_end": pick("pad_end", 0.0),
+        "pad_method": pick("pad_method", "zeros"),
+        "pad_method_front": pick("pad_method_front", None),
+        "pad_method_end": pick("pad_method_end", None),
+        "pad_smooth": pick("pad_smooth", False),
+        "residual_fix": pick("residual_fix", False),
+        "spectrum_damping_ratio": pick("spectrum_damping_ratio", 0.05),
+        "show_uncorrected_preview": pick("show_uncorrected_preview", True),
+    }
+
+
+def _motion_config_from_model(
+    payload: object,
+    *,
+    baseline_mode: BaselineMode = BaselineMode.NONE,
+    scale_mode: ScaleMode = ScaleMode.NONE,
+    scale_factor: float | None = None,
+    target_pga: float | None = None,
+    force_processing: bool = False,
+) -> MotionConfig:
+    def pick(name: str, default: object) -> object:
+        if isinstance(payload, dict):
+            return payload.get(name, default)
+        return getattr(payload, name, default)
+
+    processing_kwargs = _motion_processing_kwargs_from_model(payload)
+    processing_defaults = MotionProcessingOptionsModel().model_dump(mode="python")
+    relevant_keys = tuple(
+        key
+        for key in processing_defaults.keys()
+        if key not in {"show_uncorrected_preview", "spectrum_damping_ratio"}
+    )
+    has_processing = force_processing or any(
+        processing_kwargs[key] != processing_defaults[key]
+        for key in relevant_keys
+    )
+    processing = (
+        MotionProcessingConfig.model_validate(processing_kwargs)
+        if has_processing
+        else None
+    )
+    return MotionConfig(
+        units=cast(str, pick("units_hint", pick("units", "m/s2"))),
+        input_type=cast(str, pick("input_type", "within")),
+        baseline=baseline_mode,
+        scale_mode=scale_mode,
+        scale_factor=scale_factor,
+        target_pga=target_pga,
+        processing=processing,
+    )
+
+
+def _motion_preview_payload(
+    *,
+    motion_path: Path,
+    units_hint: str,
+    format_hint: str,
+    raw_time_s: np.ndarray,
+    raw_acc_si: np.ndarray,
+    processed_dt_s: float,
+    processed_components: dict[str, np.ndarray],
+    spectrum_damping_ratio: float = 0.05,
+    show_uncorrected_preview: bool = True,
+    max_points: int = 1200,
+) -> dict[str, object]:
+    factor = accel_factor_to_si(units_hint)
+    raw_time = np.asarray(raw_time_s, dtype=np.float64)
+    raw_acc_m_s2 = np.asarray(raw_acc_si, dtype=np.float64)
+    raw_acc_input = raw_acc_m_s2 / factor if factor != 0.0 else raw_acc_m_s2.copy()
+
+    acc_proc_m_s2 = np.asarray(processed_components["acc_processed"], dtype=np.float64)
+    vel_proc_m_s = np.asarray(processed_components["vel_processed"], dtype=np.float64)
+    disp_proc_m = np.asarray(processed_components["disp_processed"], dtype=np.float64)
+    time_proc = np.arange(acc_proc_m_s2.size, dtype=np.float64) * float(processed_dt_s)
+    acc_proc_input = acc_proc_m_s2 / factor if factor != 0.0 else acc_proc_m_s2.copy()
+
+    spectra = compute_spectra(
+        acc_proc_m_s2,
+        dt=float(processed_dt_s),
+        damping=float(spectrum_damping_ratio),
+    )
+    sv, sd = _spectral_triplet(spectra.psa, spectra.periods)
+    sa_input = spectra.psa / factor if factor != 0.0 else spectra.psa.copy()
+
+    time_d, acc_input_d = _downsample_np(time_proc, acc_proc_input, max_points=max_points)
+    _, acc_d = _downsample_np(time_proc, acc_proc_m_s2, max_points=max_points)
+    _, vel_d = _downsample_np(time_proc, vel_proc_m_s, max_points=max_points)
+    _, disp_d = _downsample_np(time_proc, disp_proc_m, max_points=max_points)
+    period_d, sa_input_d = _downsample_np(
+        spectra.periods,
+        sa_input,
+        max_points=min(max_points, 800),
+    )
+    _, sa_m_s2_d = _downsample_np(
+        spectra.periods,
+        spectra.psa,
+        max_points=min(max_points, 800),
+    )
+    _, sv_d = _downsample_np(spectra.periods, sv, max_points=min(max_points, 800))
+    _, sd_d = _downsample_np(spectra.periods, sd, max_points=min(max_points, 800))
+
+    raw_time_d: list[float] = []
+    raw_acc_input_d: list[float] = []
+    raw_acc_d: list[float] = []
+    if show_uncorrected_preview:
+        raw_time_ds, raw_acc_input_ds = _downsample_np(raw_time, raw_acc_input, max_points=max_points)
+        _, raw_acc_si_ds = _downsample_np(raw_time, raw_acc_m_s2, max_points=max_points)
+        raw_time_d = [float(v) for v in raw_time_ds]
+        raw_acc_input_d = [float(v) for v in raw_acc_input_ds]
+        raw_acc_d = [float(v) for v in raw_acc_si_ds]
+
+    raw_pga_m_s2 = float(np.max(np.abs(raw_acc_m_s2))) if raw_acc_m_s2.size > 0 else 0.0
+    pga_m_s2 = float(np.max(np.abs(acc_proc_m_s2))) if acc_proc_m_s2.size > 0 else 0.0
+    duration = float(time_proc[-1]) if time_proc.size > 1 else 0.0
+
+    return {
+        "path": str(motion_path),
+        "name": motion_path.stem,
+        "npts": int(acc_proc_m_s2.size),
+        "raw_npts": int(raw_acc_m_s2.size),
+        "dt": float(processed_dt_s),
+        "raw_dt": _estimate_dt(raw_time) if raw_time.size > 1 else float(processed_dt_s),
+        "duration": duration,
+        "raw_duration": float(raw_time[-1]) if raw_time.size > 1 else 0.0,
+        "input_units": units_hint,
+        "format_hint": format_hint,
+        "show_uncorrected_preview": bool(show_uncorrected_preview),
+        "pga_input_units": pga_m_s2 / factor if factor != 0.0 else pga_m_s2,
+        "pga_m_s2": pga_m_s2,
+        "pga_g": pga_m_s2 / 9.81,
+        "pgv_m_s": float(np.max(np.abs(vel_proc_m_s))) if vel_proc_m_s.size > 0 else 0.0,
+        "pgd_m": float(np.max(np.abs(disp_proc_m))) if disp_proc_m.size > 0 else 0.0,
+        "sa_max_input_units": float(np.max(np.abs(sa_input))) if sa_input.size > 0 else 0.0,
+        "peak_sa_m_s2": float(np.max(np.abs(spectra.psa))) if spectra.psa.size > 0 else 0.0,
+        "raw_pga_input_units": raw_pga_m_s2 / factor if factor != 0.0 else raw_pga_m_s2,
+        "raw_pga_m_s2": raw_pga_m_s2,
+        "raw_pga_g": raw_pga_m_s2 / 9.81,
+        "raw_time_s": raw_time_d,
+        "raw_acc_input_units": raw_acc_input_d,
+        "raw_acc_m_s2": raw_acc_d,
+        "time_s": [float(v) for v in time_d],
+        "acc_input_units": [float(v) for v in acc_input_d],
+        "acc_m_s2": [float(v) for v in acc_d],
+        "vel_m_s": [float(v) for v in vel_d],
+        "disp_m": [float(v) for v in disp_d],
+        "period_s": [float(v) for v in period_d],
+        "sa_input_units": [float(v) for v in sa_input_d],
+        "sa_m_s2": [float(v) for v in sa_m_s2_d],
+        "sv_m_s": [float(v) for v in sv_d],
+        "sd_m": [float(v) for v in sd_d],
+    }
+
+
 def _resolve_output_root(raw: str) -> Path:
     text = raw.strip()
     if not text:
@@ -427,6 +888,102 @@ def _resolve_output_root(raw: str) -> Path:
     if out.is_absolute():
         return out.resolve()
     return (_repo_root() / out).resolve()
+
+
+def _motion_source_label(path: Path) -> str:
+    parent = path.parent.name.strip()
+    name = path.name.strip()
+    if parent and parent != name:
+        return f"{parent} / {name}"
+    return str(path)
+
+
+def _motion_source_group_label(file_path: Path, lib_dir: Path) -> str:
+    root_label = _motion_source_label(lib_dir)
+    try:
+        relative = file_path.resolve().relative_to(lib_dir.resolve())
+    except ValueError:
+        return root_label
+    if len(relative.parts) <= 1:
+        return root_label
+    top_level = relative.parts[0].strip()
+    if not top_level:
+        return root_label
+    parent = lib_dir.parent.name.strip()
+    if parent and parent != top_level:
+        return f"{parent} / {top_level}"
+    return top_level
+
+
+def _is_generated_motion_artifact(file_path: Path, lib_dir: Path) -> bool:
+    generated_dirs = {"outputs_gui", "testdsout"}
+    try:
+        relative = file_path.resolve().relative_to(lib_dir.resolve())
+    except ValueError:
+        return False
+    return any(part.strip().lower() in generated_dirs for part in relative.parts[:-1])
+
+
+def _scan_motion_library(lib_dirs: list[Path]) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for lib_dir in lib_dirs:
+        if not lib_dir.is_dir():
+            continue
+        for f in sorted(lib_dir.rglob("*")):
+            if not f.is_file() or f.suffix.lower() not in {".csv", ".at2", ".txt"}:
+                continue
+            if _is_generated_motion_artifact(f, lib_dir):
+                continue
+            resolved = str(f.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            results.append(
+                {
+                    "name": f.stem,
+                    "file_name": f.name,
+                    "path": resolved,
+                    "format": f.suffix.lower().lstrip("."),
+                    "source": resolved,
+                    "source_label": _motion_source_label(lib_dir),
+                    "source_group_label": _motion_source_group_label(f, lib_dir),
+                }
+            )
+    results.sort(key=lambda item: (item["name"].lower(), item["file_name"].lower(), item["path"]))
+    return results
+
+
+def _resolve_motion_library_dirs(default_dirs: list[Path], extra_dirs: list[str] | None) -> list[Path]:
+    resolved_dirs: list[Path] = []
+    seen: set[str] = set()
+    for directory in default_dirs:
+        try:
+            resolved = directory.resolve()
+        except OSError:
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved_dirs.append(resolved)
+
+    for raw_dir in extra_dirs or []:
+        text = (raw_dir or "").strip()
+        if not text:
+            continue
+        try:
+            candidate = _resolve_input_path(text, label="Motion library directory")
+        except FileNotFoundError:
+            continue
+        if not candidate.is_dir():
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved_dirs.append(candidate)
+    return resolved_dirs
 
 
 def _collect_runs(output_root: Path) -> list[Path]:
@@ -695,6 +1252,50 @@ def _read_layer_pwp_profile_stats(
     return ru_max, delta_u_max, sigma_v_eff_min
 
 
+def _read_layer_response_summary(
+    run_dir: Path | None,
+) -> dict[int, dict[str, float]]:
+    if run_dir is None:
+        return {}
+    summary_path = run_dir / "layer_response_summary.csv"
+    if not summary_path.exists():
+        return {}
+    try:
+        rows = summary_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    if not rows:
+        return {}
+
+    out: dict[int, dict[str, float]] = {}
+    for line in rows[1:]:
+        text = line.strip()
+        if not text:
+            continue
+        parts = [part.strip() for part in text.split(",")]
+        if len(parts) < 8:
+            continue
+        try:
+            idx = int(parts[0])
+        except ValueError:
+            continue
+        values: dict[str, float] = {}
+        for key, raw in (
+            ("gamma_max", parts[4]),
+            ("tau_peak_kpa", parts[5]),
+            ("secant_g_pa", parts[6]),
+            ("secant_g_over_gmax", parts[7]),
+        ):
+            if not raw:
+                continue
+            try:
+                values[key] = float(raw)
+            except ValueError:
+                continue
+        out[idx] = values
+    return out
+
+
 def _read_profile_layer_summary(
     sqlite_path: Path,
     run_dir: Path | None = None,
@@ -727,6 +1328,8 @@ def _read_profile_layer_summary(
         gamma_by_idx: dict[int, float] = {}
         damping_by_idx: dict[int, float] = {}
         tau_peak_by_idx: dict[int, float] = {}
+        secant_g_pa_by_idx: dict[int, float] = {}
+        secant_g_over_gmax_by_idx: dict[int, float] = {}
         if _table_exists(conn, "eql_layers"):
             eql_rows = conn.execute(
                 "SELECT layer_idx, gamma_max, damping FROM eql_layers ORDER BY layer_idx ASC"
@@ -738,6 +1341,21 @@ def _read_profile_layer_summary(
                 except (TypeError, ValueError):
                     continue
 
+        layer_response_summary = _read_layer_response_summary(run_dir)
+        for idx, row in layer_response_summary.items():
+            gamma_val = row.get("gamma_max")
+            if gamma_val is not None and np.isfinite(gamma_val):
+                gamma_by_idx[idx] = float(gamma_val)
+            tau_peak_val = row.get("tau_peak_kpa")
+            if tau_peak_val is not None and np.isfinite(tau_peak_val):
+                tau_peak_by_idx[idx] = float(tau_peak_val)
+            secant_g_val = row.get("secant_g_pa")
+            if secant_g_val is not None and np.isfinite(secant_g_val):
+                secant_g_pa_by_idx[idx] = float(secant_g_val)
+            secant_ratio_val = row.get("secant_g_over_gmax")
+            if secant_ratio_val is not None and np.isfinite(secant_ratio_val):
+                secant_g_over_gmax_by_idx[idx] = float(secant_ratio_val)
+
         # Fallback for nonlinear: read peak strain/stress from recorded hysteresis files
         if not gamma_by_idx and run_dir is not None:
             for layer_idx_zero in range(len(layer_rows)):
@@ -747,7 +1365,7 @@ def _read_profile_layer_summary(
                     if strain_arr.size > 0:
                         gamma_by_idx[layer_idx_zero] = float(np.max(np.abs(strain_arr)))
                     if stress_arr.size > 0:
-                        tau_peak_by_idx[layer_idx_zero] = float(np.max(np.abs(stress_arr))) / 1000.0  # Pa → kPa
+                        tau_peak_by_idx[layer_idx_zero] = float(np.max(np.abs(stress_arr)))
 
         # Second fallback: use hysteresis proxy builder if still no data
         if not gamma_by_idx and run_dir is not None:
@@ -761,10 +1379,54 @@ def _read_profile_layer_summary(
                 for hl in hyst_resp.layers:
                     gamma_by_idx[hl.layer_index] = hl.strain_amplitude
                     if hl.stress:
-                        tau_peak_by_idx[hl.layer_index] = float(max(abs(s) for s in hl.stress)) / 1000.0
+                        tau_peak_by_idx[hl.layer_index] = float(max(abs(s) for s in hl.stress))
                     damping_by_idx[hl.layer_index] = hl.damping_proxy
             except Exception:
                 pass  # non-critical fallback
+
+        diagnostics_by_idx: dict[int, object] = {}
+        diagnostics_by_name: dict[str, object] = {}
+        fallback_layers: list[dict[str, object]] = []
+        for idx, name, thickness, unit_weight, vs, material in layer_rows:
+            fallback_layers.append(
+                {
+                    "name": str(name),
+                    "thickness_m": float(thickness),
+                    "unit_weight_kN_m3": float(unit_weight),
+                    "vs_m_s": float(vs),
+                    "material": str(material),
+                    "material_params": {},
+                }
+            )
+
+        profile_layers_input: list[object] = fallback_layers
+        water_table_depth_m: float | None = None
+        if run_dir is not None:
+            run_meta = _read_run_meta(run_dir)
+            snapshot_path = run_meta.get("config_snapshot", "").strip()
+            if snapshot_path:
+                candidate = Path(snapshot_path)
+                if not candidate.is_absolute():
+                    candidate = (run_dir / candidate).resolve()
+                if candidate.exists():
+                    try:
+                        cfg = load_project_config(candidate)
+                        profile_layers_input = list(cfg.profile.layers)
+                        water_table_depth_m = cfg.profile.water_table_depth_m
+                    except Exception:
+                        profile_layers_input = fallback_layers
+                        water_table_depth_m = None
+
+        try:
+            diagnostics_rows = compute_profile_diagnostics(
+                profile_layers_input,
+                water_table_depth_m=water_table_depth_m,
+            )
+        except Exception:
+            diagnostics_rows = []
+        for row in diagnostics_rows:
+            diagnostics_by_idx[int(row.index)] = row
+            diagnostics_by_name[row.name] = row
 
         layers: list[ResultProfileLayerRow] = []
         cum_depth = 0.0
@@ -784,23 +1446,78 @@ def _read_profile_layer_summary(
                     1,
                 ),
             )
+            diag = diagnostics_by_idx.get(layer_idx)
+            if diag is None:
+                diag = diagnostics_by_idx.get(layer_idx - 1)
+            if diag is None:
+                diag = diagnostics_by_name.get(layer_name)
+
             gamma_max = gamma_by_idx.get(layer_idx)
             if gamma_max is None:
                 gamma_max = gamma_by_idx.get(layer_idx + 1)
             damping_ratio_val = damping_by_idx.get(layer_idx)
             if damping_ratio_val is None:
                 damping_ratio_val = damping_by_idx.get(layer_idx + 1)
-            # Peak shear stress: prefer recorded hysteresis, else approximate from Gmax
+
             tau_peak_kpa_val: float | None = tau_peak_by_idx.get(layer_idx)
             if tau_peak_kpa_val is None and gamma_max is not None and gamma_max > 0:
-                vs_val = float(vs)
-                rho = float(unit_weight) / 9.81
-                gmax_pa = rho * vs_val * vs_val
-                tau_peak_kpa_val = gmax_pa * gamma_max / 1000.0  # Pa -> kPa
+                tau_peak_kpa_val = _estimate_gmax_kpa(float(vs), float(unit_weight)) * gamma_max
+            if tau_peak_kpa_val is None and diag is not None:
+                tau_peak_kpa_val = getattr(diag, "implied_strength_kpa", None)
+            secant_g_pa_val = secant_g_pa_by_idx.get(layer_idx)
+            if secant_g_pa_val is None:
+                secant_g_pa_val = secant_g_pa_by_idx.get(layer_idx + 1)
+            secant_g_over_gmax_val = secant_g_over_gmax_by_idx.get(layer_idx)
+            if secant_g_over_gmax_val is None:
+                secant_g_over_gmax_val = secant_g_over_gmax_by_idx.get(layer_idx + 1)
+
             unit_weight_kn_m3 = float(unit_weight)
             sigma_v0_mid_kpa = (
-                max(cum_depth, 0.0) + max(t_m, 0.0) * 0.5
-            ) * max(unit_weight_kn_m3, 0.0)
+                float(getattr(diag, "sigma_v0_mid_kpa"))
+                if diag is not None
+                else (max(default_top, 0.0) + (0.5 * max(t_m, 0.0))) * max(unit_weight_kn_m3, 0.0)
+            )
+            sigma_v_eff_mid_kpa = (
+                float(getattr(diag, "sigma_v_eff_mid_kpa"))
+                if diag is not None
+                else None
+            )
+            pore_pressure_kpa = (
+                float(getattr(diag, "pore_water_pressure_kpa"))
+                if diag is not None
+                else None
+            )
+            small_strain_damping_ratio = (
+                float(getattr(diag, "small_strain_damping_ratio"))
+                if diag is not None and getattr(diag, "small_strain_damping_ratio") is not None
+                else None
+            )
+            max_frequency_hz = (
+                float(getattr(diag, "max_frequency_hz"))
+                if diag is not None and getattr(diag, "max_frequency_hz") is not None
+                else None
+            )
+            implied_strength_kpa = (
+                float(getattr(diag, "implied_strength_kpa"))
+                if diag is not None and getattr(diag, "implied_strength_kpa") is not None
+                else None
+            )
+            normalized_implied_strength = (
+                float(getattr(diag, "normalized_implied_strength"))
+                if diag is not None and getattr(diag, "normalized_implied_strength") is not None
+                else None
+            )
+            implied_friction_angle_deg = (
+                float(getattr(diag, "implied_friction_angle_deg"))
+                if diag is not None and getattr(diag, "implied_friction_angle_deg") is not None
+                else None
+            )
+            gqh_mode = (
+                str(getattr(diag, "gqh_mode"))
+                if diag is not None and getattr(diag, "gqh_mode") is not None
+                else None
+            )
+
             ru_max = None
             delta_u_max = None
             sigma_v_eff_min = None
@@ -825,7 +1542,17 @@ def _read_profile_layer_summary(
                     gamma_max=float(gamma_max) if gamma_max is not None else None,
                     damping_ratio=float(damping_ratio_val) if damping_ratio_val is not None else None,
                     tau_peak_kpa=tau_peak_kpa_val,
+                    secant_g_pa=secant_g_pa_val,
+                    secant_g_over_gmax=secant_g_over_gmax_val,
                     sigma_v0_mid_kpa=sigma_v0_mid_kpa,
+                    sigma_v_eff_mid_kpa=sigma_v_eff_mid_kpa,
+                    pore_water_pressure_kpa=pore_pressure_kpa,
+                    small_strain_damping_ratio=small_strain_damping_ratio,
+                    max_frequency_hz=max_frequency_hz,
+                    implied_strength_kpa=implied_strength_kpa,
+                    normalized_implied_strength=normalized_implied_strength,
+                    implied_friction_angle_deg=implied_friction_angle_deg,
+                    gqh_mode=gqh_mode,
                     ru_max=ru_max,
                     delta_u_max=delta_u_max,
                     sigma_v_eff_min=sigma_v_eff_min,
@@ -1271,12 +1998,9 @@ def _build_hysteresis_response(
             )
         else:
             g_over_gmax = float(
-                gqh_modulus_reduction(
+                gqh_modulus_reduction_from_params(
                     np.array([gamma_a], dtype=np.float64),
-                    gamma_ref=gamma_ref,
-                    a1=float(loop_params.get("a1", 1.0)),
-                    a2=float(loop_params.get("a2", 0.0)),
-                    m=float(loop_params.get("m", 1.0)),
+                    loop_params,
                 )[0]
             )
         damping_proxy = float(
@@ -1333,6 +2057,15 @@ def _as_positive_float_or_none(value: object) -> float | None:
         return None
     v = float(value)
     if not np.isfinite(v) or v <= 0.0:
+        return None
+    return v
+
+
+def _as_non_negative_float_or_none(value: object) -> float | None:
+    if not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    if not np.isfinite(v) or v < 0.0:
         return None
     return v
 
@@ -1396,28 +2129,46 @@ def _material_preview_curves(
 ) -> tuple[np.ndarray, np.ndarray]:
     damping_min = float(params.get("damping_min", 0.01))
     damping_max = float(params.get("damping_max", 0.12))
-    gamma_ref = float(params.get("gamma_ref", 0.0))
+    gamma_ref = float(params.get("gamma_ref", 1.0e-3))
     if material == MaterialType.MKZ:
-        reduction = mkz_modulus_reduction(strain, gamma_ref=gamma_ref)
-    elif material == MaterialType.GQH:
-        reduction = gqh_modulus_reduction(
+        reduction = mkz_modulus_reduction(
             strain,
             gamma_ref=gamma_ref,
-            a1=float(params.get("a1", 1.0)),
-            a2=float(params.get("a2", 0.0)),
-            m=float(params.get("m", 1.0)),
+            g_reduction_min=float(params.get("g_reduction_min", 0.0)),
+        )
+    elif material == MaterialType.GQH:
+        reduction = gqh_modulus_reduction_from_params(
+            strain,
+            params,
         )
     else:
         raise ValueError("Preview curves are available only for MKZ/GQH materials.")
-    damping = bounded_damping_from_reduction(
-        reduction,
-        damping_min=damping_min,
-        damping_max=damping_max,
-    )
+    coeffs = mrdf_coefficients_from_params(params)
+    if coeffs is None:
+        damping = bounded_damping_from_reduction(
+            reduction,
+            damping_min=damping_min,
+            damping_max=damping_max,
+        )
+    else:
+        masing = compute_masing_damping_ratio(material, params, strain)
+        factors = np.asarray(
+            [
+                evaluate_mrdf_factor(coeffs, float(gamma), g_over_gmax=float(red))
+                for gamma, red in zip(strain, reduction, strict=False)
+            ],
+            dtype=np.float64,
+        )
+        damping = np.maximum(damping_min, masing * factors)
+        damping = np.maximum.accumulate(np.clip(damping, damping_min, 0.5))
     return reduction, damping
 
 
-def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPreviewResponse:
+def _build_layer_calibration_preview(
+    layer: WizardLayer,
+    *,
+    sigma_v_eff_mid_kpa: float | None = None,
+) -> LayerCalibrationPreviewResponse:
     material = layer.material
     warnings: list[str] = []
     if material not in {MaterialType.MKZ, MaterialType.GQH}:
@@ -1448,52 +2199,171 @@ def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPrev
     target_damping: np.ndarray = np.asarray([], dtype=np.float64)
     calibrated_params: dict[str, float] = {}
     source = "manual"
+    sigma_mid_eff = (
+        float(sigma_v_eff_mid_kpa)
+        if sigma_v_eff_mid_kpa is not None and np.isfinite(sigma_v_eff_mid_kpa)
+        else None
+    )
+    sigma_mean_eff: float | None = None
+    gqh_mode: str | None = None
+    modulus_rmse: float | None = None
+    damping_rmse: float | None = None
+    strength_ratio_achieved: float | None = None
+    fit_procedure: str | None = None
+    fit_limits_applied: dict[str, float | bool | str] | None = None
+    fit_stale = bool(getattr(layer, "fit_stale", False))
+    reference_curve = (layer.reference_curve or "darendeli").strip().lower()
 
     if calibration is not None:
         source = calibration.source
-        if material == MaterialType.MKZ:
-            calibrated = calibrate_mkz_from_darendeli(
-                gmax=gmax_seed,
+        if reference_curve == "darendeli":
+            sigma_mean_eff = calibration.mean_effective_stress_kpa
+            if sigma_mean_eff is None:
+                if calibration.k0 is None:
+                    warnings.append(
+                        "Calibration requires mean_effective_stress_kpa or k0 for stress context."
+                    )
+                    return LayerCalibrationPreviewResponse(
+                        available=False,
+                        material=material.value,
+                        source=source,
+                        target_available=target_available,
+                        warnings=warnings,
+                    )
+                sigma_eff_seed = sigma_mid_eff
+                if sigma_eff_seed is None or sigma_eff_seed <= 0.0:
+                    sigma_eff_seed = max(0.5 * layer.thickness_m * layer.unit_weight_kn_m3, 1.0e-3)
+                    warnings.append(
+                        "Profile effective stress was not provided for K0-based calibration; "
+                        "using layer midpoint stress estimate."
+                    )
+                sigma_mean_eff = mean_effective_stress_from_k0(sigma_eff_seed, calibration.k0)
+            if material == MaterialType.MKZ:
+                calibrated = calibrate_mkz_from_darendeli(
+                    gmax=gmax_seed,
+                    plasticity_index=calibration.plasticity_index,
+                    ocr=calibration.ocr,
+                    mean_effective_stress_kpa=sigma_mean_eff,
+                    frequency_hz=calibration.frequency_hz,
+                    num_cycles=calibration.num_cycles,
+                    atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
+                    strain_min=calibration.strain_min,
+                    strain_max=calibration.strain_max,
+                    n_points=calibration.n_points,
+                    reload_factor=calibration.reload_factor or 2.0,
+                )
+            else:
+                tau_target = calibration.target_strength_kpa
+                if tau_target is None:
+                    tau_target = raw_params.get("tau_max")
+                calibrated = calibrate_gqh_from_darendeli(
+                    gmax=gmax_seed,
+                    plasticity_index=calibration.plasticity_index,
+                    ocr=calibration.ocr,
+                    mean_effective_stress_kpa=sigma_mean_eff,
+                    sigma_v_eff_mid_kpa=sigma_mid_eff,
+                    k0=calibration.k0,
+                    frequency_hz=calibration.frequency_hz,
+                    num_cycles=calibration.num_cycles,
+                    atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
+                    strain_min=calibration.strain_min,
+                    strain_max=calibration.strain_max,
+                    n_points=calibration.n_points,
+                    tau_target_kpa=tau_target,
+                    fit_strain_min=calibration.fit_strain_min,
+                    fit_strain_max=calibration.fit_strain_max,
+                    target_strength_ratio=calibration.target_strength_ratio,
+                    target_strength_strain=calibration.target_strength_strain,
+                    reload_factor=calibration.reload_factor or 1.6,
+                    fit_procedure=calibration.fit_procedure,
+                    fit_limits=(
+                        calibration.fit_limits.model_dump(exclude_none=True)
+                        if calibration.fit_limits is not None
+                        else None
+                    ),
+                )
+                gqh_mode = calibrated.gqh_mode
+            modulus_rmse = calibrated.modulus_rmse
+            damping_rmse = calibrated.damping_rmse
+            strength_ratio_achieved = calibrated.strength_ratio_achieved
+            fit_procedure = calibrated.fit_procedure
+            fit_limits_applied = calibrated.fit_limits_applied
+            target_curves = generate_darendeli_curves(
                 plasticity_index=calibration.plasticity_index,
                 ocr=calibration.ocr,
-                mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
+                mean_effective_stress_kpa=sigma_mean_eff,
                 frequency_hz=calibration.frequency_hz,
                 num_cycles=calibration.num_cycles,
                 atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
                 strain_min=calibration.strain_min,
                 strain_max=calibration.strain_max,
                 n_points=calibration.n_points,
-                reload_factor=calibration.reload_factor or 2.0,
             )
+            target_modulus = target_curves.modulus_reduction
+            target_damping = target_curves.damping_ratio
+            strain = target_curves.strain.astype(np.float64)
+            calibrated_params = dict(calibrated.material_params)
         else:
-            calibrated = calibrate_gqh_from_darendeli(
-                gmax=gmax_seed,
-                plasticity_index=calibration.plasticity_index,
-                ocr=calibration.ocr,
-                mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
-                frequency_hz=calibration.frequency_hz,
-                num_cycles=calibration.num_cycles,
-                atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
-                strain_min=calibration.strain_min,
-                strain_max=calibration.strain_max,
-                n_points=calibration.n_points,
-                reload_factor=calibration.reload_factor or 1.6,
-            )
-        target_curves = generate_darendeli_curves(
-            plasticity_index=calibration.plasticity_index,
-            ocr=calibration.ocr,
-            mean_effective_stress_kpa=calibration.mean_effective_stress_kpa,
-            frequency_hz=calibration.frequency_hz,
-            num_cycles=calibration.num_cycles,
-            atmospheric_pressure_kpa=calibration.atmospheric_pressure_kpa,
-            strain_min=calibration.strain_min,
-            strain_max=calibration.strain_max,
-            n_points=calibration.n_points,
-        )
-        target_modulus = target_curves.modulus_reduction
-        target_damping = target_curves.damping_ratio
-        calibrated_params = dict(calibrated.material_params)
-        effective_params = {**calibrated_params, **raw_params}
+            source = f"reference:{reference_curve}"
+            try:
+                target_curves = get_reference_curves(
+                    reference_curve,
+                    plasticity_index=calibration.plasticity_index,
+                    strain_min=calibration.strain_min,
+                    strain_max=calibration.strain_max,
+                    n_points=calibration.n_points,
+                )
+            except ValueError as exc:
+                warnings.append(str(exc))
+                return LayerCalibrationPreviewResponse(
+                    available=False,
+                    material=material.value,
+                    source=source,
+                    target_available=target_available,
+                    warnings=warnings,
+                )
+            target_modulus = target_curves.modulus_reduction
+            target_damping = target_curves.damping_ratio
+            strain = target_curves.strain.astype(np.float64)
+            if material == MaterialType.MKZ:
+                warnings.append(
+                    "Reference-curve refit is currently implemented for GQ/H only."
+                )
+            else:
+                tau_target = calibration.target_strength_kpa
+                if tau_target is None:
+                    tau_target = raw_params.get("tau_max")
+                if tau_target is None:
+                    warnings.append(
+                        "Reference-curve refit requires target_strength_kpa or material_params.tau_max."
+                    )
+                else:
+                    calibrated = calibrate_gqh_strength_control_from_reference(
+                        gmax=gmax_seed,
+                        tau_target_kpa=float(tau_target),
+                        strain=strain,
+                        target_modulus_reduction=target_modulus,
+                        target_damping_ratio=target_damping,
+                        fit_strain_min=calibration.fit_strain_min,
+                        fit_strain_max=calibration.fit_strain_max,
+                        target_strength_ratio=calibration.target_strength_ratio,
+                        target_strength_strain=calibration.target_strength_strain,
+                        reload_factor=calibration.reload_factor or 1.6,
+                        fit_procedure=calibration.fit_procedure,
+                        fit_limits=(
+                            calibration.fit_limits.model_dump(exclude_none=True)
+                            if calibration.fit_limits is not None
+                            else None
+                        ),
+                    )
+                    gqh_mode = calibrated.gqh_mode
+                    calibrated_params = dict(calibrated.material_params)
+                    modulus_rmse = calibrated.modulus_rmse
+                    damping_rmse = calibrated.damping_rmse
+                    strength_ratio_achieved = calibrated.strength_ratio_achieved
+                    fit_procedure = calibrated.fit_procedure
+                    fit_limits_applied = calibrated.fit_limits_applied
+        effective_params = {**raw_params, **calibrated_params}
     else:
         effective_params = dict(raw_params)
 
@@ -1512,6 +2382,8 @@ def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPrev
             target_available=target_available,
             warnings=warnings,
         )
+    if gqh_mode is None and material == MaterialType.GQH:
+        gqh_mode = gqh_mode_from_params(effective_params)
 
     fit_rmse: float | None = None
     if target_modulus.size:
@@ -1545,6 +2417,31 @@ def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPrev
     except ValueError as exc:
         warnings.append(f"Single-element preview unavailable: {exc}")
 
+    implied_strength = None
+    normalized_strength = None
+    implied_phi = None
+    if sigma_mid_eff is not None and sigma_mid_eff > 0.0:
+        preview_layer = {
+            "name": layer.name,
+            "material": material.value,
+            "thickness_m": layer.thickness_m,
+            "unit_weight_kN_m3": layer.unit_weight_kn_m3,
+            "vs_m_s": layer.vs_m_s,
+            "material_params": effective_params,
+        }
+        diags = compute_profile_diagnostics(
+            [preview_layer],
+            water_table_depth_m=None,
+            strain=strain,
+        )
+        if diags:
+            implied_strength = diags[0].implied_strength_kpa
+            normalized_strength = diags[0].normalized_implied_strength
+            implied_phi = diags[0].implied_friction_angle_deg
+    if implied_strength is not None and sigma_mid_eff is not None and sigma_mid_eff > 0.0:
+        normalized_strength = float(implied_strength / sigma_mid_eff)
+        implied_phi = float(np.degrees(np.arctan(normalized_strength)))
+
     return LayerCalibrationPreviewResponse(
         available=True,
         material=material.value,
@@ -1558,6 +2455,17 @@ def _build_layer_calibration_preview(layer: WizardLayer) -> LayerCalibrationPrev
         material_params={k: float(v) for k, v in effective_params.items()},
         calibrated_material_params={k: float(v) for k, v in calibrated_params.items()},
         fit_rmse=fit_rmse,
+        modulus_rmse=modulus_rmse,
+        damping_rmse=damping_rmse,
+        strength_ratio_achieved=strength_ratio_achieved,
+        fit_procedure=fit_procedure,
+        fit_limits_applied=fit_limits_applied,
+        fit_stale=fit_stale,
+        gqh_mode=gqh_mode,
+        sigma_v_eff_mid_kpa=sigma_mid_eff,
+        implied_strength_kpa=implied_strength,
+        normalized_implied_strength=normalized_strength,
+        implied_friction_angle_deg=implied_phi,
         loop_strain=loop_strain,
         loop_stress=loop_stress,
         loop_strain_amplitude=loop_strain_amplitude,
@@ -1580,6 +2488,20 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     motion_dict = motion if isinstance(motion, dict) else {}
     output = payload.get("output")
     output_dict = output if isinstance(output, dict) else {}
+    water_table_depth_m = _as_non_negative_float_or_none(
+        profile_dict.get("water_table_depth_m")
+    )
+    bedrock_in = profile_dict.get("bedrock")
+    bedrock_payload: dict[str, object] | None = None
+    if isinstance(bedrock_in, dict):
+        bedrock_vs = _as_positive_float_or_none(bedrock_in.get("vs_m_s"))
+        bedrock_uw = _as_positive_float_or_none(bedrock_in.get("unit_weight_kN_m3"))
+        if bedrock_vs is not None and bedrock_uw is not None:
+            bedrock_payload = {
+                "name": str(bedrock_in.get("name", "Bedrock")),
+                "vs_m_s": bedrock_vs,
+                "unit_weight_kN_m3": bedrock_uw,
+            }
 
     layers_raw = profile_dict.get("layers")
     layers_in = layers_raw if isinstance(layers_raw, list) else []
@@ -1599,6 +2521,12 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
                 ),
                 "vs_m_s": _as_non_negative_float(item.get("vs_m_s"), 150.0),
                 "material": material,
+                "reference_curve": (
+                    str(item.get("reference_curve"))
+                    if item.get("reference_curve") is not None
+                    else ("darendeli" if calibration_payload is not None else None)
+                ),
+                "fit_stale": bool(item.get("fit_stale", False)),
                 "material_params": _numeric_dict(item.get("material_params")),
                 "material_optional_args": _numeric_list(
                     item.get("material_optional_args")
@@ -1614,6 +2542,7 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
                 "unit_weight_kN_m3": 18.0,
                 "vs_m_s": 180.0,
                 "material": "mkz",
+                "fit_stale": False,
                 "material_params": {"gmax": 60000.0, "gamma_ref": 0.001},
                 "material_optional_args": [],
                 "calibration": None,
@@ -1623,13 +2552,13 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     boundary_raw = str(
         payload.get(
             "boundary_condition",
-            BoundaryCondition.ELASTIC_HALFSPACE.value,
+            BoundaryCondition.RIGID.value,
         )
     )
     boundary = (
         boundary_raw
         if boundary_raw in valid_boundary
-        else BoundaryCondition.ELASTIC_HALFSPACE.value
+        else BoundaryCondition.RIGID.value
     )
 
     baseline_raw = str(motion_dict.get("baseline", BaselineMode.REMOVE_MEAN.value))
@@ -1643,7 +2572,7 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     )
 
     backend_raw = str(analysis_dict.get("solver_backend", "nonlinear"))
-    if backend_raw not in {"config", "linear", "eql", "nonlinear"}:
+    if backend_raw not in {"linear", "eql", "nonlinear"}:
         backend_raw = "nonlinear"
 
     damping_mode_raw = str(analysis_dict.get("damping_mode", "frequency_independent"))
@@ -1662,9 +2591,14 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
             "boundary_condition": boundary,
             "solver_backend": backend_raw,
         },
-        "profile_step": {"layers": layers_out},
+        "profile_step": {
+            "water_table_depth_m": water_table_depth_m,
+            "bedrock": bedrock_payload,
+            "layers": layers_out,
+        },
         "motion_step": {
             "units": str(motion_dict.get("units", "m/s2")),
+            "input_type": str(motion_dict.get("input_type", "outcrop")),
             "dt_override": _as_positive_float_or_none(motion_dict.get("dt_override")),
             "baseline": baseline,
             "scale_mode": scale_mode,
@@ -1702,14 +2636,14 @@ def _build_wizard_schema() -> dict[str, object]:
         payload = get_config_template_payload(name)
         template_defaults[name] = _wizard_defaults_from_project_payload(payload)
     default_template = (
-        "mkz-gqh-eql"
-        if "mkz-gqh-eql" in template_defaults
+        "mkz-gqh-nonlinear"
+        if "mkz-gqh-nonlinear" in template_defaults
         else (template_names[0] if template_names else "")
     )
     default_wizard = template_defaults.get(default_template)
     if default_wizard is None:
         default_wizard = _wizard_defaults_from_project_payload(
-            get_config_template_payload("mkz-gqh-eql")
+            get_config_template_payload("mkz-gqh-nonlinear")
         )
 
     # Filter materials to native solvers only (mkz, gqh, elastic)
@@ -1729,10 +2663,11 @@ def _build_wizard_schema() -> dict[str, object]:
                 "boundary_condition",
                 "solver_backend",
             ],
-            "profile_step": ["layers[]", "layers[].calibration"],
+            "profile_step": ["water_table_depth_m", "bedrock", "layers[]", "layers[].calibration"],
             "motion_step": [
                 "motion_path",
                 "units",
+                "input_type",
                 "dt_override",
                 "baseline",
                 "scale_mode",
@@ -1759,7 +2694,7 @@ def _build_wizard_schema() -> dict[str, object]:
         "template_defaults": template_defaults,
         "enum_options": {
             "boundary_condition": [e.value for e in BoundaryCondition],
-            "solver_backend": ["config", "linear", "eql", "nonlinear"],
+            "solver_backend": ["linear", "eql", "nonlinear"],
             "baseline": [e.value for e in BaselineMode],
             "scale_mode": [e.value for e in ScaleMode],
             "material": native_materials,
@@ -1810,7 +2745,15 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
 
     payload: dict[str, object] = {
         "project_name": req.analysis_step.project_name,
-        "profile": {"layers": layers},
+        "profile": {
+            "water_table_depth_m": req.profile_step.water_table_depth_m,
+            "bedrock": (
+                req.profile_step.bedrock.model_dump(mode="json", by_alias=True)
+                if req.profile_step.bedrock is not None
+                else None
+            ),
+            "layers": layers,
+        },
         "boundary_condition": req.analysis_step.boundary_condition.value,
         "analysis": {
             "dt": req.control_step.dt,
@@ -1825,10 +2768,16 @@ def _wizard_to_config_payload(req: WizardConfigRequest) -> tuple[dict[str, objec
         },
         "motion": {
             "units": req.motion_step.units,
+            "input_type": req.motion_step.input_type,
             "baseline": req.motion_step.baseline.value,
             "scale_mode": req.motion_step.scale_mode.value,
             "scale_factor": req.motion_step.scale_factor,
             "target_pga": req.motion_step.target_pga,
+            "processing": (
+                req.motion_step.processing.model_dump(mode="json", exclude_none=True)
+                if req.motion_step.processing is not None
+                else None
+            ),
         },
         "output": {
             "write_hdf5": req.control_step.write_hdf5,
@@ -1851,6 +2800,297 @@ def _safe_duration_5_95(arias: np.ndarray, dt: float) -> float:
     i5 = min(max(i5, 0), t.size - 1)
     i95 = min(max(i95, 0), t.size - 1)
     return float(max(0.0, t[i95] - t[i5]))
+
+
+def _interp_period_value(
+    periods: np.ndarray,
+    values: np.ndarray,
+    period_s: float,
+) -> float | None:
+    if periods.size < 2 or values.size < 2:
+        return None
+    x = np.asarray(periods, dtype=np.float64)
+    y = np.asarray(values, dtype=np.float64)
+    mask = np.isfinite(x) & np.isfinite(y)
+    if int(np.count_nonzero(mask)) < 2:
+        return None
+    x = x[mask]
+    y = y[mask]
+    order = np.argsort(x)
+    x = x[order]
+    y = y[order]
+    return float(np.interp(float(period_s), x, y))
+
+
+def _surface_displacement_series_cm(
+    *,
+    time: np.ndarray,
+    acc_surface_m_s2: np.ndarray,
+) -> np.ndarray:
+    t = np.asarray(time, dtype=np.float64)
+    acc = np.asarray(acc_surface_m_s2, dtype=np.float64)
+    n = int(min(t.size, acc.size))
+    if n <= 1:
+        return np.array([], dtype=np.float64)
+    t = t[:n]
+    acc = acc[:n]
+    dt = float(np.median(np.diff(t)))
+    if not np.isfinite(dt) or dt <= 0.0:
+        return np.array([], dtype=np.float64)
+    vel = np.cumsum(acc, dtype=np.float64) * dt
+    disp = np.cumsum(vel, dtype=np.float64) * dt
+    # Remove long-period drift so animation remains interpretable in the UI.
+    trend = np.linspace(disp[0], disp[-1], disp.size, dtype=np.float64)
+    disp = disp - trend
+    return np.asarray(disp * 100.0, dtype=np.float64)
+
+
+def _approximate_profile_displacement_shape(
+    *,
+    depth: np.ndarray,
+    layers: list[ResultProfileLayerRow],
+    total_depth: float,
+) -> np.ndarray:
+    if depth.size == 0 or total_depth <= 0.0 or not layers:
+        return np.array([], dtype=np.float64)
+
+    boundary_depths = [0.0]
+    boundary_shape = [1.0]
+    layer_compliance: list[float] = []
+    for row in layers:
+        thickness = max(float(row.z_bottom_m) - float(row.z_top_m), 1.0e-9)
+        vs = max(float(row.vs_m_s), 1.0)
+        unit_weight = max(float(row.unit_weight_kn_m3), 1.0e-6)
+        rho = unit_weight / 9.81
+        gmax = max(rho * vs * vs, 1.0e-9)
+        layer_compliance.append(thickness / gmax)
+
+    total_compliance = float(np.sum(layer_compliance))
+    if not np.isfinite(total_compliance) or total_compliance <= 0.0:
+        return np.clip(1.0 - (depth / total_depth), 0.0, 1.0)
+
+    cumulative = 0.0
+    for row, compliance in zip(layers, layer_compliance, strict=True):
+        cumulative += compliance
+        boundary_depths.append(float(row.z_bottom_m))
+        boundary_shape.append(float(max(0.0, 1.0 - (cumulative / total_compliance))))
+
+    return np.asarray(
+        np.interp(
+            np.asarray(depth, dtype=np.float64),
+            np.asarray(boundary_depths, dtype=np.float64),
+            np.asarray(boundary_shape, dtype=np.float64),
+        ),
+        dtype=np.float64,
+    )
+
+
+def _build_displacement_animation_response(
+    *,
+    run_id: str,
+    run_dir: Path,
+    result_store: ResultStore,
+    sqlite_path: Path,
+    frame_count: int,
+    max_depth_points: int,
+) -> DisplacementAnimationResponse:
+    if (
+        result_store.node_depth_m.size >= 2
+        and result_store.nodal_displacement_m.ndim == 2
+        and result_store.nodal_displacement_m.shape[0] == result_store.node_depth_m.size
+        and result_store.nodal_displacement_m.shape[1] >= 2
+    ):
+        node_depth = np.asarray(result_store.node_depth_m, dtype=np.float64)
+        nodal_disp_cm = np.asarray(result_store.nodal_displacement_m, dtype=np.float64) * 100.0
+        n = int(min(nodal_disp_cm.shape[1], result_store.time.size))
+        if n >= 2:
+            time = np.asarray(result_store.time[:n], dtype=np.float64)
+            nodal_disp_cm = nodal_disp_cm[:, :n]
+            relative_nodal_disp_cm = nodal_disp_cm - nodal_disp_cm[-1:, :]
+            target_frames = int(max(20, min(frame_count, n)))
+            frame_idx = np.linspace(0, n - 1, target_frames, dtype=np.int64)
+            frame_time = time[frame_idx]
+            if node_depth.size > max_depth_points:
+                depth = np.linspace(
+                    float(node_depth[0]),
+                    float(node_depth[-1]),
+                    max_depth_points,
+                    dtype=np.float64,
+                )
+                displacement_frames = [
+                    np.interp(depth, node_depth, nodal_disp_cm[:, idx]).astype(float).tolist()
+                    for idx in frame_idx
+                ]
+                relative_displacement_frames = [
+                    np.interp(depth, node_depth, relative_nodal_disp_cm[:, idx]).astype(float).tolist()
+                    for idx in frame_idx
+                ]
+            else:
+                depth = node_depth
+                displacement_frames = [
+                    nodal_disp_cm[:, idx].astype(float).tolist()
+                    for idx in frame_idx
+                ]
+                relative_displacement_frames = [
+                    relative_nodal_disp_cm[:, idx].astype(float).tolist()
+                    for idx in frame_idx
+                ]
+            return DisplacementAnimationResponse(
+                run_id=run_id,
+                approximate=False,
+                depth_m=depth.astype(float).tolist(),
+                frame_time_s=frame_time.astype(float).tolist(),
+                displacement_cm=displacement_frames,
+                relative_displacement_cm=relative_displacement_frames,
+                peak_surface_displacement_cm=float(np.max(np.abs(nodal_disp_cm[0, :]))),
+                peak_profile_displacement_cm=float(np.max(np.abs(nodal_disp_cm))),
+                peak_surface_relative_displacement_cm=float(
+                    np.max(np.abs(relative_nodal_disp_cm[0, :]))
+                ),
+                peak_profile_relative_displacement_cm=float(
+                    np.max(np.abs(relative_nodal_disp_cm))
+                ),
+                note="Recorded nodal displacement history from the solver response.",
+            )
+
+    layers = _read_profile_layer_summary(sqlite_path, run_dir=run_dir)
+    if not layers:
+        return DisplacementAnimationResponse(
+            run_id=run_id,
+            approximate=True,
+            note="No layer mesh/profile information is available for displacement animation.",
+        )
+    depth_boundaries = [0.0]
+    for row in layers:
+        depth_boundaries.append(float(row.z_bottom_m))
+    total_depth = float(max(depth_boundaries))
+    if total_depth <= 0.0:
+        return DisplacementAnimationResponse(
+            run_id=run_id,
+            approximate=True,
+            note="Profile depth is zero. Displacement animation is unavailable.",
+        )
+
+    if len(depth_boundaries) > max_depth_points:
+        depth = np.linspace(0.0, total_depth, max_depth_points, dtype=np.float64)
+    else:
+        depth = np.asarray(depth_boundaries, dtype=np.float64)
+
+    disp_surface_cm = _surface_displacement_series_cm(
+        time=result_store.time,
+        acc_surface_m_s2=result_store.acc_surface,
+    )
+    n = int(min(disp_surface_cm.size, result_store.time.size))
+    if n <= 1:
+        return DisplacementAnimationResponse(
+            run_id=run_id,
+            approximate=True,
+            depth_m=depth.astype(float).tolist(),
+            note="Surface acceleration series is unavailable for displacement animation.",
+        )
+    time = np.asarray(result_store.time[:n], dtype=np.float64)
+    disp_surface_cm = np.asarray(disp_surface_cm[:n], dtype=np.float64)
+
+    target_frames = int(max(20, min(frame_count, n)))
+    frame_idx = np.linspace(0, n - 1, target_frames, dtype=np.int64)
+    frame_time = time[frame_idx]
+    frame_surface_disp = disp_surface_cm[frame_idx]
+
+    shape = _approximate_profile_displacement_shape(
+        depth=depth,
+        layers=layers,
+        total_depth=total_depth,
+    )
+    displacement_frames = [
+        (float(u) * shape).astype(float).tolist() for u in frame_surface_disp
+    ]
+    relative_displacement_frames = [
+        (np.asarray(frame, dtype=np.float64) - float(frame[-1])).astype(float).tolist()
+        if frame
+        else []
+        for frame in displacement_frames
+    ]
+    relative_peak_profile_cm = float(
+        np.max(np.abs(np.asarray(relative_displacement_frames, dtype=np.float64)))
+    ) if relative_displacement_frames else 0.0
+    relative_peak_surface_cm = float(
+        np.max(np.abs(np.asarray([frame[0] for frame in relative_displacement_frames if frame], dtype=np.float64)))
+    ) if relative_displacement_frames else 0.0
+
+    return DisplacementAnimationResponse(
+        run_id=run_id,
+        approximate=True,
+        depth_m=depth.astype(float).tolist(),
+        frame_time_s=frame_time.astype(float).tolist(),
+        displacement_cm=displacement_frames,
+        relative_displacement_cm=relative_displacement_frames,
+        peak_surface_displacement_cm=float(np.max(np.abs(disp_surface_cm))),
+        peak_profile_displacement_cm=float(np.max(np.abs(np.asarray(displacement_frames, dtype=np.float64)))),
+        peak_surface_relative_displacement_cm=relative_peak_surface_cm,
+        peak_profile_relative_displacement_cm=relative_peak_profile_cm,
+        note=(
+            "Approximate depth animation uses integrated surface displacement with a "
+            "bedrock-anchored stiffness-weighted shape function. It is not nodal solver "
+            "displacement output."
+        ),
+    )
+
+
+def _build_response_spectra_summary_response(
+    *,
+    run_id: str,
+    result_store: ResultStore,
+) -> ResponseSpectraSummaryResponse:
+    surface_periods = np.asarray(result_store.spectra_periods, dtype=np.float64)
+    surface_psa = np.asarray(result_store.spectra_psa, dtype=np.float64)
+    input_psa: np.ndarray | None = None
+    if result_store.acc_input.size > 1:
+        try:
+            spectra_input = compute_spectra(
+                np.asarray(result_store.acc_input, dtype=np.float64),
+                dt=float(result_store.dt_s),
+                damping=0.05,
+            )
+            input_psa = np.asarray(spectra_input.psa, dtype=np.float64)
+        except Exception:
+            input_psa = None
+
+    rows: list[SpectraSummaryRow] = []
+    max_surface: float | None = None
+    max_ratio: float | None = None
+    for period_s in SPECTRA_STANDARD_PERIODS:
+        surf = _interp_period_value(surface_periods, surface_psa, period_s)
+        inp = (
+            _interp_period_value(surface_periods, input_psa, period_s)
+            if input_psa is not None
+            else None
+        )
+        ratio = None
+        if inp is not None and inp > 1.0e-9 and surf is not None:
+            ratio = float(surf / inp)
+        if surf is not None:
+            max_surface = float(max(max_surface or surf, surf))
+        if ratio is not None:
+            max_ratio = float(max(max_ratio or ratio, ratio))
+        rows.append(
+            SpectraSummaryRow(
+                period_s=float(period_s),
+                frequency_hz=float(1.0 / period_s),
+                surface_psa_m_s2=surf,
+                surface_psa_g=(float(surf / 9.81) if surf is not None else None),
+                input_psa_m_s2=inp,
+                amplification_ratio=ratio,
+            )
+        )
+
+    return ResponseSpectraSummaryResponse(
+        run_id=run_id,
+        damping_ratio=0.05,
+        row_count=len(rows),
+        rows=rows,
+        max_surface_psa_m_s2=max_surface,
+        max_amplification_ratio=max_ratio,
+    )
 
 
 def _downsample_np(
@@ -1876,6 +3116,28 @@ def _downsample_pair(
         return x[:n], y[:n]
     step = max(1, n // max_points)
     return x[:n:step], y[:n:step]
+
+
+def _cumtrapz_np(values: np.ndarray, dt: float) -> np.ndarray:
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.size == 0:
+        return np.asarray([], dtype=np.float64)
+    out = np.zeros(arr.size, dtype=np.float64)
+    if arr.size > 1:
+        increments = 0.5 * (arr[1:] + arr[:-1]) * float(dt)
+        out[1:] = np.cumsum(increments, dtype=np.float64)
+    return out
+
+
+def _spectral_triplet(psa_m_s2: np.ndarray, periods_s: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    psa = np.asarray(psa_m_s2, dtype=np.float64)
+    periods = np.asarray(periods_s, dtype=np.float64)
+    psv = np.zeros_like(psa, dtype=np.float64)
+    psd = np.zeros_like(psa, dtype=np.float64)
+    valid = periods > 0.0
+    psv[valid] = psa[valid] * periods[valid] / (2.0 * np.pi)
+    psd[valid] = psa[valid] * periods[valid] ** 2 / (4.0 * np.pi**2)
+    return psv, psd
 
 
 def _estimate_dt(time_axis: np.ndarray) -> float:
@@ -2006,21 +3268,7 @@ def _wizard_sanity_report(payload: WizardConfigRequest) -> WizardSanityResponse:
 
 def _apply_runtime_backend(
     requested: RunBackendMode,
-    *,
-    config_backend: str,
 ) -> tuple[ResolvedBackend, str]:
-    def normalize(raw: str) -> ResolvedBackend:
-        if raw not in {"linear", "eql", "nonlinear"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported config solver backend: {raw}",
-            )
-        return cast(ResolvedBackend, raw)
-
-    if requested == "config":
-        normalized = normalize(config_backend)
-        return normalized, normalized
-
     if requested in {"linear", "eql", "nonlinear"}:
         return requested, f"{requested} (forced)"
 
@@ -2031,7 +3279,7 @@ def create_app() -> FastAPI:
     import mimetypes
     mimetypes.add_type("application/javascript", ".mjs")
 
-    app = FastAPI(title="StrataWave Web API", version="0.1.0")
+    app = FastAPI(title="GeoWave Web API", version="0.1.0")
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
 
@@ -2148,7 +3396,63 @@ def create_app() -> FastAPI:
         payload: LayerCalibrationPreviewRequest,
     ) -> LayerCalibrationPreviewResponse:
         try:
-            return _build_layer_calibration_preview(payload.layer)
+            sigma_v_eff_mid_kpa: float | None = None
+            if payload.layers and payload.layer_index is not None:
+                states = compute_layer_stress_states(
+                    payload.layers,
+                    water_table_depth_m=payload.water_table_depth_m,
+                )
+                if 0 <= payload.layer_index < len(states):
+                    sigma_v_eff_mid_kpa = states[payload.layer_index].sigma_v_eff_mid_kpa
+            return _build_layer_calibration_preview(
+                payload.layer,
+                sigma_v_eff_mid_kpa=sigma_v_eff_mid_kpa,
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/profile-diagnostics", response_model=ProfileDiagnosticsResponse)
+    def wizard_profile_diagnostics(
+        payload: ProfileDiagnosticsRequest,
+    ) -> ProfileDiagnosticsResponse:
+        try:
+            diagnostics = compute_profile_diagnostics(
+                payload.profile_step.layers,
+                water_table_depth_m=payload.profile_step.water_table_depth_m,
+            )
+            rows = [
+                ProfileDiagnosticsLayerRow(
+                    idx=int(row.index),
+                    name=row.name,
+                    material=row.material,
+                    thickness_m=row.thickness_m,
+                    unit_weight_kn_m3=row.unit_weight_kn_m3,
+                    vs_m_s=row.vs_m_s,
+                    z_top_m=row.z_top_m,
+                    z_bottom_m=row.z_bottom_m,
+                    sigma_v0_mid_kpa=row.sigma_v0_mid_kpa,
+                    sigma_v_eff_mid_kpa=row.sigma_v_eff_mid_kpa,
+                    pore_water_pressure_kpa=row.pore_water_pressure_kpa,
+                    small_strain_damping_ratio=row.small_strain_damping_ratio,
+                    max_frequency_hz=row.max_frequency_hz,
+                    implied_strength_kpa=row.implied_strength_kpa,
+                    normalized_implied_strength=row.normalized_implied_strength,
+                    implied_friction_angle_deg=row.implied_friction_angle_deg,
+                    gqh_mode=row.gqh_mode,
+                )
+                for row in diagnostics
+            ]
+            total_thickness = float(
+                sum(max(0.0, float(layer.thickness_m)) for layer in payload.profile_step.layers)
+            )
+            return ProfileDiagnosticsResponse(
+                layer_count=len(rows),
+                total_thickness_m=total_thickness,
+                water_table_depth_m=payload.profile_step.water_table_depth_m,
+                layers=rows,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except ValueError as exc:
@@ -2242,14 +3546,15 @@ def create_app() -> FastAPI:
                 motion_path,
                 dt_override=payload.dt_override,
                 fallback_dt=fallback_dt,
+                **_motion_parse_kwargs_from_model(payload),
             )
             dt_s = _estimate_dt(np.asarray(t_raw, dtype=np.float64))
             factor = accel_factor_to_si(payload.units_hint)
             acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
 
-            cfg = MotionConfig(
-                units=payload.units_hint,
-                baseline=payload.baseline_mode,
+            cfg = _motion_config_from_model(
+                payload,
+                baseline_mode=payload.baseline_mode,
                 scale_mode=payload.scale_mode,
                 scale_factor=payload.scale_factor,
                 target_pga=payload.target_pga,
@@ -2261,7 +3566,10 @@ def create_app() -> FastAPI:
                 source=motion_path,
             )
             processed = preprocess_motion(mot, cfg)
-            acc_proc = np.asarray(processed.acc, dtype=np.float64)
+            processed_components = process_motion_components(mot, cfg)
+            acc_proc = np.asarray(processed_components["acc_processed"], dtype=np.float64)
+            vel = np.asarray(processed_components["vel_processed"], dtype=np.float64)
+            disp = np.asarray(processed_components["disp_processed"], dtype=np.float64)
             t_proc = np.arange(acc_proc.size, dtype=np.float64) * float(processed.dt)
 
             out_root = _safe_motion_output_dir(payload.output_dir)
@@ -2275,62 +3583,35 @@ def create_app() -> FastAPI:
                 comments="",
             )
 
-            vel = np.cumsum(acc_proc, dtype=np.float64) * float(processed.dt)
-            disp = np.cumsum(vel, dtype=np.float64) * float(processed.dt)
             arias = (
                 np.cumsum(acc_proc**2, dtype=np.float64)
                 * float(processed.dt)
                 * np.pi
                 / (2.0 * 9.80665)
             )
-            spectra = compute_spectra(acc_proc, dt=float(processed.dt), damping=0.05)
-            freq_hz, fas_ratio = compute_transfer_function(acc_si, acc_proc, dt=float(processed.dt))
-            n = int(acc_proc.size)
-            fft_raw = (
-                np.abs(np.fft.rfft(acc_si[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
-            )
-            fft_proc = (
-                np.abs(np.fft.rfft(acc_proc[:n])) if n > 1 else np.array([0.0], dtype=np.float64)
-            )
-            freq_fft = (
-                np.fft.rfftfreq(n, d=float(processed.dt))
-                if n > 1
-                else np.array([0.0], dtype=np.float64)
-            )
-
             metrics = {
                 "pga": float(np.max(np.abs(acc_proc))) if acc_proc.size > 0 else 0.0,
                 "arias": float(arias[-1]) if arias.size > 0 else 0.0,
                 "duration_5_95": _safe_duration_5_95(arias, float(processed.dt)),
                 "dt_s": float(processed.dt),
                 "npts": float(acc_proc.size),
+                "pgv_m_s": float(np.max(np.abs(vel))) if vel.size > 0 else 0.0,
+                "pgd_m": float(np.max(np.abs(disp))) if disp.size > 0 else 0.0,
             }
             metrics_path = out_root / f"{stem}_metrics.json"
             metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-
-            t_d, acc_d = _downsample_np(t_proc, acc_proc, max_points=2400)
-            _, vel_d = _downsample_np(t_proc, vel, max_points=2400)
-            _, disp_d = _downsample_np(t_proc, disp, max_points=2400)
-            _, arias_d = _downsample_np(t_proc, arias, max_points=2400)
-            p_d, psa_d = _downsample_np(spectra.periods, spectra.psa, max_points=800)
-            f_d, fr_d = _downsample_np(freq_hz, fas_ratio, max_points=1200)
-            ff_d, raw_d = _downsample_np(freq_fft, fft_raw, max_points=1200)
-            _, proc_d = _downsample_np(freq_fft, fft_proc, max_points=1200)
-
-            preview = {
-                "time_s": [float(v) for v in t_d],
-                "acc_m_s2": [float(v) for v in acc_d],
-                "vel_m_s": [float(v) for v in vel_d],
-                "disp_m": [float(v) for v in disp_d],
-                "arias": [float(v) for v in arias_d],
-                "period_s": [float(v) for v in p_d],
-                "psa_m_s2": [float(v) for v in psa_d],
-                "freq_hz": [float(v) for v in f_d],
-                "fas_ratio": [float(v) for v in fr_d],
-                "fas_raw": [float(v) for v in raw_d],
-                "fas_processed": [float(v) for v in proc_d],
-                "fas_freq_hz": [float(v) for v in ff_d],
-            }
+            preview = _motion_preview_payload(
+                motion_path=motion_path,
+                units_hint=payload.units_hint,
+                format_hint=payload.format_hint,
+                raw_time_s=np.asarray(t_raw, dtype=np.float64),
+                raw_acc_si=acc_si,
+                processed_dt_s=float(processed.dt),
+                processed_components=processed_components,
+                spectrum_damping_ratio=float(payload.spectrum_damping_ratio),
+                show_uncorrected_preview=bool(payload.show_uncorrected_preview),
+                max_points=2400,
+            )
 
             return MotionProcessResponse(
                 processed_motion_path=str(csv_path),
@@ -2338,6 +3619,154 @@ def create_app() -> FastAPI:
                 metrics=metrics,
                 spectra_preview=preview,
                 status="ok",
+            )
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/motion/tools/timestep-reduction",
+        response_model=MotionTimeStepReductionResponse,
+    )
+    def motion_tools_timestep_reduction(
+        payload: MotionTimeStepReductionRequest,
+    ) -> MotionTimeStepReductionResponse:
+        try:
+            motion_path = _resolve_input_path(payload.motion_path, label="Motion file")
+            t_raw, acc_raw = load_motion_series(
+                motion_path,
+                dt_override=payload.dt_override,
+                fallback_dt=0.01,
+                **_motion_parse_kwargs_from_model(payload),
+            )
+            t_arr = np.asarray(t_raw, dtype=np.float64)
+            dt_original = _estimate_dt(t_arr)
+            if not np.isfinite(dt_original) or dt_original <= 0.0:
+                raise ValueError("Unable to infer original time step from motion series.")
+
+            if payload.target_dt is not None:
+                reduction_factor = max(2, int(np.ceil(float(payload.target_dt) / dt_original)))
+            else:
+                reduction_factor = int(payload.reduction_factor)
+            dt_reduced = float(dt_original * reduction_factor)
+
+            acc_si = np.asarray(acc_raw, dtype=np.float64) * accel_factor_to_si(payload.units_hint)
+            if acc_si.size < 8:
+                raise ValueError("Motion requires at least 8 points for time-step reduction preview.")
+
+            # Anti-aliasing via moving-average before decimation.
+            kernel = np.ones(reduction_factor, dtype=np.float64) / float(reduction_factor)
+            filtered = np.convolve(acc_si, kernel, mode="same")
+            original_on_reduced = np.asarray(acc_si[::reduction_factor], dtype=np.float64)
+            reduced = np.asarray(filtered[::reduction_factor], dtype=np.float64)
+            time_reduced = np.asarray(t_arr[::reduction_factor], dtype=np.float64)
+
+            time_reduced, original_on_reduced = _downsample_np(
+                time_reduced,
+                original_on_reduced,
+                max_points=payload.max_points,
+            )
+            _, reduced = _downsample_np(
+                time_reduced,
+                reduced[: time_reduced.size],
+                max_points=payload.max_points,
+            )
+
+            return MotionTimeStepReductionResponse(
+                dt_original=float(dt_original),
+                dt_reduced=float(dt_reduced),
+                reduction_factor=int(reduction_factor),
+                pga_original_m_s2=float(np.max(np.abs(acc_si))) if acc_si.size else 0.0,
+                pga_reduced_m_s2=float(np.max(np.abs(reduced))) if reduced.size else 0.0,
+                time_s=time_reduced.astype(float).tolist(),
+                acc_original_m_s2=original_on_reduced.astype(float).tolist(),
+                acc_reduced_m_s2=reduced.astype(float).tolist(),
+                note=(
+                    "Reduced series uses moving-average anti-aliasing plus decimation. "
+                    "Use this preview to choose a stable analysis dt."
+                ),
+            )
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/motion/tools/kappa", response_model=MotionKappaResponse)
+    def motion_tools_kappa(payload: MotionKappaRequest) -> MotionKappaResponse:
+        try:
+            motion_path = _resolve_input_path(payload.motion_path, label="Motion file")
+            t_raw, acc_raw = load_motion_series(
+                motion_path,
+                dt_override=payload.dt_override,
+                fallback_dt=0.01,
+                **_motion_parse_kwargs_from_model(payload),
+            )
+            t_arr = np.asarray(t_raw, dtype=np.float64)
+            dt = _estimate_dt(t_arr)
+            if not np.isfinite(dt) or dt <= 0.0:
+                raise ValueError("Unable to infer dt for kappa estimation.")
+
+            acc_si = np.asarray(acc_raw, dtype=np.float64) * accel_factor_to_si(payload.units_hint)
+            if acc_si.size < 8:
+                raise ValueError("At least 8 samples are required for kappa estimation.")
+
+            n_fft = int(2 ** np.ceil(np.log2(acc_si.size)))
+            fft_complex = np.fft.rfft(acc_si, n=n_fft)
+            freq = np.fft.rfftfreq(n_fft, d=dt)
+            fas = np.abs(fft_complex) * dt
+
+            freq_nonzero = np.asarray(freq[1:], dtype=np.float64)
+            fas_nonzero = np.asarray(fas[1:], dtype=np.float64)
+            mask = (
+                (freq_nonzero >= float(payload.freq_min_hz))
+                & (freq_nonzero <= float(payload.freq_max_hz))
+                & (fas_nonzero > 0.0)
+            )
+            if int(np.count_nonzero(mask)) < 5:
+                return MotionKappaResponse(
+                    freq_hz=[],
+                    fas_amplitude=[],
+                    note=(
+                        "Insufficient high-frequency points in selected range for stable κ fit. "
+                        "Try a wider frequency band."
+                    ),
+                )
+
+            x = freq_nonzero[mask]
+            y = np.log(fas_nonzero[mask])
+            x_mean = float(np.mean(x))
+            y_mean = float(np.mean(y))
+            denom = float(np.sum((x - x_mean) ** 2))
+            if denom <= 1.0e-18:
+                return MotionKappaResponse(
+                    note="Kappa estimator is ill-conditioned for the selected frequency range.",
+                )
+
+            slope = float(np.sum((x - x_mean) * (y - y_mean)) / denom)
+            intercept = float(y_mean - (slope * x_mean))
+            kappa = float(max(-slope / np.pi, 0.0))
+
+            y_hat = slope * x + intercept
+            ss_res = float(np.sum((y - y_hat) ** 2))
+            ss_tot = float(np.sum((y - y_mean) ** 2))
+            r2 = float(1.0 - (ss_res / max(ss_tot, 1.0e-30)))
+
+            fit_freq = np.array(
+                [float(payload.freq_min_hz), float(payload.freq_max_hz)],
+                dtype=np.float64,
+            )
+            fit_amp = np.exp((slope * fit_freq) + intercept)
+
+            freq_plot, fas_plot = _downsample_np(
+                freq_nonzero,
+                fas_nonzero,
+                max_points=payload.max_points,
+            )
+            return MotionKappaResponse(
+                kappa=kappa,
+                kappa_r2=r2,
+                freq_hz=freq_plot.astype(float).tolist(),
+                fas_amplitude=fas_plot.astype(float).tolist(),
+                fit_freq_hz=fit_freq.astype(float).tolist(),
+                fit_amplitude=fit_amp.astype(float).tolist(),
+                note="Estimated from ln(FAS) linear fit: ln(A)=c−πκf.",
             )
         except (FileNotFoundError, ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2445,6 +3874,7 @@ def create_app() -> FastAPI:
         time_list, acc_list = _downsample_pair(time_list, acc_list, max_points=max_points)
 
         dt_s = _estimate_dt(rs.time)
+        input_dt_s = float(rs.input_dt_s) if np.isfinite(rs.input_dt_s) and rs.input_dt_s > 0.0 else float(dt_s)
         spectra_live = compute_spectra(
             np.asarray(rs.acc_surface, dtype=np.float64),
             dt=dt_s,
@@ -2511,14 +3941,18 @@ def create_app() -> FastAPI:
         input_acc_list: list[float] = []
         input_psa_list: list[float] = []
         input_period_list: list[float] = []
+        applied_input_acc_list: list[float] = []
+        applied_input_psa_list: list[float] = []
+        applied_input_time_list: list[float] = []
         if rs.acc_input.size > 1:
             raw_input = [float(v) for v in rs.acc_input]
-            raw_input_t = [float(i) * float(dt_s) for i in range(len(raw_input))]
+            raw_input_t = [float(v) for v in rs.input_time] if rs.input_time.size else [float(i) * input_dt_s for i in range(len(raw_input))]
             raw_input_t, raw_input = _downsample_pair(raw_input_t, raw_input, max_points=max_points)
+            input_time_list = raw_input_t
             input_acc_list = raw_input
             spectra_input = compute_spectra(
                 np.asarray(rs.acc_input, dtype=np.float64),
-                dt=dt_s,
+                dt=input_dt_s,
                 damping=0.05,
             )
             input_period_list = [float(v) for v in spectra_input.periods]
@@ -2526,6 +3960,36 @@ def create_app() -> FastAPI:
             input_period_list, input_psa_list = _downsample_pair(
                 input_period_list, input_psa_list, max_points=max_spectral_points
             )
+            applied_input = (
+                np.asarray(rs.acc_applied_input, dtype=np.float64)
+                if rs.acc_applied_input.size > 1
+                else np.asarray(rs.acc_input, dtype=np.float64)
+            )
+            applied_input_t = (
+                [float(v) for v in rs.input_time]
+                if rs.input_time.size
+                else [float(i) * input_dt_s for i in range(int(applied_input.size))]
+            )
+            applied_input_t, applied_input_acc_list = _downsample_pair(
+                applied_input_t,
+                [float(v) for v in applied_input],
+                max_points=max_points,
+            )
+            applied_input_time_list = applied_input_t
+            spectra_applied_input = compute_spectra(
+                applied_input,
+                dt=input_dt_s,
+                damping=0.05,
+            )
+            applied_input_period_list = [float(v) for v in spectra_applied_input.periods]
+            applied_input_psa_list = [float(v) for v in spectra_applied_input.psa]
+            _, applied_input_psa_list = _downsample_pair(
+                applied_input_period_list,
+                applied_input_psa_list,
+                max_points=max_spectral_points,
+            )
+        else:
+            input_time_list = []
 
         pga = float(np.max(np.abs(acc))) if acc.size > 0 else 0.0
         pga_input = float(np.max(np.abs(rs.acc_input))) if rs.acc_input.size > 0 else 0.0
@@ -2625,13 +4089,18 @@ def create_app() -> FastAPI:
             "run_id": run_id,
             "time_s": time_list,
             "surface_acc_m_s2": acc_list,
+            "input_time_s": input_time_list,
             "input_acc_m_s2": input_acc_list,
+            "applied_input_time_s": applied_input_time_list,
+            "applied_input_acc_m_s2": applied_input_acc_list,
             "period_s": period_list,
             "psa_m_s2": psa_list,
             "input_period_s": input_period_list,
             "input_psa_m_s2": input_psa_list,
+            "applied_input_psa_m_s2": applied_input_psa_list,
             "spectra_source": "recomputed_from_surface_acc",
             "dt_s": float(dt_s),
+            "input_dt_s": float(input_dt_s),
             "delta_t": float(dt_s),
             "delta_t_s": float(dt_s),
             "freq_hz": freq_list,
@@ -2721,6 +4190,40 @@ def create_app() -> FastAPI:
             delta_u_max=metrics.get("delta_u_max"),
             sigma_v_eff_min=metrics.get("sigma_v_eff_min"),
             layers=layer_rows,
+        )
+
+    @app.post(
+        "/api/results/displacement-animation",
+        response_model=DisplacementAnimationResponse,
+    )
+    def results_displacement_animation(
+        payload: DisplacementAnimationRequest,
+    ) -> DisplacementAnimationResponse:
+        run_dir = _resolve_run_dir(payload.run_id, payload.output_root)
+        result_store = _load_result_or_409(run_dir)
+        sqlite_path = run_dir / "results.sqlite"
+        return _build_displacement_animation_response(
+            run_id=payload.run_id,
+            run_dir=run_dir,
+            result_store=result_store,
+            sqlite_path=sqlite_path,
+            frame_count=payload.frame_count,
+            max_depth_points=payload.max_depth_points,
+        )
+
+    @app.get(
+        "/api/results/response-spectra-summary",
+        response_model=ResponseSpectraSummaryResponse,
+    )
+    def results_response_spectra_summary(
+        run_id: str = Query(..., min_length=1),
+        output_root: str = Query(default=""),
+    ) -> ResponseSpectraSummaryResponse:
+        run_dir = _resolve_run_dir(run_id, output_root)
+        result_store = _load_result_or_409(run_dir)
+        return _build_response_spectra_summary_response(
+            run_id=run_id,
+            result_store=result_store,
         )
 
     @app.get("/api/runs/{run_id}/profile-summary.csv")
@@ -2829,10 +4332,7 @@ def create_app() -> FastAPI:
             if not raw_motion:
                 raise HTTPException(status_code=400, detail="No motion_path provided and config has no motion.filepath.")
             motion_path = _resolve_input_path(raw_motion, label="Motion file")
-            backend, backend_note = _apply_runtime_backend(
-                payload.backend,
-                config_backend=cfg.analysis.solver_backend,
-            )
+            backend, backend_note = _apply_runtime_backend(payload.backend)
             cfg.analysis.solver_backend = backend
 
             dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
@@ -2855,6 +4355,76 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=500,
                 detail=f"Run failed: {type(exc).__name__}: {exc}",
+            ) from exc
+
+    @app.post("/api/run-batch", response_model=RunBatchResponse)
+    def execute_run_batch(payload: RunBatchRequest) -> RunBatchResponse:
+        try:
+            config_path = _resolve_input_path(payload.config_path, label="Config file")
+            output_root = _resolve_output_root(payload.output_root)
+
+            cfg = load_project_config(config_path)
+            backend, backend_note = _apply_runtime_backend(payload.backend)
+            cfg.analysis.solver_backend = backend
+
+            raw_motion_paths = [item.strip() for item in payload.motion_paths if item and item.strip()]
+            if not raw_motion_paths:
+                fallback = str(cfg.motion.filepath) if cfg.motion.filepath else ""
+                if not fallback:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No motion_paths provided and config has no motion.filepath.",
+                    )
+                raw_motion_paths = [fallback]
+
+            dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+            motions: list[Motion] = []
+            for raw_motion in raw_motion_paths:
+                motion_path = _resolve_input_path(raw_motion, label="Motion file")
+                motions.append(load_motion(motion_path, dt=dt, unit=cfg.motion.units))
+
+            batch = run_batch(
+                cfg,
+                motions,
+                output_dir=output_root,
+                n_jobs=min(payload.n_jobs, max(len(motions), 1)),
+            )
+            result_output_root = output_root.resolve()
+            results = [
+                RunResponse(
+                    run_id=result.run_id,
+                    output_dir=str(result.output_dir),
+                    output_root=str(result_output_root),
+                    status=result.status,
+                    message=result.message,
+                    backend=backend,
+                )
+                for result in batch.results
+            ]
+            statuses = {result.status for result in results}
+            status = "ok" if statuses == {"ok"} else ("partial" if "ok" in statuses else "error")
+            unique_run_count = len({result.run_id for result in results})
+            return RunBatchResponse(
+                output_root=str(result_output_root),
+                backend=backend,
+                status=status,
+                message=(
+                    f"{backend_note} | Completed {len(results)} motion(s) "
+                    f"with {min(payload.n_jobs, max(len(motions), 1))} worker(s)."
+                ),
+                motion_count=len(results),
+                unique_run_count=unique_run_count,
+                n_jobs=min(payload.n_jobs, max(len(motions), 1)),
+                results=results,
+            )
+        except HTTPException:
+            raise
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Batch run failed: {type(exc).__name__}: {exc}",
             ) from exc
 
     @app.get("/api/reference-curves")
@@ -2896,9 +4466,14 @@ def create_app() -> FastAPI:
         a1: float = Query(1.0, gt=0.0),
         a2: float = Query(0.0, ge=0.0),
         m: float = Query(1.0, gt=0.0),
+        tau_max: float | None = Query(default=None, gt=0.0),
+        theta1: float | None = Query(default=None),
+        theta2: float | None = Query(default=None),
+        theta3: float | None = Query(default=None, gt=0.0),
+        theta4: float | None = Query(default=None, gt=0.0),
+        theta5: float | None = Query(default=None, gt=0.0),
     ) -> dict[str, object]:
         from dsra1d.materials.hysteretic import generate_masing_loop
-        from dsra1d.materials.mrdf import compute_masing_damping_ratio
 
         mat_type = MaterialType(material) if material in {e.value for e in MaterialType} else MaterialType.MKZ
         params: dict[str, float] = {
@@ -2911,6 +4486,24 @@ def create_app() -> FastAPI:
         }
         if mat_type == MaterialType.GQH:
             params.update({"a1": a1, "a2": a2, "m": m})
+            if (
+                tau_max is not None
+                and theta1 is not None
+                and theta2 is not None
+                and theta3 is not None
+                and theta4 is not None
+                and theta5 is not None
+            ):
+                params.update(
+                    {
+                        "tau_max": tau_max,
+                        "theta1": float(theta1),
+                        "theta2": float(theta2),
+                        "theta3": float(theta3),
+                        "theta4": float(theta4),
+                        "theta5": float(theta5),
+                    }
+                )
 
         try:
             loop = generate_masing_loop(
@@ -2924,12 +4517,8 @@ def create_app() -> FastAPI:
         strains_check = np.array([strain_amplitude], dtype=np.float64)
         d_masing = compute_masing_damping_ratio(mat_type, params, strains_check)
 
-        from dsra1d.materials.hysteretic import mkz_modulus_reduction, gqh_modulus_reduction
         if mat_type == MaterialType.GQH:
-            g_red = float(gqh_modulus_reduction(
-                strains_check, gamma_ref=gamma_ref,
-                a1=a1, a2=a2, m=m, g_reduction_min=g_reduction_min,
-            )[0])
+            g_red = float(gqh_modulus_reduction_from_params(strains_check, params)[0])
         else:
             g_red = float(mkz_modulus_reduction(
                 strains_check, gamma_ref=gamma_ref, g_reduction_min=g_reduction_min,
@@ -2976,65 +4565,140 @@ def create_app() -> FastAPI:
 
     MOTION_LIBRARY_DIRS: list[Path] = [
         Path(r"C:\Users\PC\Documents\DEEPSOIL 7\Input Motions"),
+        Path(r"C:\Users\PC\OneDrive\Documents\DEEPSOIL 7\Input Motions"),
         Path(__file__).resolve().parent.parent.parent.parent / "examples" / "motions",
         Path("out/ui/motions"),
     ]
 
     @app.get("/api/motions/library")
-    def list_motion_library() -> list[dict[str, str]]:
+    def list_motion_library(extra_dir: list[str] | None = Query(default=None)) -> list[dict[str, str]]:
         """Scan configured directories for earthquake motion files."""
-        results: list[dict[str, str]] = []
-        seen: set[str] = set()
-        for lib_dir in MOTION_LIBRARY_DIRS:
-            if not lib_dir.is_dir():
-                continue
-            for f in sorted(lib_dir.iterdir()):
-                if f.suffix.lower() in {".csv", ".at2", ".txt"} and f.name not in seen:
-                    seen.add(f.name)
-                    results.append({
-                        "name": f.stem,
-                        "file_name": f.name,
-                        "path": str(f),
-                        "format": f.suffix.lower().lstrip("."),
-                        "source": lib_dir.name,
-                    })
-        return results
+        return _scan_motion_library(_resolve_motion_library_dirs(MOTION_LIBRARY_DIRS, extra_dir or []))
 
     @app.get("/api/motion/preview")
     def motion_preview(
         path: str = Query(..., min_length=1),
         max_points: int = Query(default=1200, ge=100, le=10000),
+        units_hint: str = Query(default="m/s2"),
+        dt_override: float | None = Query(default=None, gt=0.0),
+        format_hint: Literal["auto", "time_acc", "single", "numeric_stream"] = Query(default="auto"),
+        delimiter: str | None = Query(default=None),
+        skip_rows: int = Query(default=0, ge=0, le=5000),
+        time_col: int = Query(default=0, ge=0, le=100),
+        acc_col: int = Query(default=1, ge=0, le=100),
+        has_time: bool = Query(default=True),
+        scale_mode: ScaleMode = Query(default=ScaleMode.NONE),
+        scale_factor: float | None = Query(default=None),
+        target_pga: float | None = Query(default=None),
+        processing_order: Literal["filter_first", "baseline_first"] = Query(default="filter_first"),
+        baseline_on: bool = Query(default=False),
+        baseline_method: str = Query(default="poly4"),
+        baseline_degree: int = Query(default=4, ge=0, le=10),
+        filter_on: bool = Query(default=False),
+        filter_domain: Literal["time", "frequency"] = Query(default="time"),
+        filter_config: str = Query(default="bandpass"),
+        filter_type: Literal["butter", "cheby", "bessel"] = Query(default="butter"),
+        f_low: float = Query(default=0.1, ge=0.0),
+        f_high: float = Query(default=25.0, ge=0.0),
+        filter_order: int = Query(default=4, ge=1, le=16),
+        acausal: bool = Query(default=True),
+        window_on: bool = Query(default=False),
+        window_type: str = Query(default="hanning"),
+        window_param: float = Query(default=0.1, ge=0.0),
+        window_duration: float | None = Query(default=None, gt=0.0),
+        window_apply_to: Literal["start", "end", "both"] = Query(default="both"),
+        trim_start: float = Query(default=0.0, ge=0.0),
+        trim_end: float = Query(default=0.0, ge=0.0),
+        trim_taper: bool = Query(default=False),
+        pad_front: float = Query(default=0.0, ge=0.0),
+        pad_end: float = Query(default=0.0, ge=0.0),
+        pad_method: str = Query(default="zeros"),
+        pad_method_front: str | None = Query(default=None),
+        pad_method_end: str | None = Query(default=None),
+        pad_smooth: bool = Query(default=False),
+        residual_fix: bool = Query(default=False),
+        spectrum_damping_ratio: float = Query(default=0.05, gt=0.0, lt=1.0),
+        show_uncorrected_preview: bool = Query(default=True),
     ) -> dict[str, object]:
-        """Lightweight motion preview — read CSV/AT2, compute PGA/dt, return downsampled signal."""
+        """Read a motion file and return unit-aware preview data plus derived response spectra."""
         motion_path = Path(path)
         if not motion_path.is_file():
             raise HTTPException(status_code=404, detail=f"Motion file not found: {path}")
         try:
             from dsra1d.motion.io import load_motion_series
-            time_arr, acc_raw = load_motion_series(str(motion_path), fallback_dt=0.01)
+            time_arr, acc_raw = load_motion_series(
+                str(motion_path),
+                dt_override=dt_override,
+                fallback_dt=0.01,
+                format_hint=format_hint,
+                delimiter=delimiter,
+                skip_rows=skip_rows,
+                time_col=time_col,
+                acc_col=acc_col,
+                has_time=has_time,
+            )
+            factor = accel_factor_to_si(units_hint)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Cannot parse motion file: {exc}") from exc
 
-        acc = np.asarray(acc_raw, dtype=np.float64)
-        dt = float(np.median(np.diff(time_arr))) if time_arr.size > 1 else 0.01
-        n = acc.size
-        pga = float(np.max(np.abs(acc))) if n > 0 else 0.0
-        duration = dt * (n - 1) if n > 1 else 0.0
-        time_list = [float(i * dt) for i in range(n)]
-        acc_list = [float(v) for v in acc]
-        time_list, acc_list = _downsample_pair(time_list, acc_list, max_points=max_points)
-
-        return {
-            "path": str(motion_path),
-            "name": motion_path.stem,
-            "npts": n,
-            "dt": dt,
-            "duration": duration,
-            "pga_m_s2": pga,
-            "pga_g": pga / 9.81,
-            "time_s": time_list,
-            "acc_m_s2": acc_list,
-        }
+        acc_si = np.asarray(acc_raw, dtype=np.float64) * factor
+        time_arr = np.asarray(time_arr, dtype=np.float64)
+        dt = _estimate_dt(time_arr) if time_arr.size > 1 else 0.01
+        cfg = _motion_config_from_model(
+            {
+                "units_hint": units_hint,
+                "scale_mode": scale_mode,
+                "scale_factor": scale_factor,
+                "target_pga": target_pga,
+                "processing_order": processing_order,
+                "baseline_on": baseline_on,
+                "baseline_method": baseline_method,
+                "baseline_degree": baseline_degree,
+                "filter_on": filter_on,
+                "filter_domain": filter_domain,
+                "filter_config": filter_config,
+                "filter_type": filter_type,
+                "f_low": f_low,
+                "f_high": f_high,
+                "filter_order": filter_order,
+                "acausal": acausal,
+                "window_on": window_on,
+                "window_type": window_type,
+                "window_param": window_param,
+                "window_duration": window_duration,
+                "window_apply_to": window_apply_to,
+                "trim_start": trim_start,
+                "trim_end": trim_end,
+                "trim_taper": trim_taper,
+                "pad_front": pad_front,
+                "pad_end": pad_end,
+                "pad_method": pad_method,
+                "pad_method_front": pad_method_front,
+                "pad_method_end": pad_method_end,
+                "pad_smooth": pad_smooth,
+                "residual_fix": residual_fix,
+                "spectrum_damping_ratio": spectrum_damping_ratio,
+                "show_uncorrected_preview": show_uncorrected_preview,
+            },
+            scale_mode=scale_mode,
+            scale_factor=scale_factor,
+            target_pga=target_pga,
+            force_processing=True,
+        )
+        motion = Motion(dt=float(dt), acc=acc_si, unit="m/s2", source=motion_path)
+        processed_components = process_motion_components(motion, cfg)
+        return _motion_preview_payload(
+            motion_path=motion_path,
+            units_hint=units_hint,
+            format_hint=format_hint,
+            raw_time_s=time_arr,
+            raw_acc_si=acc_si,
+            processed_dt_s=float(dt),
+            processed_components=processed_components,
+            spectrum_damping_ratio=float(spectrum_damping_ratio),
+            show_uncorrected_preview=bool(show_uncorrected_preview),
+            max_points=max_points,
+        )
 
     @app.get("/api/examples")
     def list_examples() -> list[dict[str, str]]:
@@ -3080,7 +4744,28 @@ def create_app() -> FastAPI:
                     "plasticity_index": layer.calibration.plasticity_index,
                     "ocr": layer.calibration.ocr,
                     "mean_effective_stress_kpa": layer.calibration.mean_effective_stress_kpa,
+                    "k0": layer.calibration.k0,
+                    "frequency_hz": layer.calibration.frequency_hz,
+                    "num_cycles": layer.calibration.num_cycles,
+                    "strain_min": layer.calibration.strain_min,
+                    "strain_max": layer.calibration.strain_max,
+                    "fit_strain_min": layer.calibration.fit_strain_min,
+                    "fit_strain_max": layer.calibration.fit_strain_max,
+                    "target_strength_kpa": layer.calibration.target_strength_kpa,
+                    "target_strength_ratio": layer.calibration.target_strength_ratio,
+                    "target_strength_strain": layer.calibration.target_strength_strain,
+                    "n_points": layer.calibration.n_points,
+                    "reload_factor": layer.calibration.reload_factor,
+                    "fit_procedure": layer.calibration.fit_procedure,
+                    "fit_limits": (
+                        layer.calibration.fit_limits.model_dump(exclude_none=True)
+                        if layer.calibration.fit_limits is not None
+                        else None
+                    ),
+                    "auto_refit_on_reference_change": layer.calibration.auto_refit_on_reference_change,
                 }
+                layer_dict["reference_curve"] = "darendeli"
+                layer_dict["plasticity_index"] = layer.calibration.plasticity_index
             layers.append(layer_dict)
 
         return {
@@ -3094,10 +4779,18 @@ def create_app() -> FastAPI:
             "convergence_tol": getattr(cfg.analysis, "convergence_tol", 0.03),
             "strain_ratio": getattr(cfg.analysis, "strain_ratio", 0.65),
             "nonlinear_substeps": getattr(cfg.analysis, "nonlinear_substeps", 4),
-            "viscous_damping_update": True,
+            "viscous_damping_update": False,
             "motion_path": "",
             "motion_units": cfg.motion.units if cfg.motion else "m/s2",
+            "motion_input_type": cfg.motion.input_type if cfg.motion else "within",
             "scale_mode": "none",
+            "timeout_s": getattr(cfg.analysis, "timeout_s", 180),
+            "retries": getattr(cfg.analysis, "retries", 1),
+            "bedrock": (
+                cfg.profile.bedrock.model_dump(mode="json", by_alias=True)
+                if cfg.profile.bedrock is not None
+                else None
+            ),
             "layers": layers,
         }
 

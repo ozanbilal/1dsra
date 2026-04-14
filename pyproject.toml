@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
 authors = [
-  { name = "StrataWave Contributors" }
+  { name = "GeoWave Contributors" }
 ]
 dependencies = [
   "numpy>=2.0",
@@ -50,6 +50,8 @@ web = [
 ]
 
 [project.scripts]
+GeoWave = "dsra1d.cli.main:app"
+geowave = "dsra1d.cli.main:app"
 StrataWave = "dsra1d.cli.main:app"
 stratawave = "dsra1d.cli.main:app"
 1dsra = "dsra1d.cli.main:app"
@@ -107,4 +109,3 @@ disable_error_code = ["untyped-decorator"]
 minversion = "8.0"
 addopts = "-q"
 testpaths = ["tests"]
-

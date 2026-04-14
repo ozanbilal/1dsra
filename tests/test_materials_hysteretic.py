@@ -4,7 +4,9 @@ from dsra1d.materials import (
     bounded_damping_from_reduction,
     generate_masing_loop,
     gqh_backbone_stress,
+    gqh_backbone_stress_from_params,
     gqh_modulus_reduction,
+    gqh_modulus_reduction_from_params,
     layer_hysteretic_proxy,
     mkz_backbone_stress,
     mkz_modulus_reduction,
@@ -102,3 +104,34 @@ def test_generate_masing_loop_rejects_non_hysteretic_material() -> None:
             material_params={},
             strain_amplitude=0.001,
         )
+
+
+def test_gqh_strength_controlled_reduction_decreases_with_strain() -> None:
+    strain = np.array([1.0e-5, 1.0e-4, 1.0e-3], dtype=np.float64)
+    params = {
+        "gmax": 95000.0,
+        "tau_max": 420.0,
+        "theta1": -2.88,
+        "theta2": -2.80,
+        "theta3": 0.2291,
+        "theta4": 0.99,
+        "theta5": 1.0,
+    }
+    red = gqh_modulus_reduction_from_params(strain, params)
+    assert red[0] > red[1] > red[2]
+
+
+def test_gqh_strength_controlled_backbone_is_bounded_by_tau_max() -> None:
+    strain = np.logspace(-5, -1, 20, dtype=np.float64)
+    params = {
+        "gmax": 95000.0,
+        "tau_max": 420.0,
+        "theta1": -2.88,
+        "theta2": -2.80,
+        "theta3": 0.2291,
+        "theta4": 0.99,
+        "theta5": 1.0,
+    }
+    tau = gqh_backbone_stress_from_params(strain, params)
+    assert np.all(np.isfinite(tau))
+    assert np.max(tau) <= params["tau_max"] * 1.001

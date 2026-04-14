@@ -116,7 +116,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - new template/example: `mkz-gqh-darendeli` / `examples/configs/mkz_gqh_darendeli.yml`
   - new CLI command `calibrate-darendeli` for curve/parameter export
   - regression coverage for Darendeli-calibrated native `eql` and `nonlinear` runs
-- Initial StrataWave v1 scaffold with:
+- Initial GeoWave v1 scaffold with:
   - CLI + Python SDK workflows
   - OpenSees adapter for effective-stress runs
   - HDF5 + SQLite result stores
@@ -137,7 +137,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - release machine-check now enforces exact 64-hex sha256 match between signoff observed fingerprint and `SCIENTIFIC_CONFIDENCE_MATRIX.md`
   - release policy fingerprint is now explicitly locked in `benchmarks/policies/release_signoff.yml`
 - FastAPI + React migration starter:
-  - `StrataWave web` command (uvicorn-backed)
+  - `GeoWave web` command (uvicorn-backed)
   - API endpoints for run listing, signal fetch, run execution, and `surface_acc.csv` download
   - first production-path dashboard under `python/dsra1d/web/static`
   - expanded run-detail dashboard cards: surface/PSA/transfer/ru/`delta_u`/`sigma_v_eff` charts + artifact downloads

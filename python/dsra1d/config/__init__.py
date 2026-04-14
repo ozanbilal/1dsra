@@ -7,6 +7,7 @@ from dsra1d.config.io import (
 from dsra1d.config.models import (
     AnalysisControl,
     BaselineMode,
+    BedrockProperties,
     BoundaryCondition,
     DarendeliCalibration,
     Layer,
@@ -21,6 +22,7 @@ from dsra1d.config.models import (
 __all__ = [
     "AnalysisControl",
     "BaselineMode",
+    "BedrockProperties",
     "BoundaryCondition",
     "DarendeliCalibration",
     "Layer",

@@ -1,6 +1,6 @@
-# StrataWave
+# GeoWave
 
-StrataWave is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
+GeoWave is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
 Current package version is `0.1.0`; the v1.0 roadmap focuses on effective-stress workflows, reproducible I/O, and benchmark-ready automation.
 
 ## Highlights
@@ -29,59 +29,59 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
 
-StrataWave init --template effective-stress --out examples/configs/effective_stress.yml
-StrataWave init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
-StrataWave init --template pm4sand-calibration --out examples/configs/pm4sand_calibration.yml
-StrataWave init --template pm4silt-calibration --out examples/configs/pm4silt_calibration.yml
-StrataWave init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
-StrataWave init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
-StrataWave init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
-StrataWave init --template mkz-gqh-darendeli --out examples/configs/mkz_gqh_darendeli.yml
-StrataWave calibrate-darendeli --material gqh --out out/darendeli_gqh --plasticity-index 12 --ocr 1.2 --mean-effective-stress-kpa 120 --vs-m-s 220 --unit-weight-kN-m3 18.5
-StrataWave quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
-StrataWave validate --config examples/configs/effective_stress.yml
-StrataWave validate --config examples/configs/effective_stress.yml --check-backend
-StrataWave validate --config examples/configs/effective_stress.yml --check-backend --require-backend-version-regex "OpenSees"
-StrataWave render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
-StrataWave run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
-StrataWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
-StrataWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
-StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
-StrataWave run --config examples/configs/mkz_gqh_nonlinear.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_nl --backend nonlinear
-StrataWave run --config examples/configs/mkz_gqh_darendeli.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_darendeli --backend nonlinear
-StrataWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
-StrataWave compare-deepsoil --run out/mkz_gqh_darendeli/run-xxxxxxxxxxxx --surface-csv path/to/deepsoil_surface.csv --psa-csv path/to/deepsoil_psa.csv --profile-csv path/to/deepsoil_profile.csv --hysteresis-csv path/to/deepsoil_hysteresis.csv --hysteresis-layer 0 --out out/deepsoil_compare
-StrataWave compare-deepsoil-batch --manifest path/to/deepsoil_manifest.json --out out/deepsoil_compare_batch
-StrataWave summarize --benchmark-report out/benchmarks_hyst/benchmark_core-hyst.json --deepsoil-compare-report out/deepsoil_compare_batch/deepsoil_compare_batch.json --out out/hyst_summary
-StrataWave dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
-StrataWave benchmark --suite core-es --out out/benchmarks
-StrataWave benchmark --suite core-hyst --out out/benchmarks_hyst
-StrataWave benchmark --suite core-linear --out out/benchmarks_linear
-StrataWave benchmark --suite core-eql --out out/benchmarks_eql
-StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity
-StrataWave benchmark --suite release-signoff --out out/benchmarks_release_signoff --require-opensees --fail-on-skip --require-runs 18 --require-explicit-checks
-StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
-StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
-StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
-StrataWave benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --require-explicit-checks
-StrataWave verify --in out/run001/run-xxxxxxxxxxxx
-StrataWave verify-batch --in out/run001 --require-runs 1
-StrataWave summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
-StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
-StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
-StrataWave campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
-StrataWave campaign --suite release-signoff --out out/release_signoff --require-opensees --fail-on-skip --require-runs 18 --verify-require-runs 18 --require-explicit-checks
-StrataWave summarize --input out/release_signoff --strict-signoff
-StrataWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min,transfer_abs_max,transfer_peak_freq_hz,solver_warning_count,solver_failed_converge_count,solver_analyze_failed_count,solver_divide_by_zero_count,solver_dynamic_fallback_failed --rel-tol 0.05
-StrataWave campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
+GeoWave init --template effective-stress --out examples/configs/effective_stress.yml
+GeoWave init --template effective-stress-strict-plus --out examples/configs/effective_stress_strict_plus.yml
+GeoWave init --template pm4sand-calibration --out examples/configs/pm4sand_calibration.yml
+GeoWave init --template pm4silt-calibration --out examples/configs/pm4silt_calibration.yml
+GeoWave init --template mkz-gqh-mock --out examples/configs/mkz_gqh_mock.yml
+GeoWave init --template mkz-gqh-eql --out examples/configs/mkz_gqh_eql.yml
+GeoWave init --template mkz-gqh-nonlinear --out examples/configs/mkz_gqh_nonlinear.yml
+GeoWave init --template mkz-gqh-darendeli --out examples/configs/mkz_gqh_darendeli.yml
+GeoWave calibrate-darendeli --material gqh --out out/darendeli_gqh --plasticity-index 12 --ocr 1.2 --mean-effective-stress-kpa 120 --vs-m-s 220 --unit-weight-kN-m3 18.5
+GeoWave quickstart --out out/quickstart --template effective-stress-strict-plus --backend auto
+GeoWave validate --config examples/configs/effective_stress.yml
+GeoWave validate --config examples/configs/effective_stress.yml --check-backend
+GeoWave validate --config examples/configs/effective_stress.yml --check-backend --require-backend-version-regex "OpenSees"
+GeoWave render-tcl --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/tcl_preview
+GeoWave run --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/run001
+GeoWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_opensees_auto --backend auto
+GeoWave run --config examples/configs/effective_stress_strict_plus.yml --motion examples/motions/sample_motion.csv --out out/run_force_mock --backend mock
+GeoWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_eql --backend eql
+GeoWave run --config examples/configs/mkz_gqh_nonlinear.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_nl --backend nonlinear
+GeoWave run --config examples/configs/mkz_gqh_darendeli.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh_darendeli --backend nonlinear
+GeoWave run --config examples/configs/mkz_gqh_mock.yml --motion examples/motions/sample_motion.csv --out out/mkz_gqh
+GeoWave compare-deepsoil --run out/mkz_gqh_darendeli/run-xxxxxxxxxxxx --surface-csv path/to/deepsoil_surface.csv --psa-csv path/to/deepsoil_psa.csv --profile-csv path/to/deepsoil_profile.csv --hysteresis-csv path/to/deepsoil_hysteresis.csv --hysteresis-layer 0 --out out/deepsoil_compare
+GeoWave compare-deepsoil-batch --manifest path/to/deepsoil_manifest.json --out out/deepsoil_compare_batch
+GeoWave summarize --benchmark-report out/benchmarks_hyst/benchmark_core-hyst.json --deepsoil-compare-report out/deepsoil_compare_batch/deepsoil_compare_batch.json --out out/hyst_summary
+GeoWave dt-check --config examples/configs/effective_stress.yml --motion examples/motions/sample_motion.csv --out out/dt_check
+GeoWave benchmark --suite core-es --out out/benchmarks
+GeoWave benchmark --suite core-hyst --out out/benchmarks_hyst
+GeoWave benchmark --suite core-linear --out out/benchmarks_linear
+GeoWave benchmark --suite core-eql --out out/benchmarks_eql
+GeoWave benchmark --suite opensees-parity --out out/benchmarks_parity
+GeoWave benchmark --suite release-signoff --out out/benchmarks_release_signoff --require-opensees --fail-on-skip --require-runs 18 --require-explicit-checks
+GeoWave benchmark --suite opensees-parity --out out/benchmarks_parity --opensees-executable "C:/path/to/OpenSees.exe"
+GeoWave benchmark --suite opensees-parity --out out/benchmarks_parity --require-opensees
+GeoWave benchmark --suite opensees-parity --out out/benchmarks_parity --min-execution-coverage 1.0
+GeoWave benchmark --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --require-explicit-checks
+GeoWave verify --in out/run001/run-xxxxxxxxxxxx
+GeoWave verify-batch --in out/run001 --require-runs 1
+GeoWave summarize --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --verify-batch-report out/benchmarks_parity/verify_batch_report.json --out out/benchmarks_parity
+GeoWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+GeoWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+GeoWave campaign --suite opensees-parity --out out/benchmarks_parity --require-opensees --min-execution-coverage 1.0 --fail-on-skip --require-runs 6 --verify-require-runs 6 --require-explicit-checks
+GeoWave campaign --suite opensees-parity --out out/benchmarks_parity --fail-on-skip --require-runs 6 --verify-require-runs 6 --opensees-executable "C:/path/to/OpenSees.exe" --require-explicit-checks
+GeoWave campaign --suite opensees-parity --out out/benchmarks_parity --require-explicit-checks --require-opensees --fail-on-skip --require-runs 6 --verify-require-runs 6
+GeoWave campaign --suite release-signoff --out out/release_signoff --require-opensees --fail-on-skip --require-runs 18 --verify-require-runs 18 --require-explicit-checks
+GeoWave summarize --input out/release_signoff --strict-signoff
+GeoWave lock-golden --benchmark-report out/benchmarks_parity/benchmark_opensees-parity.json --suite opensees-parity --metrics pga,ru_max,delta_u_max,sigma_v_eff_min,transfer_abs_max,transfer_peak_freq_hz,solver_warning_count,solver_failed_converge_count,solver_analyze_failed_count,solver_divide_by_zero_count,solver_dynamic_fallback_failed --rel-tol 0.05
+GeoWave campaign --suite core-hyst --out out/benchmarks_hyst --require-runs 3 --verify-require-runs 3
 ```
 
 ## Web UI (Streamlit)
 ```bash
 pip install -e .[ui]
-StrataWave ui --host 127.0.0.1 --port 8501
+GeoWave ui --host 127.0.0.1 --port 8501
 ```
 Open `http://127.0.0.1:8501` in your browser.
 UI panels include effective-stress views for `ru`, `delta_u`, and `sigma_v_eff`.
@@ -95,7 +95,7 @@ UI export panel includes `surface_acc.csv` and `pwp_effective.csv`, both with `d
 ## Web API + React Dashboard (Migration Starter)
 ```bash
 pip install -e .[web]
-StrataWave web --host 127.0.0.1 --port 8010
+GeoWave web --host 127.0.0.1 --port 8010
 ```
 Open `http://127.0.0.1:8010`.
 Primary UI path is now React + FastAPI; Streamlit remains as engineering/debug panel.
@@ -210,7 +210,7 @@ Darendeli calibration can now be declared directly on MKZ/GQH layers; the loader
 native `material_params` automatically for `eql` / `nonlinear` runs.
 Native nonlinear runs also accept `analysis.nonlinear_substeps` for tighter constitutive integration
 when running parity studies or difficult strong-motion cases.
-For DEEPSOIL side-by-side review, `compare-deepsoil` consumes a StrataWave run folder plus
+For DEEPSOIL side-by-side review, `compare-deepsoil` consumes a GeoWave run folder plus
 DEEPSOIL-exported surface acceleration CSV and optional PSA/profile/hysteresis CSVs, then writes
 `deepsoil_compare.json` + `deepsoil_compare.md` with PGA, correlation, RMSE, PSA mismatch,
 layer-profile mismatch, and hysteresis-loop mismatch metrics.
@@ -259,7 +259,7 @@ profile:
         frequency_hz: 1.0
         num_cycles: 10.0
 ```
-If `gmax` is not supplied explicitly, StrataWave seeds it from `Vs` and unit weight.
+If `gmax` is not supplied explicitly, GeoWave seeds it from `Vs` and unit weight.
 For calibration-ready experiments, you can pass extra positional PM4 arguments with:
 - `layer.material_optional_args: [ ... ]`
 These values are appended to the generated `nDMaterial PM4Sand/PM4Silt ...` line in order.

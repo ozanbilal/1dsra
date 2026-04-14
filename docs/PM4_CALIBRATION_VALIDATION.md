@@ -1,6 +1,6 @@
 # PM4 Calibration Minimum Validation Guide
 
-This guide defines the minimum parameter sets and strict validation ranges used by StrataWave templates.
+This guide defines the minimum parameter sets and strict validation ranges used by GeoWave templates.
 
 ## PM4Sand minimum valid parameter set
 Required keys:

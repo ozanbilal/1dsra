@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Scaffold a DEEPSOIL compare batch manifest from existing "
-            "StrataWave run directories."
+            "GeoWave run directories."
         )
     )
     parser.add_argument(

@@ -242,7 +242,7 @@ def test_render_summary_markdown_contains_key_sections() -> None:
         },
     }
     md = render_summary_markdown(summary)
-    assert "# StrataWave Campaign Summary" in md
+    assert "# GeoWave Campaign Summary" in md
     assert "Suite: `core-es`" in md
     assert "backend_ready=True" in md
     assert "execution_coverage=1.0" in md

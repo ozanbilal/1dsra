@@ -20,7 +20,7 @@ def test_classify_case_partial_for_psa_only_match() -> None:
             "psa_nrmse": 0.21,
             "pga_pct_diff": -57.0,
             "surface_corrcoef": 0.002,
-            "warnings": ["Time-step mismatch detected (StrataWave=0.005s, DEEPSOIL=0.02s)."],
+            "warnings": ["Time-step mismatch detected (GeoWave=0.005s, DEEPSOIL=0.02s)."],
         }
     )
     assert verdict == "partial"

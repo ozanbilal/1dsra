@@ -1,4 +1,4 @@
-"""StrataWave SDK package."""
+"""GeoWave SDK package."""
 
 from dsra1d.deepsoil_compare import (
     DeepsoilComparisonBatchResult,

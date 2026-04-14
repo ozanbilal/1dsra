@@ -1,5 +1,5 @@
 /**
- * StrataWave v2 — App Shell
+ * GeoWave v2 — App Shell
  *
  * Clean, modular architecture:
  *   app.v2.js          → App shell (this file, ~180 lines)
@@ -16,20 +16,38 @@ import { html, useState, useEffect, useCallback, createRoot } from "./modules/se
 import { Wizard } from "./modules/wizard.js";
 import { ResultsViewer } from "./modules/results-viewer.js";
 import * as api from "./modules/api.js";
-import { defaultLayer, computeGmax } from "./modules/utils.js";
+import {
+  buildMotionParseSettings,
+  defaultLayer,
+  defaultMotionProcessingState,
+} from "./modules/utils.js";
 import { getStoredPlan, setStoredPlan, nextPlan, canUseFeature, PlanToggle } from "./modules/plans.js";
 
 // ── Initial State ────────────────────────────────────────
 
 const WIZARD_STORAGE_KEY = "stratawave_wizard_v1";
+const runTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function defaultParallelWorkers() {
+  const cores = Number(globalThis.navigator?.hardwareConcurrency || 4);
+  if (!Number.isFinite(cores) || cores <= 0) return 4;
+  return Math.max(1, Math.min(cores, 12));
+}
 
 function defaultWizardState() {
-  const layer1 = defaultLayer(0);
-  layer1.material_params.gmax = computeGmax(layer1.vs, layer1.unit_weight);
+  const defaultMaterialType = "gqh";
+  const layer1 = defaultLayer(0, defaultMaterialType);
   return {
     project_name: "",
-    solver_backend: "eql",
+    solver_backend: "nonlinear",
     boundary_condition: "rigid",
+    default_material_type: defaultMaterialType,
+    bedrock: null,
     damping_mode: "frequency_independent",
     dt: 0.005,
     f_max: 25,
@@ -37,11 +55,28 @@ function defaultWizardState() {
     convergence_tol: 0.03,
     strain_ratio: 0.65,
     nonlinear_substeps: 4,
-    viscous_damping_update: true,
+    viscous_damping_update: false,
+    timeout_s: 180,
+    retries: 1,
+    parallel_workers: defaultParallelWorkers(),
     motion_path: "",
     motion_units: "m/s2",
+    motion_input_type: "outcrop",
+    motion_library_dirs: [],
+    motion_format_hint: "auto",
+    motion_delimiter: "auto",
+    motion_skip_rows: 0,
+    motion_has_time: true,
+    motion_time_col: 0,
+    motion_acc_col: 1,
+    motion_dt_override: null,
     scale_mode: "none",
+    scale_factor: null,
+    target_pga_g: null,
+    batch_motions: [],
+    water_table_depth_m: null,
     layers: [layer1],
+    ...defaultMotionProcessingState(),
   };
 }
 
@@ -49,9 +84,19 @@ function initialWizard() {
   try {
     const saved = localStorage.getItem(WIZARD_STORAGE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
+      const base = defaultWizardState();
+      const parsed = { ...base, ...JSON.parse(saved) };
       // Exclude motion_path — server-side path may be stale across sessions
       parsed.motion_path = "";
+      if (!parsed.parallel_workers) parsed.parallel_workers = defaultParallelWorkers();
+      if (!Array.isArray(parsed.batch_motions)) parsed.batch_motions = [];
+      if (!Array.isArray(parsed.motion_library_dirs)) parsed.motion_library_dirs = [];
+      parsed.scale_factor = parsed.scale_factor ?? null;
+      parsed.target_pga_g = parsed.target_pga_g ?? null;
+      Object.assign(parsed, { ...defaultMotionProcessingState(), ...parsed });
+      if (!parsed.default_material_type) {
+        parsed.default_material_type = parsed.layers?.[0]?.material || "gqh";
+      }
       if (parsed.layers && parsed.layers.length > 0) return parsed;
     }
   } catch { /* ignore parse errors */ }
@@ -71,6 +116,12 @@ function App() {
   const [status, setStatus] = useState("idle"); // idle | running | done | error
   const [progress, setProgress] = useState(0);  // 0-100
   const [error, setError] = useState(null);
+  const [completionMessage, setCompletionMessage] = useState(null);
+  const [activeStep, setActiveStep] = useState(0);
+  const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
+  const [runFilter, setRunFilter] = useState("");
+  const [theme, setTheme] = useState(() => localStorage.getItem("stratawave_theme") || "light");
+  const [plan, setPlan] = useState(getStoredPlan);
 
   const outputRoot = "out/web";
 
@@ -112,6 +163,66 @@ function App() {
     } catch (ex) { setError("Delete failed: " + ex.message); }
   }, [selectedRunId]);
 
+  const computeGroupedRuns = useCallback(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+    const filterLc = runFilter.toLowerCase();
+    const filtered = runs.filter(r => {
+      if (!filterLc) return true;
+      const backend = (r.solver_backend || r.backend || "").toLowerCase();
+      const rid = r.run_id.toLowerCase();
+      return backend.includes(filterLc) || rid.includes(filterLc);
+    });
+    const groups = { "Today": [], "Yesterday": [], "This Week": [], "Older": [] };
+    for (const r of filtered) {
+      const ts = r.timestamp_utc || r.timestamp || "";
+      const d = ts ? new Date(ts) : null;
+      if (d && d >= today) groups["Today"].push(r);
+      else if (d && d >= yesterday) groups["Yesterday"].push(r);
+      else if (d && d >= weekAgo) groups["This Week"].push(r);
+      else groups["Older"].push(r);
+    }
+    return { filtered, groups };
+  }, [runFilter, runs]);
+
+  const handleDeleteRuns = useCallback(async (runIds, label = "selected runs") => {
+    const ids = Array.from(new Set((runIds || []).filter(Boolean)));
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} ${label}? This cannot be undone.`)) return;
+    const failed = [];
+    for (const runId of ids) {
+      try {
+        await api.deleteRun(runId, outputRoot);
+      } catch {
+        failed.push(runId);
+      }
+    }
+    const removed = new Set(ids.filter(id => !failed.includes(id)));
+    const remaining = runs.filter(r => !removed.has(r.run_id));
+    setRuns(remaining);
+    if (selectedRunId && removed.has(selectedRunId)) {
+      const nextRunId = remaining[0]?.run_id || null;
+      setSelectedRunId(nextRunId);
+      if (!nextRunId) {
+        setSignals(null); setSummary(null); setHysteresis(null); setProfile(null);
+      }
+    }
+    if (failed.length) {
+      setError(`Delete failed for ${failed.length} run(s).`);
+    }
+  }, [runs, selectedRunId]);
+
+  const handleClearVisibleRuns = useCallback(async () => {
+    const visible = computeGroupedRuns().filtered.map(r => r.run_id);
+    await handleDeleteRuns(visible, "visible runs");
+  }, [computeGroupedRuns, handleDeleteRuns]);
+
+  const handleClearAllRuns = useCallback(async () => {
+    await handleDeleteRuns(runs.map(r => r.run_id), "runs");
+  }, [handleDeleteRuns, runs]);
+
   // Load run data when selection changes
   useEffect(() => {
     if (!selectedRunId) return;
@@ -133,11 +244,15 @@ function App() {
     setStatus("running");
     setProgress(0);
     setError(null);
+    setCompletionMessage(null);
 
     const batchMotions = wizard.batch_motions && wizard.batch_motions.length > 1
       ? wizard.batch_motions
       : [wizard.motion_path || ""];
-    const isBatch = batchMotions.length > 1;
+    const selectedMotions = batchMotions.filter(Boolean);
+    const isBatch = selectedMotions.length > 1;
+    const parallelWorkers = Math.max(1, parseInt(wizard.parallel_workers, 10) || 1);
+    const motionParseSettings = buildMotionParseSettings(wizard);
 
     try {
       // Step 0: Plan run limit check
@@ -146,33 +261,79 @@ function App() {
       if (!planInfo.can_run) {
         throw new Error(`Daily run limit reached (${planInfo.runs_today}/${planInfo.runs_per_day}). Upgrade your plan for more runs.`);
       }
+      if (selectedMotions.length === 0) {
+        throw new Error("Select or upload at least one input motion before running the analysis.");
+      }
 
-      // Step 0b: Sanity check (5%)
+      // Step 0b: Normalize selected motions into run-ready CSV files (5%)
       setProgress(5);
-      const sanity = await api.wizardSanityCheck(wizard);
+      const processedMotions = await Promise.all(selectedMotions.map(async (motionPath, idx) => {
+        const stem = String(motionPath || "").split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || `motion_${idx + 1}`;
+        const result = await api.processMotion({
+          motion_path: motionPath,
+          ...motionParseSettings,
+          baseline_mode: "none",
+          fallback_dt: motionParseSettings.dt_override || wizard.dt || 0.005,
+          output_name: `${stem}_runready_${Date.now()}_${idx + 1}`,
+        });
+        return result.processed_motion_path || result.path || motionPath;
+      }));
+
+      const wizardForRun = {
+        ...wizard,
+        motion_path: processedMotions[0] || "",
+        batch_motions: processedMotions,
+        motion_units: "m/s2",
+        motion_dt_override: null,
+        motion_format_hint: "auto",
+        motion_delimiter: "auto",
+        motion_skip_rows: 0,
+        motion_has_time: true,
+        motion_time_col: 0,
+        motion_acc_col: 1,
+        scale_mode: "none",
+        scale_factor: null,
+        target_pga_g: null,
+        ...defaultMotionProcessingState(),
+      };
+
+      // Step 0c: Sanity check (8%)
+      setProgress(8);
+      const sanity = await api.wizardSanityCheck(wizardForRun);
       if (!sanity.ok) {
         throw new Error((sanity.blockers || []).join("; ") || "Server-side validation failed.");
       }
 
       // Step 1: Generate config (10%)
       setProgress(10);
-      const configResp = await api.generateConfig(wizard);
+      const configResp = await api.generateConfig(wizardForRun);
       const configPath = configResp.config_path || configResp.path;
 
       let lastRunId = null;
-      for (let i = 0; i < batchMotions.length; i++) {
-        const motionPath = batchMotions[i];
-        const pct = 15 + Math.round((i / batchMotions.length) * 75);
-        setProgress(pct);
-        if (isBatch) setError(`Running ${i + 1}/${batchMotions.length}...`);
-
+      if (isBatch) {
+        setProgress(20);
+        const batchResp = await api.executeRunBatch({
+          config_path: configPath,
+          motion_paths: processedMotions,
+          output_root: outputRoot,
+          backend: wizardForRun.solver_backend,
+          n_jobs: Math.min(parallelWorkers, processedMotions.length),
+        });
+        const results = Array.isArray(batchResp.results) ? batchResp.results : [];
+        lastRunId = results.length > 0 ? results[results.length - 1].run_id : null;
+        setCompletionMessage(
+          `Batch complete: ${results.length} motion, ${batchResp.unique_run_count || results.length} unique run, ${batchResp.n_jobs || parallelWorkers} worker`
+        );
+      } else {
+        setProgress(35);
         const runResp = await api.executeRun({
           config_path: configPath,
-          motion_path: motionPath,
+          motion_path: processedMotions[0],
           output_root: outputRoot,
-          backend: wizard.solver_backend,
+          backend: wizardForRun.solver_backend,
         });
         lastRunId = runResp.run_id;
+        setCompletionMessage("Analysis complete");
       }
 
       // Done
@@ -183,19 +344,13 @@ function App() {
       setRuns(Array.isArray(runsData) ? runsData : (runsData.runs || []));
       setProgress(100);
       setStatus("done");
-      setError(isBatch ? `Batch complete: ${batchMotions.length} runs` : null);
     } catch (ex) {
       setError(ex.message);
+      setCompletionMessage(null);
       setStatus("error");
       setProgress(0);
     }
   }, [wizard]);
-
-  const [activeStep, setActiveStep] = useState(0);
-  const [viewMode, setViewMode] = useState("wizard"); // "wizard" or "results"
-  const [runFilter, setRunFilter] = useState("");
-  const [theme, setTheme] = useState(() => localStorage.getItem("stratawave_theme") || "light");
-  const [plan, setPlan] = useState(getStoredPlan);
 
   const togglePlan = useCallback(() => {
     setPlan(p => {
@@ -245,19 +400,25 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [viewMode, status, handleRun, toggleTheme]);
 
+  const { groups: groupedRuns, filtered: filteredRuns } = computeGroupedRuns();
+
   return html`
     <div className="shell">
       <header className="header">
-        <h1 className="logo">StrataWave</h1>
+        <h1 className="logo">GeoWave</h1>
         <span className="tagline">1D Site Response Analysis</span>
         <div className="header-actions">
-          <button className=${"header-tab" + (viewMode === "wizard" ? " active" : "")}
+          <button type="button" className=${"header-tab" + (viewMode === "wizard" ? " active" : "")}
             onClick=${() => setViewMode("wizard")}>Model</button>
-          <button className=${"header-tab" + (viewMode === "results" ? " active" : "")}
+          <button type="button" className=${"header-tab" + (viewMode === "results" ? " active" : "")}
             onClick=${() => setViewMode("results")}>Results</button>
           <${PlanToggle} plan=${plan} onToggle=${togglePlan} />
           ${canUseFeature(plan, "dark_mode") ? html`
-            <button className="theme-toggle" onClick=${toggleTheme}
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-label=${theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              onClick=${toggleTheme}
               title=${theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
               ${theme === "dark" ? "☀" : "☾"}
             </button>
@@ -282,7 +443,7 @@ function App() {
                 hasLayers && hasMotion ? "ok" : "blocked",        // 5. Analysis Control
               ];
               return ["Analysis Type", "Soil Profile", "Input Motion", "Damping", "Analysis Control"].map((label, i) => html`
-              <button key=${i}
+              <button key=${i} type="button"
                 className=${"nav-btn" + (viewMode === "wizard" && activeStep === i ? " active" : "")}
                 onClick=${() => { setViewMode("wizard"); setActiveStep(i); }}>
                 <span className=${"nav-num" + (stepStatus[i] === "ok" ? " step-ok" : stepStatus[i] === "blocked" ? " step-blocked" : "")}>${stepStatus[i] === "ok" ? "\u2713" : i + 1}</span>
@@ -296,55 +457,51 @@ function App() {
 
           <div className="nav-section nav-runs-section">
             <div className="nav-label">RUNS (${runs.length})</div>
-            ${runs.length > 5 ? html`
-              <input type="text" className="nav-search" placeholder="Filter..."
-                value=${runFilter} onInput=${e => setRunFilter(e.target.value)}
-                style=${{ fontSize: "0.7rem", padding: "0.2rem 0.4rem", margin: "0 0.5rem 0.25rem", width: "calc(100% - 1rem)", border: "1px solid var(--ink-10)", borderRadius: "4px" }} />
-            ` : null}
-            ${(() => {
-              const now = new Date();
-              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-              const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-              const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
-              const filterLc = runFilter.toLowerCase();
-              const filtered = runs.filter(r => {
-                if (!filterLc) return true;
-                const backend = (r.solver_backend || r.backend || "").toLowerCase();
-                const rid = r.run_id.toLowerCase();
-                return backend.includes(filterLc) || rid.includes(filterLc);
-              });
-              const groups = { "Today": [], "Yesterday": [], "This Week": [], "Older": [] };
-              for (const r of filtered) {
-                const ts = r.timestamp_utc || r.timestamp || "";
-                const d = ts ? new Date(ts) : null;
-                if (d && d >= today) groups["Today"].push(r);
-                else if (d && d >= yesterday) groups["Yesterday"].push(r);
-                else if (d && d >= weekAgo) groups["This Week"].push(r);
-                else groups["Older"].push(r);
-              }
-              return Object.entries(groups).filter(([, arr]) => arr.length > 0).map(([label, arr]) => html`
+            <div className="nav-runs-toolbar">
+              ${runs.length > 5 ? html`
+                <input
+                  type="text"
+                  className="nav-search"
+                  placeholder="Filter..."
+                  aria-label="Filter runs"
+                  value=${runFilter}
+                  onInput=${e => setRunFilter(e.target.value)}
+                />
+              ` : null}
+              <div className="nav-runs-actions">
+                <button type="button" className="btn btn-sm nav-mini-btn" disabled=${!filteredRuns.length} onClick=${handleClearVisibleRuns}>Clear Visible</button>
+                <button type="button" className="btn btn-sm nav-mini-btn" disabled=${!runs.length} onClick=${handleClearAllRuns}>Clear All</button>
+              </div>
+            </div>
+            ${Object.entries(groupedRuns).filter(([, arr]) => arr.length > 0).map(([label, arr]) => html`
                 <div key=${label}>
                   <div className="nav-group-label" style=${{ fontSize: "0.6rem", color: "var(--ink-40)", padding: "0.25rem 0.75rem 0.1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>${label}</div>
                   ${arr.map(r => {
                     const ts = r.timestamp_utc || r.timestamp || "";
-                    const dateLabel = ts ? new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id.slice(4, 12);
+                    const dateLabel = ts ? runTimestampFormatter.format(new Date(ts)) : r.run_id.slice(4, 12);
                     const runLabel = "run_" + dateLabel;
                     return html`
-                      <div key=${r.run_id} className=${"nav-btn nav-run" + (r.run_id === selectedRunId ? " active" : "")}
-                        style=${{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                        <div style=${{ flex: 1 }} onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
+                      <div key=${r.run_id} className="nav-run-row">
+                        <button
+                          type="button"
+                          className=${"nav-btn nav-run nav-run-trigger" + (r.run_id === selectedRunId ? " active" : "")}
+                          aria-label=${`Open ${runLabel}`}
+                          onClick=${() => { setSelectedRunId(r.run_id); setViewMode("results"); }}>
                           <span className="nav-text run-text">${runLabel}</span>
                           <span className="nav-badge">${r.solver_backend || r.backend || ""}</span>
-                        </div>
-                        <button className="btn-icon" title="Delete run"
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          aria-label=${`Delete ${runLabel}`}
+                          title="Delete run"
                           style=${{ fontSize: "0.65rem", opacity: 0.4, padding: "0 0.2rem" }}
                           onClick=${(e) => { e.stopPropagation(); handleDeleteRun(r.run_id); }}>✕</button>
                       </div>
                     `;
                   })}
                 </div>
-              `);
-            })()}
+              `)}
           </div>
 
           ${status === "running" ? html`
@@ -358,7 +515,7 @@ function App() {
 
           ${status === "done" ? html`
             <div className="nav-section" style=${{ padding: "0.5rem 0.75rem" }}>
-              <span style=${{ color: "var(--green)", fontSize: "0.75rem" }}>Analysis complete</span>
+              <span style=${{ color: "var(--green)", fontSize: "0.75rem" }}>${completionMessage || "Analysis complete"}</span>
             </div>
           ` : null}
 

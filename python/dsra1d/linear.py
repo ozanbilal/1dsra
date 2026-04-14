@@ -9,16 +9,29 @@ from dsra1d.config import BoundaryCondition, MaterialType, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials import (
     bounded_damping_from_reduction,
-    gqh_modulus_reduction,
+    gqh_modulus_reduction_from_params,
     mkz_modulus_reduction,
 )
 from dsra1d.materials.damping import (
     layer_damping as _layer_damping,
+    modal_matched_damping_matrix as _modal_matched_damping_matrix,
     rayleigh_coefficients as _rayleigh_coefficients,
 )
+from dsra1d.motion import effective_input_acceleration
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
+
+
+def _solver_column_area(config: ProjectConfig) -> float:
+    legacy = getattr(config, "opensees", None)
+    if legacy is not None:
+        width = float(getattr(legacy, "column_width_m", 1.0))
+        thickness = float(getattr(legacy, "thickness_m", 1.0))
+        area = width * thickness
+        if np.isfinite(area) and area > 0.0:
+            return area
+    return 1.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -27,6 +40,8 @@ class ShearBeamResponse:
     surface_acc: FloatArray
     element_max_abs_strain: FloatArray
     layer_max_abs_strain: dict[int, float]
+    node_depth_m: FloatArray
+    nodal_displacement_m: FloatArray
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,9 +86,7 @@ def _solve_shear_beam_response(
 
     layer_by_idx = {layer.index: layer for layer in layer_slices}
     cfg_layers = config.profile.layers
-    area = float(config.opensees.column_width_m * config.opensees.thickness_m)
-    if area <= 0.0:
-        area = 1.0
+    area = _solver_column_area(config)
 
     n_elem = len(element_slices)
     n_nodes = n_elem + 1
@@ -82,7 +95,6 @@ def _solve_shear_beam_response(
 
     m_elem = np.zeros(n_elem, dtype=np.float64)
     k_elem = np.zeros(n_elem, dtype=np.float64)
-    c_elem = np.zeros(n_elem, dtype=np.float64)
     xi_elem = np.zeros(n_elem, dtype=np.float64)
 
     for j, elem in enumerate(element_slices):
@@ -106,10 +118,8 @@ def _solve_shear_beam_response(
         g_mod = rho * vs * vs
         m_j = rho * area * dz
         k_j = g_mod * area / dz
-        c_j = 2.0 * xi * np.sqrt(max(k_j * m_j, 1.0e-12))
         m_elem[j] = m_j
         k_elem[j] = k_j
-        c_elem[j] = c_j
         xi_elem[j] = xi
 
     m_diag_full = np.zeros(n_nodes, dtype=np.float64)
@@ -125,20 +135,15 @@ def _solve_shear_beam_response(
         i0 = j
         i1 = j + 1
         k = k_elem[j]
-        c = c_elem[j]
         k_full[i0, i0] += k
         k_full[i0, i1] -= k
         k_full[i1, i0] -= k
         k_full[i1, i1] += k
-        c_full[i0, i0] += c
-        c_full[i0, i1] -= c
-        c_full[i1, i0] -= c
-        c_full[i1, i1] += c
 
     if use_elastic_halfspace:
-        base_layer = cfg_layers[-1]
-        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
-        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        bedrock = config.effective_bedrock()
+        base_rho = float(max(bedrock.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(bedrock.vs_m_s, 1.0e-6))
         dashpot_c = base_rho * base_vs * area
         c_full[-1, -1] += dashpot_c
 
@@ -154,10 +159,14 @@ def _solve_shear_beam_response(
         )
         c_mat = (alpha * m_mat) + (beta_rayleigh * k_mat)
     else:
-        c_mat = c_full[:n_free, :n_free]
+        xi_target = float(np.average(xi_elem, weights=np.maximum(m_elem, 1.0e-12)))
+        c_mat = _modal_matched_damping_matrix(m_diag, k_mat, xi_target)
+        if use_elastic_halfspace:
+            c_mat = c_mat.copy()
+            c_mat[-1, -1] += dashpot_c
 
     dt = float(motion.dt)
-    acc_g = np.asarray(motion.acc, dtype=np.float64)
+    acc_g = effective_input_acceleration(config, motion.acc)
     n_steps = acc_g.size
     time = np.arange(n_steps, dtype=np.float64) * dt
 
@@ -171,9 +180,9 @@ def _solve_shear_beam_response(
     a5 = dt * ((gamma / (2.0 * beta)) - 1.0)
 
     if use_elastic_halfspace:
-        base_layer = cfg_layers[-1]
-        base_rho = float(max(base_layer.unit_weight_kn_m3 / 9.81, 1.0e-6))
-        base_vs = float(max(base_layer.vs_m_s, 1.0e-6))
+        bedrock = config.effective_bedrock()
+        base_rho = float(max(bedrock.unit_weight_kn_m3 / 9.81, 1.0e-6))
+        base_vs = float(max(bedrock.vs_m_s, 1.0e-6))
         input_vel = _integrate_acc_to_velocity(acc_g, dt)
         force = np.zeros((n_free, n_steps), dtype=np.float64)
         force[-1, :] = 2.0 * base_rho * base_vs * area * input_vel
@@ -226,11 +235,17 @@ def _solve_shear_beam_response(
         prev = layer_max_abs.get(elem.layer_index, 0.0)
         layer_max_abs[elem.layer_index] = max(prev, gamma_max)
 
+    node_depth_m = np.zeros(n_nodes, dtype=np.float64)
+    for j, elem in enumerate(element_slices):
+        node_depth_m[j + 1] = node_depth_m[j] + float(max(elem.dz_m, 0.0))
+
     return ShearBeamResponse(
         time=time,
         surface_acc=surface_acc,
         element_max_abs_strain=elem_max_abs,
         layer_max_abs_strain=layer_max_abs,
+        node_depth_m=node_depth_m,
+        nodal_displacement_m=u_full,
     )
 
 
@@ -324,14 +339,10 @@ def solve_equivalent_linear_sh_response(
                     )[0]
                 )
             elif layer.material == MaterialType.GQH:
-                gamma_ref = float(layer.material_params.get("gamma_ref", 0.001))
                 g_reduction = float(
-                    gqh_modulus_reduction(
+                    gqh_modulus_reduction_from_params(
                         np.array([gamma_eff], dtype=np.float64),
-                        gamma_ref=gamma_ref,
-                        a1=float(layer.material_params.get("a1", 1.0)),
-                        a2=float(layer.material_params.get("a2", 0.0)),
-                        m=float(layer.material_params.get("m", 1.0)),
+                        layer.material_params,
                     )[0]
                 )
                 g_reduction = float(np.clip(g_reduction, 0.05, 1.0))

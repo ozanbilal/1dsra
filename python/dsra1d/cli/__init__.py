@@ -1,2 +1,2 @@
-"""CLI package for StrataWave."""
+"""CLI package for GeoWave."""
 

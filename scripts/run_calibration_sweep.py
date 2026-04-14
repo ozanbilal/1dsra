@@ -1,6 +1,6 @@
 """Run a calibration sweep: execute each candidate config and compare against DEEPSOIL reference.
 
-Reads sweep_manifest.json, runs StrataWave nonlinear analysis for each candidate,
+Reads sweep_manifest.json, runs GeoWave nonlinear analysis for each candidate,
 then compares against DEEPSOIL Example 5A reference data and ranks results.
 
 Usage:
@@ -79,7 +79,7 @@ def run_single_case(
     motion_path: Path,
     output_root: Path,
 ) -> Path | None:
-    """Run a single StrataWave analysis. Returns run directory or None on failure."""
+    """Run a single GeoWave analysis. Returns run directory or None on failure."""
     try:
         config = load_project_config(config_path)
         dt = config.analysis.dt

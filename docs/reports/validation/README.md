@@ -1,6 +1,6 @@
 # Validation Pack
 
-This directory defines the external technical validation bundle for StrataWave.
+This directory defines the external technical validation bundle for GeoWave.
 
 Purpose:
 - collect existing evidence from the repository in one place,

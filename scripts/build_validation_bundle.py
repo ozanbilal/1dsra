@@ -300,7 +300,7 @@ def make_bundle(repo: Path, out_dir: Path) -> dict[str, Any]:
 def make_markdown(bundle: dict[str, Any], assets: list[Path]) -> str:
     evidence = bundle["evidence"]
     lines = [
-        "# StrataWave Teknik Dogrulama Raporu",
+        "# GeoWave Teknik Dogrulama Raporu",
         "",
         f"- Uretim tarihi: `{bundle['generated_utc']}`",
         f"- Repo kok dizini: `{bundle['repo_root']}`",
@@ -308,7 +308,7 @@ def make_markdown(bundle: dict[str, Any], assets: list[Path]) -> str:
         "",
         "## 1. Amac ve Kapsam",
         "",
-        "Bu rapor, StrataWave reposundaki mevcut kanitlari toplayarak yazilimin bugunku teknik olgunluk seviyesini belgelemek icin uretilmistir.",
+        "Bu rapor, GeoWave reposundaki mevcut kanitlari toplayarak yazilimin bugunku teknik olgunluk seviyesini belgelemek icin uretilmistir.",
         "Rapor, urunun kendisine yeni bir dogrulama modu eklemez; yalnizca mevcut example, benchmark, parity ve dokumantasyon artifactlerini derler.",
         "",
         "## 2. Mimari Ozet",
@@ -347,7 +347,7 @@ def make_markdown(bundle: dict[str, Any], assets: list[Path]) -> str:
 class ReportPdf(FPDF):
     def header(self) -> None:
         self.set_font("Body", size=10)
-        self.cell(0, 8, "StrataWave Teknik Dogrulama Raporu", new_x="LMARGIN", new_y="NEXT", align="R")
+        self.cell(0, 8, "GeoWave Teknik Dogrulama Raporu", new_x="LMARGIN", new_y="NEXT", align="R")
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.ln(3)
 
@@ -363,13 +363,13 @@ def write_pdf(bundle: dict[str, Any], assets: list[Path], out_pdf: Path) -> None
     pdf.add_font("Body", fname=str(Path(r"C:\Windows\Fonts\arial.ttf")))
     pdf.add_page()
     pdf.set_font("Body", size=22)
-    pdf.multi_cell(0, 11, "StrataWave Teknik Dogrulama Raporu")
+    pdf.multi_cell(0, 11, "GeoWave Teknik Dogrulama Raporu")
     pdf.ln(2)
     pdf.set_font("Body", size=12)
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(0, 7, "DEEPSOIL-benzeri is akisina ve OpenSees destekli effective-stress dogrulamasina sahip hibrit analiz platformu icin mevcut repo kanitlarinin derlenmis ozeti.")
     sections = [
-        ("Amac ve Kapsam", ["Bu rapor, StrataWave reposunda bugun mevcut olan kanitlari toplar ve urunun teknik durumunu dis paylasima uygun sekilde belgelendirir.", "Rapor yeni bir urun ozelligi eklemez; mevcut example, benchmark, parity ve dokumantasyon artifactlerini kullanir."]),
+        ("Amac ve Kapsam", ["Bu rapor, GeoWave reposunda bugun mevcut olan kanitlari toplar ve urunun teknik durumunu dis paylasima uygun sekilde belgelendirir.", "Rapor yeni bir urun ozelligi eklemez; mevcut example, benchmark, parity ve dokumantasyon artifactlerini kullanir."]),
         ("Mimari Ozet", ["Native solver yollari: linear, eql, nonlinear.", "Effective-stress kaniti: OpenSees adapter yolu ve ilgili local run artifactleri.", "Arayuz katmanlari: React/FastAPI web UI, Streamlit engineering UI, CLI, Python SDK.", "Veri depolama ve raporlama: results.h5, results.sqlite, campaign/parity JSON ve Markdown artifactleri."]),
         ("Sonuc Hukmu", ["Calisiyor: native lineer, EQL, nonlinear ornekler ve OpenSees effective-stress adapter kosusu local evidence ile mevcuttur.", "Kismi: DEEPSOIL parity, UI parity ve scientific confidence derinligi.", "Eksik: native effective-stress solver ve tam publication-grade parity kapanisi."])
     ]
@@ -441,7 +441,7 @@ def build(repo: Path, out_dir: Path) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build external StrataWave validation bundle")
+    parser = argparse.ArgumentParser(description="Build external GeoWave validation bundle")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--out-dir", type=Path, default=Path(__file__).resolve().parents[1] / "docs" / "reports" / "validation" / "latest")
     args = parser.parse_args()

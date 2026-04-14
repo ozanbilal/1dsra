@@ -358,7 +358,7 @@ def _plot_best_case(best: CaseSummary, out_dir: Path) -> tuple[Path, Path]:
 
     fig, ax = plt.subplots(figsize=(10, 3.8))
     ax.plot(time_ds[ds_mask], acc_ds_norm[ds_mask], color="#1f3340", lw=1.0, label="DEEPSOIL")
-    ax.plot(time_sw[sw_mask], acc_sw_norm[sw_mask], color="#c47a3d", lw=1.0, label="StrataWave")
+    ax.plot(time_sw[sw_mask], acc_sw_norm[sw_mask], color="#c47a3d", lw=1.0, label="GeoWave")
     ax.set_title(
         f"{best.label}: normalized surface acceleration "
         f"({start_time:.1f}-{window_end:.1f} s)"
@@ -373,7 +373,7 @@ def _plot_best_case(best: CaseSummary, out_dir: Path) -> tuple[Path, Path]:
 
     fig, ax = plt.subplots(figsize=(10, 3.8))
     ax.plot(periods_ds, psa_ds, color="#1f3340", lw=1.2, label="DEEPSOIL")
-    ax.plot(periods_sw, psa_sw, color="#2c7a7b", lw=1.2, label="StrataWave")
+    ax.plot(periods_sw, psa_sw, color="#2c7a7b", lw=1.2, label="GeoWave")
     ax.set_title(f"{best.label}: PSA overlay")
     ax.set_xlabel("Period (s)")
     ax.set_ylabel("PSA (m/s^2)")
@@ -418,14 +418,14 @@ def _write_markdown(
     generated_utc: str,
 ) -> Path:
     lines: list[str] = [
-        "# StrataWave DEEPSOIL Example Parity Report",
+        "# GeoWave DEEPSOIL Example Parity Report",
         "",
         f"- Generated UTC: `{generated_utc}`",
         f"- Best current case: `{best.key}`",
         "",
         "## Executive verdict",
         "",
-        "- StrataWave ana analiz yollari calisiyor.",
+        "- GeoWave ana analiz yollari calisiyor.",
         "- OpenSees destekli effective-stress adapter calisiyor.",
         "- DEEPSOIL parity araci mevcut, ancak tam esdegerlik kapanmadi.",
         f"- En iyi mevcut vaka `{best.key}` ve bu vaka icin `PSA NRMSE={best.psa_nrmse:.4f}`.",
@@ -524,10 +524,10 @@ def _build_pdf(
 
     story.extend(
         [
-            Paragraph("StrataWave Uyum Durumu ve DEEPSOIL Example Parity Raporu", styles["title"]),
+            Paragraph("GeoWave Uyum Durumu ve DEEPSOIL Example Parity Raporu", styles["title"]),
             Paragraph(f"Generated UTC: {generated_utc}", styles["small"]),
             Paragraph(
-                "Bu rapor, mevcut repo uzerindeki native StrataWave run'lari ile "
+                "Bu rapor, mevcut repo uzerindeki native GeoWave run'lari ile "
                 "DEEPSOIL 7 batch referans ciktilarinin dogrudan karsilastirilmasini ozetler. "
                 "Ama amac tam DEEPSOIL esdegerligi iddia etmek degil; mevcut parity seviyesini "
                 "dürüstce gostermektir.",
@@ -536,7 +536,7 @@ def _build_pdf(
             Spacer(1, 6),
             Paragraph("Executive verdict", styles["h1"]),
             Paragraph(
-                "StrataWave ana analiz yollari ve OpenSees effective-stress adapter'i calisiyor. "
+                "GeoWave ana analiz yollari ve OpenSees effective-stress adapter'i calisiyor. "
                 "DEEPSOIL parity ise su an kismi seviyede. En iyi mevcut vaka, "
                 f"<b>{best.key}</b> icin <b>PSA NRMSE={best.psa_nrmse:.4f}</b> veriyor; "
                 "buna ragmen time-history korelasyonu zayif kaldigi icin bu sonuc yalnizca "

@@ -249,7 +249,7 @@ def _render_appendix_previews(pdf_paths: list[Path], assets_dir: Path) -> list[A
 def _write_markdown(manifest: dict[str, Any], out_dir: Path) -> Path:
     md_path = out_dir / "validation_pack.md"
     lines: list[str] = [
-        "# StrataWave Validation Pack",
+        "# GeoWave Validation Pack",
         "",
         f"- Generated: `{manifest['generated_utc']}`",
         f"- Repo root: `{manifest['repo_root']}`",
@@ -330,7 +330,7 @@ def _write_markdown(manifest: dict[str, Any], out_dir: Path) -> Path:
 class ValidationPdf(FPDF):
     def footer(self) -> None:  # pragma: no cover - visual layout hook
         self.set_y(-10)
-        self.set_font("StrataWaveRegular", size=8)
+        self.set_font("GeoWaveRegular", size=8)
         self.set_text_color(110, 110, 110)
         self.cell(0, 5, f"Page {self.page_no()}", align="C")
 
@@ -351,29 +351,29 @@ def _write_pdf(manifest: dict[str, Any], out_dir: Path) -> Path:
     pdf = ValidationPdf()
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.set_margins(14, 14, 14)
-    pdf.add_font("StrataWaveRegular", "", str(font_regular))
-    pdf.add_font("StrataWaveBold", "", str(font_bold))
+    pdf.add_font("GeoWaveRegular", "", str(font_regular))
+    pdf.add_font("GeoWaveBold", "", str(font_bold))
 
     def h1(text: str) -> None:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("StrataWaveBold", size=18)
+        pdf.set_font("GeoWaveBold", size=18)
         pdf.cell(pdf.w - pdf.l_margin - pdf.r_margin, 10, text, new_x="LMARGIN", new_y="NEXT")
 
     def h2(text: str) -> None:
         pdf.ln(2)
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("StrataWaveBold", size=12)
+        pdf.set_font("GeoWaveBold", size=12)
         pdf.cell(pdf.w - pdf.l_margin - pdf.r_margin, 8, text, new_x="LMARGIN", new_y="NEXT")
 
     def p(text: str) -> None:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("StrataWaveRegular", size=9)
+        pdf.set_font("GeoWaveRegular", size=9)
         pdf.multi_cell(pdf.w - pdf.l_margin - pdf.r_margin, 5, _wrap(text, width=86))
         pdf.ln(1)
 
     def bullet(text: str) -> None:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("StrataWaveRegular", size=9)
+        pdf.set_font("GeoWaveRegular", size=9)
         pdf.multi_cell(
             pdf.w - pdf.l_margin - pdf.r_margin,
             5,
@@ -382,15 +382,15 @@ def _write_pdf(manifest: dict[str, Any], out_dir: Path) -> Path:
 
     def kv(key: str, value: str) -> None:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("StrataWaveBold", size=10)
+        pdf.set_font("GeoWaveBold", size=10)
         pdf.cell(48, 6, key, border=1)
-        pdf.set_font("StrataWaveRegular", size=9)
+        pdf.set_font("GeoWaveRegular", size=9)
         pdf.cell(pdf.w - pdf.l_margin - pdf.r_margin - 48, 6, value, border=1, new_x="LMARGIN", new_y="NEXT")
 
     smoke = manifest["smoke_summary"]
     benchmark = manifest["benchmark_snapshot"]
     pdf.add_page()
-    h1("StrataWave Validation Pack")
+    h1("GeoWave Validation Pack")
     p(
         "Technical validation summary for the hybrid 1D site-response platform. "
         "This pack is an external deliverable built from existing repository evidence."
@@ -406,7 +406,7 @@ def _write_pdf(manifest: dict[str, Any], out_dir: Path) -> Path:
 
     h2("1. Scope")
     p(
-        "StrataWave currently behaves as a hybrid platform: DEEPSOIL-like workflow, "
+        "GeoWave currently behaves as a hybrid platform: DEEPSOIL-like workflow, "
         "OpenSees-backed effective-stress execution, and native MKZ/GQH analysis paths."
     )
 
@@ -536,7 +536,7 @@ def build_validation_pack(repo_root: Path, out_dir: Path) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build the StrataWave technical validation pack")
+    parser = argparse.ArgumentParser(description="Build the GeoWave technical validation pack")
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "output" / "pdf" / "validation")
     args = parser.parse_args()

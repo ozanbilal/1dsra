@@ -1,2 +1,2 @@
-"""Streamlit UI for StrataWave."""
+"""Streamlit UI for GeoWave."""
 

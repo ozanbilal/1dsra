@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from dsra1d.config import MaterialType
 from dsra1d.materials import mkz_backbone_stress
 from dsra1d.nonlinear import simulate_hysteretic_stress_path
@@ -79,6 +80,40 @@ def test_reload_factor_changes_hysteretic_response() -> None:
     energy_masing = float(abs(np.trapezoid(tau_masing, strain)))
     energy_non_masing = float(abs(np.trapezoid(tau_non_masing, strain)))
     assert abs(energy_masing - energy_non_masing) > 1.0e-6
+
+
+def test_mrdf_zero_factor_uses_local_translated_reference_branch() -> None:
+    params = {
+        "gmax": 70000.0,
+        "gamma_ref": 0.0010,
+        "reload_factor": 2.0,
+        "mrdf_p1": 0.0,
+        "mrdf_p2": 0.0,
+        "mrdf_p3": 1.0,
+    }
+    strain = np.array([0.0, 0.0040, 0.0020], dtype=np.float64)
+    tau = simulate_hysteretic_stress_path(
+        MaterialType.MKZ,
+        params,
+        strain,
+        gmax_fallback=70000.0,
+    )
+    tau_rev = float(
+        mkz_backbone_stress(
+            np.array([0.0040], dtype=np.float64),
+            gmax=70000.0,
+            gamma_ref=0.0010,
+        )[0]
+    )
+    tau_delta = float(
+        mkz_backbone_stress(
+            np.array([0.0020], dtype=np.float64),
+            gmax=70000.0,
+            gamma_ref=0.0010,
+        )[0]
+    )
+    expected = tau_rev - tau_delta
+    assert tau[2] == pytest.approx(expected, rel=1.0e-8, abs=1.0e-10)
 
 
 def test_elastic_path_reduces_to_linear_stress() -> None:

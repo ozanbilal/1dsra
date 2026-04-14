@@ -1,4 +1,4 @@
-# StrataWave Implementation Status
+# GeoWave Implementation Status
 
 Last updated: 2026-03-24
 
@@ -13,7 +13,7 @@ Recent updates (2026-03-24):
   - each config uses Darendeli-calibrated base parameters with configurable scaling
   - writes `sweep_manifest.json` for batch execution
 - Added calibration sweep runner (`scripts/run_calibration_sweep.py`):
-  - executes each candidate config, runs StrataWave nonlinear analysis, and compares against DEEPSOIL reference
+  - executes each candidate config, runs GeoWave nonlinear analysis, and compares against DEEPSOIL reference
   - ranks results by PSA NRMSE and writes `sweep_results.json` + `sweep_results.md`
 - Ran 40-case wide calibration sweep for Example 5A rigid-base nonlinear parity:
   - best Darendeli-calibrated case: `rf=1.30, gamma_ref_scale=1.50` -> PSA NRMSE=0.1994
@@ -33,7 +33,7 @@ Previous updates (2026-03-23):
 - Added focused DEEPSOIL example parity reporting outside product runtime:
   - `scripts/build_deepsoil_example_parity_report.py`
   - writes `JSON + Markdown + PDF` under `output/pdf/validation/deepsoil_examples/report/`
-  - uses actual local DEEPSOIL batch-reference runs and native StrataWave compare artifacts
+  - uses actual local DEEPSOIL batch-reference runs and native GeoWave compare artifacts
   - explicitly reports current best case, partial parity level, and solver-model caveats instead of overstating DEEPSOIL equivalence
 - Native linear/nonlinear solvers now honor `boundary_condition: elastic_halfspace` with base impedance damping derived from the deepest layer.
 - Native linear/nonlinear solvers now use incident-wave style base forcing for `elastic_halfspace` runs in addition to base impedance damping.
@@ -42,10 +42,10 @@ Previous updates (2026-03-23):
 - Native pipeline now rejects non-finite linear/eql/nonlinear surface responses before result-store writes, producing explicit solver-level errors instead of downstream SQLite integrity failures.
 - Added external parity-prep helper `scripts/scaffold_deepsoil_compare_manifest.py` to seed
   `compare-deepsoil-batch` manifests from existing `run-*` folders without hand-writing JSON.
-- Added initial DEEPSOIL side-by-side comparison tooling for StrataWave run folders:
+- Added initial DEEPSOIL side-by-side comparison tooling for GeoWave run folders:
   `compare-deepsoil` writes JSON/Markdown parity artifacts with PGA, surface correlation/RMSE, and PSA mismatch metrics from DEEPSOIL-exported CSVs.
 - Added manifest-driven DEEPSOIL parity campaigns:
-  `compare-deepsoil-batch` evaluates multiple StrataWave-vs-DEEPSOIL cases against configurable tolerances and emits batch pass/fail artifacts.
+  `compare-deepsoil-batch` evaluates multiple GeoWave-vs-DEEPSOIL cases against configurable tolerances and emits batch pass/fail artifacts.
 - `summarize` now accepts a DEEPSOIL batch parity report (`--deepsoil-compare-report`) and merges it into `campaign_summary.json/.md`.
 - DEEPSOIL compare scope now extends beyond surface response:
   optional profile CSV and hysteresis CSV inputs are supported in `compare-deepsoil`, with profile/hysteresis metrics propagated into batch parity and campaign summaries.
@@ -92,7 +92,7 @@ Previous updates (2026-03-23):
 Status: **Completed**
 
 Implemented:
-- Standalone git repo structure under `StrataWave`
+- Standalone git repo structure under `GeoWave`
 - Packaging (`pyproject.toml`), license, README
 - CI workflow (`.github/workflows/ci.yml`)
 - Developer quality gates (`ruff`, `mypy`, `pytest`, pre-commit)
@@ -276,7 +276,7 @@ Missing:
 - `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
 - `--backend nonlinear` now enables native MKZ/GQH stateful hysteretic time-domain analysis without OpenSees dependency
 - Native MKZ/GQH runs can now be calibrated from Darendeli-style curves without manual `gamma_ref/a1/a2/m` entry
-- `compare-deepsoil` now lets you compare a StrataWave run folder against DEEPSOIL-exported surface acceleration
+- `compare-deepsoil` now lets you compare a GeoWave run folder against DEEPSOIL-exported surface acceleration
   and optional PSA CSVs, producing parity artifacts for fast MKZ/GQH iteration
 - `compare-deepsoil-batch` now lets you run a manifest-driven DEEPSOIL parity campaign with case-level pass/fail checks
 - `scripts/scaffold_deepsoil_compare_manifest.py` now lets you bootstrap a batch parity manifest from completed run folders before attaching DEEPSOIL-exported reference CSVs
@@ -323,7 +323,7 @@ Missing:
 - Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
 - Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
 - Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
-- FastAPI + React migration starter is now available (`StrataWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
+- FastAPI + React migration starter is now available (`GeoWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
 - FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
 - React dashboard now includes a dedicated `Results Frame` focus mode so outputs can be reviewed in a full-width workspace (without Wizard/Runs crowding)
 - `Results Frame` focus mode now uses a split studio layout instead of stacking all diagnostic cards above the plots
@@ -490,10 +490,10 @@ Notes:
 
 ### Manual-Derived Gaps
 
-- `Program Organization` (manual pp. 21-26): DEEPSOIL has top-level `Analysis`, `Motions`, `Profiles` tabs plus an `Options` window for working directory, units, language, multicore, and graph styling. StrataWave currently covers the main workflow but not the preferences surface.
-- `Motion Viewer` (manual pp. 23-26, 47-49): DEEPSOIL exposes multi-motion compare, single-motion view, scaling, baseline correction, FAS smoothing, multiple response-spectrum methods, data tables, timestep reduction, tripartite graph, and kappa tools. StrataWave covers import/baseline/scale/preview, but not the full tool matrix.
-- `Soil Profile Definition` (manual pp. 40-46): DEEPSOIL combines `Layer Properties`, `Advanced Table View`, curve-fit plots, implied strength profile, maximum-frequency checks, halfspace editor, and `Single Element Test`. StrataWave now has layer table/cards and auto-profile slicing, but implied-strength QA and single-element calibration review are still missing.
-- `Results` (manual pp. 55-61): DEEPSOIL separates `Time History`, `Stress-Strain`, `Spectral`, `Profile`, `Mobilized Strength`, `Displacement Animation`, `Response Spectra Summary`, and `Check Convergence`. StrataWave has the core tabs and focused Results Frame, but still lacks full spectra-summary/animation parity and denser convergence QA presentation.
+- `Program Organization` (manual pp. 21-26): DEEPSOIL has top-level `Analysis`, `Motions`, `Profiles` tabs plus an `Options` window for working directory, units, language, multicore, and graph styling. GeoWave currently covers the main workflow but not the preferences surface.
+- `Motion Viewer` (manual pp. 23-26, 47-49): DEEPSOIL exposes multi-motion compare, single-motion view, scaling, baseline correction, FAS smoothing, multiple response-spectrum methods, data tables, timestep reduction, tripartite graph, and kappa tools. GeoWave covers import/baseline/scale/preview, but not the full tool matrix.
+- `Soil Profile Definition` (manual pp. 40-46): DEEPSOIL combines `Layer Properties`, `Advanced Table View`, curve-fit plots, implied strength profile, maximum-frequency checks, halfspace editor, and `Single Element Test`. GeoWave now has layer table/cards and auto-profile slicing, but implied-strength QA and single-element calibration review are still missing.
+- `Results` (manual pp. 55-61): DEEPSOIL separates `Time History`, `Stress-Strain`, `Spectral`, `Profile`, `Mobilized Strength`, `Displacement Animation`, `Response Spectra Summary`, and `Check Convergence`. GeoWave has the core tabs and focused Results Frame, but still lacks full spectra-summary/animation parity and denser convergence QA presentation.
 
 ## 8. Scientific Confidence Matrix
 

@@ -46,6 +46,7 @@ class MRDFCoefficients:
     p2: float
     p3: float
     gamma_ref: float
+    mode: str = "poly"
 
 
 F_MAX: float = 1.5
@@ -152,10 +153,18 @@ def fit_mrdf_coefficients(
 def evaluate_mrdf_factor(
     coeffs: MRDFCoefficients,
     strain_amplitude: float,
+    *,
+    g_over_gmax: float | None = None,
 ) -> float:
     """Evaluate F(γ) from fitted coefficients, clipped to [0, F_MAX]."""
     if strain_amplitude <= 0.0:
         return 1.0
+    if coeffs.mode == "uiuc":
+        if g_over_gmax is None:
+            raise ValueError("g_over_gmax is required for MRDF-UIUC evaluation.")
+        g_ratio = float(np.clip(g_over_gmax, 0.0, 1.0))
+        f = coeffs.p1 - coeffs.p2 * np.power(1.0 - g_ratio, coeffs.p3)
+        return float(np.clip(f, 0.0, F_MAX))
     x = np.log(strain_amplitude / max(coeffs.gamma_ref, 1.0e-15))
     f = coeffs.p1 + coeffs.p2 * x + coeffs.p3 * x * x
     return float(np.clip(f, 0.0, F_MAX))
@@ -180,4 +189,5 @@ def mrdf_coefficients_from_params(
         p2=float(params.get("mrdf_p2", 0.0)),
         p3=float(params.get("mrdf_p3", 0.0)),
         gamma_ref=float(params.get("gamma_ref", 1.0e-3)),
+        mode="uiuc",
     )

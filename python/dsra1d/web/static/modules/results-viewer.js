@@ -1,23 +1,91 @@
 /**
- * StrataWave v2 — Results Viewer (6 tabs matching DEEPSOIL)
+ * GeoWave v2 — Results Viewer
  */
 import { html, useState, useEffect } from "./setup.js";
 import { ChartCard, MultiSeriesChart, DepthProfileChart } from "./charts.js";
 import { fmt, RESULT_TABS, STANDARD_PERIODS } from "./utils.js";
-import { excelExportUrl, downloadUrl, fetchSignals } from "./api.js";
+import {
+  excelExportUrl,
+  downloadUrl,
+  fetchSignals,
+  fetchDisplacementAnimation,
+  fetchResponseSpectraSummary,
+} from "./api.js";
 import { canUseFeature, ProGuard, TierBadge } from "./plans.js";
+
+const G_STANDARD = 9.81;
+
+function accelerationUnitLabel(unit) {
+  return unit === "g" ? "g" : "m/s²";
+}
+
+function convertAccelerationValue(value, unit) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return unit === "g" ? numeric / G_STANDARD : numeric;
+}
+
+function convertAccelerationSeries(values, unit) {
+  return (Array.isArray(values) ? values : []).map(v => convertAccelerationValue(v, unit));
+}
+
+const runTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export function ResultsViewer({ runId, signals, summary, hysteresis, profile, outputRoot, runs, plan }) {
   const [activeTab, setActiveTab] = useState("time");
   const [selectedLayer, setSelectedLayer] = useState(0);
   const [compareRunId, setCompareRunId] = useState(null);
+  const [accelUnit, setAccelUnit] = useState("g");
   const [compareSignals, setCompareSignals] = useState(null);
+  const [spectraSummary, setSpectraSummary] = useState(null);
+  const [spectraSummaryLoading, setSpectraSummaryLoading] = useState(false);
+  const [spectraSummaryError, setSpectraSummaryError] = useState(null);
+  const [displacementAnimation, setDisplacementAnimation] = useState(null);
+  const [displacementLoading, setDisplacementLoading] = useState(false);
+  const [displacementError, setDisplacementError] = useState(null);
 
   // Fetch compare run signals when compareRunId changes
   useEffect(() => {
     if (!compareRunId) { setCompareSignals(null); return; }
     fetchSignals(compareRunId, outputRoot).then(setCompareSignals).catch(() => setCompareSignals(null));
-  }, [compareRunId]);
+  }, [compareRunId, outputRoot]);
+
+  useEffect(() => {
+    if (!runId) {
+      setSpectraSummary(null);
+      setDisplacementAnimation(null);
+      setSpectraSummaryError(null);
+      setDisplacementError(null);
+      return;
+    }
+    setSpectraSummaryLoading(true);
+    setSpectraSummaryError(null);
+    fetchResponseSpectraSummary(runId, outputRoot)
+      .then((payload) => setSpectraSummary(payload))
+      .catch((err) => {
+        setSpectraSummary(null);
+        setSpectraSummaryError(err?.message || "Failed to load response spectra summary.");
+      })
+      .finally(() => setSpectraSummaryLoading(false));
+  }, [runId, outputRoot]);
+
+  useEffect(() => {
+    if (!runId || activeTab !== "displacement_animation" || displacementAnimation) return;
+    setDisplacementLoading(true);
+    setDisplacementError(null);
+    fetchDisplacementAnimation(runId, outputRoot)
+      .then((payload) => setDisplacementAnimation(payload))
+      .catch((err) => {
+        setDisplacementAnimation(null);
+        setDisplacementError(err?.message || "Failed to load displacement animation.");
+      })
+      .finally(() => setDisplacementLoading(false));
+  }, [activeTab, displacementAnimation, outputRoot, runId]);
 
   if (!runId) {
     return html`<div className="results-empty">
@@ -46,31 +114,51 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
   return html`
     <div className="results-viewer">
       <div className="results-header">
-        <div>
-          <h3 style=${{ margin: 0 }}>Results — ${runId}</h3>
+        <div className="results-heading">
+          <h3 className="results-title">Results</h3>
+          <div className="results-run-id">${runId}</div>
           ${summary ? html`
-            <div style=${{ fontSize: "0.75rem", color: "var(--ink-60)", marginTop: "0.15rem", display: "flex", gap: "0.75rem" }}>
-              ${summary.solver_backend ? html`<span>Solver: <b>${summary.solver_backend}</b></span>` : null}
-              ${summary.project_name ? html`<span>Project: <b>${summary.project_name}</b></span>` : null}
-              ${summary.input_motion ? html`<span>Motion: <b>${summary.input_motion.split(/[/\\]/).pop()}</b></span>` : null}
-              ${summary.status ? html`<span>Status: <b style=${{ color: summary.status === "ok" ? "var(--green)" : "var(--red)" }}>${summary.status}</b></span>` : null}
-              ${signals?.site_period_s != null ? html`<span>T₀: <b>${fmt(signals.site_period_s, 3)}s</b></span>` : null}
-              ${signals?.kappa != null ? html`<span>κ: <b>${fmt(signals.kappa, 5)}</b></span>` : null}
+            <div className="results-meta">
+              ${summary.solver_backend ? html`<span className="results-meta-item"><span>Solver</span><b>${summary.solver_backend}</b></span>` : null}
+              ${summary.project_name ? html`<span className="results-meta-item"><span>Project</span><b>${summary.project_name}</b></span>` : null}
+              ${summary.input_motion ? html`<span className="results-meta-item results-meta-item-wide"><span>Motion</span><b>${summary.input_motion.split(/[/\\]/).pop()}</b></span>` : null}
+              ${summary.status ? html`<span className="results-meta-item"><span>Status</span><b style=${{ color: summary.status === "ok" ? "var(--green)" : "var(--red)" }}>${summary.status}</b></span>` : null}
+              ${signals?.site_period_s != null ? html`<span className="results-meta-item"><span>T₀</span><b>${fmt(signals.site_period_s, 3)}s</b></span>` : null}
+              ${signals?.kappa != null ? html`<span className="results-meta-item"><span>κ</span><b>${fmt(signals.kappa, 5)}</b></span>` : null}
             </div>
           ` : null}
         </div>
         <div className="results-actions">
+          <div className="results-unit-toggle" role="group" aria-label="Acceleration result units">
+            <button
+              type="button"
+              className=${`results-unit-btn${accelUnit === "g" ? " active" : ""}`}
+              onClick=${() => setAccelUnit("g")}>
+              g
+            </button>
+            <button
+              type="button"
+              className=${`results-unit-btn${accelUnit === "m/s2" ? " active" : ""}`}
+              onClick=${() => setAccelUnit("m/s2")}>
+              m/s²
+            </button>
+          </div>
           ${canUseFeature(plan, "run_comparison") && runs && runs.length > 1 ? html`
-            <select style=${{ fontSize: "0.7rem", padding: "0.15rem 0.3rem", borderRadius: "4px", border: "1px solid var(--border)" }}
-              value=${compareRunId || ""}
-              onChange=${e => setCompareRunId(e.target.value || null)}>
-              <option value="">Compare with...</option>
-              ${runs.filter(r => r.run_id !== runId).map(r => {
-                const ts = r.timestamp_utc || r.timestamp || "";
-                const label = ts ? "run_" + new Date(ts).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : r.run_id;
-                return html`<option key=${r.run_id} value=${r.run_id}>${label} (${r.solver_backend || ""})</option>`;
-              })}
-            </select>
+            <label style=${{ display: "inline-flex", gap: "0.35rem", alignItems: "center", fontSize: "0.7rem", color: "var(--ink-60)" }}>
+              <span>Compare Run</span>
+              <select
+                aria-label="Compare this run with another run"
+                style=${{ fontSize: "0.7rem", padding: "0.15rem 0.3rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+                value=${compareRunId || ""}
+                onChange=${e => setCompareRunId(e.target.value || null)}>
+                <option value="">Compare with...</option>
+                ${runs.filter(r => r.run_id !== runId).map(r => {
+                  const ts = r.timestamp_utc || r.timestamp || "";
+                  const label = ts ? "run_" + runTimestampFormatter.format(new Date(ts)) : r.run_id;
+                  return html`<option key=${r.run_id} value=${r.run_id}>${label} (${r.solver_backend || ""})</option>`;
+                })}
+              </select>
+            </label>
           ` : null}
           <a href=${downloadUrl(runId, "surface_acc.csv", outputRoot)} className="btn btn-sm" download>CSV</a>
           ${canUseFeature(plan, "excel_export") ? html`
@@ -83,7 +171,7 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
       <div className="tab-row">
         ${RESULT_TABS.map(tab => html`
-          <button key=${tab.id}
+          <button key=${tab.id} type="button"
             className=${"tab-btn" + (activeTab === tab.id ? " active" : "")}
             onClick=${() => setActiveTab(tab.id)}>
             ${tab.label}
@@ -93,9 +181,10 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
       <div className="results-content">
         ${activeTab === "time" && html`<${TimeHistoryTab}
-          time=${time} surfAcc=${surfAcc} inputAcc=${inputAcc}
+          time=${time} surfAcc=${surfAcc} inputTime=${signals?.input_time_s} inputAcc=${inputAcc}
           pga=${signals?.pga} pgaInput=${signals?.pga_input}
-          compareSignals=${compareSignals} compareRunId=${compareRunId} />`}
+          compareSignals=${compareSignals} compareRunId=${compareRunId}
+          accelUnit=${accelUnit} />`}
         ${activeTab === "stress_strain" && html`<${StressStrainTab}
           hysteresis=${hysteresis} selectedLayer=${selectedLayer}
           onLayerChange=${setSelectedLayer} />`}
@@ -105,7 +194,16 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
           transferFreq=${transferFreq} transferAbs=${transferAbs}
           fasFreq=${fasFreq} fasAmp=${fasAmp}
           compareSignals=${compareSignals} compareRunId=${compareRunId}
-          plan=${plan} signals=${signals} />`}
+          plan=${plan} signals=${signals} accelUnit=${accelUnit} />`}
+        ${activeTab === "spectra_summary" && html`<${SpectraSummaryTab}
+          data=${spectraSummary}
+          loading=${spectraSummaryLoading}
+          error=${spectraSummaryError}
+          accelUnit=${accelUnit} />`}
+        ${activeTab === "displacement_animation" && html`<${DisplacementAnimationTab}
+          data=${displacementAnimation}
+          loading=${displacementLoading}
+          error=${displacementError} />`}
         ${activeTab === "profile" && html`<${ProfileTab} profile=${profile} />`}
         ${activeTab === "mobilized" && html`<${MobilizedTab} hysteresis=${hysteresis} profile=${profile} />`}
         ${activeTab === "convergence" && html`<${ConvergenceTab} summary=${summary} />`}
@@ -116,22 +214,31 @@ export function ResultsViewer({ runId, signals, summary, hysteresis, profile, ou
 
 // ── Tab Components ───────────────────────────────────────
 
-function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, compareSignals, compareRunId }) {
+function TimeHistoryTab({ time, surfAcc, inputTime, inputAcc, pga: pgaFromApi, pgaInput, compareSignals, compareRunId, accelUnit }) {
   if (!time || !surfAcc) return html`<p className="muted">No time history data.</p>`;
 
   const pga = pgaFromApi || Math.max(...surfAcc.map(Math.abs));
   const hasInput = inputAcc && inputAcc.length > 1;
   const hasCompare = compareSignals && compareSignals.time_s && compareSignals.surface_acc_m_s2;
+  const accelLabel = accelerationUnitLabel(accelUnit);
+  const altAccelUnit = accelUnit === "g" ? "m/s2" : "g";
+  const altAccelLabel = accelerationUnitLabel(altAccelUnit);
+  const surfaceSeriesY = convertAccelerationSeries(surfAcc, accelUnit);
+  const inputSeriesY = hasInput ? convertAccelerationSeries(inputAcc, accelUnit) : null;
+  const compareSeriesY = hasCompare
+    ? convertAccelerationSeries(compareSignals.surface_acc_m_s2, accelUnit)
+    : null;
 
-  // Build input time axis (same dt, same length as input)
-  const inputTime = hasInput
-    ? inputAcc.map((_, i) => i * (time[time.length - 1] / (inputAcc.length - 1)))
+  const resolvedInputTime = hasInput
+    ? (inputTime && inputTime.length === inputAcc.length
+      ? inputTime
+      : inputAcc.map((_, i) => i * (time[time.length - 1] / Math.max(inputAcc.length - 1, 1))))
     : null;
 
   const series = [
-    { x: time, y: surfAcc, label: "Surface", color: "var(--accent)" },
-    ...(hasInput ? [{ x: inputTime, y: inputAcc, label: "Input (Base)", color: "#2980B9" }] : []),
-    ...(hasCompare ? [{ x: compareSignals.time_s, y: compareSignals.surface_acc_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
+    { x: time, y: surfaceSeriesY, label: "Surface", color: "var(--accent)" },
+    ...(hasInput ? [{ x: resolvedInputTime, y: inputSeriesY, label: "Input Motion", color: "#2980B9" }] : []),
+    ...(hasCompare ? [{ x: compareSignals.time_s, y: compareSeriesY, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
   // CAV = ∫|a(t)|dt
@@ -172,10 +279,10 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
   return html`
     <div className="tab-content">
       <div className="metric-row">
-        <div className="metric-card"><span>Surface PGA (m/s²)</span><b>${fmt(pga, 4)}</b></div>
-        <div className="metric-card"><span>Surface PGA (g)</span><b>${fmt(pga / 9.81, 4)}</b></div>
+        <div className="metric-card"><span>Surface PGA (${accelLabel})</span><b>${fmt(convertAccelerationValue(pga, accelUnit), 4)}</b></div>
+        <div className="metric-card"><span>Surface PGA (${altAccelLabel})</span><b>${fmt(convertAccelerationValue(pga, altAccelUnit), 4)}</b></div>
         ${hasInput ? html`
-          <div className="metric-card"><span>Input PGA (m/s²)</span><b>${fmt(pgaInput || Math.max(...inputAcc.map(Math.abs)), 4)}</b></div>
+          <div className="metric-card"><span>Input PGA (${accelLabel})</span><b>${fmt(convertAccelerationValue(pgaInput || Math.max(...inputAcc.map(Math.abs)), accelUnit), 4)}</b></div>
           <div className="metric-card"><span>Amp. Ratio</span><b>${fmt(pga / ((pgaInput || Math.max(...inputAcc.map(Math.abs))) || 1), 3)}</b></div>
         ` : null}
         <div className="metric-card"><span>PGV (cm/s)</span><b>${fmt(pgv * 100, 2)}</b></div>
@@ -188,7 +295,7 @@ function TimeHistoryTab({ time, surfAcc, inputAcc, pga: pgaFromApi, pgaInput, co
       <${MultiSeriesChart}
         title="Acceleration Time History"
         series=${series}
-        xLabel="Time (s)" yLabel="Acceleration (m/s²)"
+        xLabel="Time (s)" yLabel=${`Acceleration (${accelLabel})`}
       />
       <${ChartCard}
         title="Velocity Time History"
@@ -225,13 +332,12 @@ function StressStrainTab({ hysteresis, selectedLayer, onLayerChange }) {
   return html`
     <div className="tab-content">
       <div className="row" style=${{ gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
-        <label>Layer:
-          <select value=${selectedLayer} onChange=${e => onLayerChange(Number(e.target.value))}>
+        <label htmlFor="stress-strain-layer-select">Layer:</label>
+        <select id="stress-strain-layer-select" value=${selectedLayer} onChange=${e => onLayerChange(Number(e.target.value))}>
             ${hysteresis.layers.map((l, i) => html`
               <option key=${i} value=${i}>${l.layer_name || `Layer ${i + 1}`} (${l.material || "—"})</option>
             `)}
-          </select>
-        </label>
+        </select>
       </div>
       <div className="metric-row" style=${{ marginBottom: "0.5rem" }}>
         <div className="metric-card"><span>Max Strain</span><b>${fmt(layer.strain_amplitude, 5)}</b></div>
@@ -268,17 +374,60 @@ function interpolateAtPeriods(periods, values, targetPeriods) {
   });
 }
 
-function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId, plan, signals }) {
+function filterSeriesToRange(x = [], y = [], min = null, max = null) {
+  const xs = [];
+  const ys = [];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const xi = Number(x[i]);
+    const yi = Number(y[i]);
+    if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue;
+    if (min != null && xi < min) continue;
+    if (max != null && xi > max) continue;
+    xs.push(xi);
+    ys.push(yi);
+  }
+  return { x: xs, y: ys };
+}
+
+function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId, plan, signals, accelUnit }) {
+  const [xScale, setXScale] = useState("log");
+  const [yScale, setYScale] = useState("linear");
+  const [periodMinInput, setPeriodMinInput] = useState("");
+  const [periodMaxInput, setPeriodMaxInput] = useState("");
+
+  useEffect(() => {
+    if (!psaPeriods?.length) return;
+    const minPeriod = Math.min(...psaPeriods.filter(v => Number.isFinite(v) && v > 0));
+    const maxPeriod = Math.max(...psaPeriods.filter(v => Number.isFinite(v)));
+    if (periodMinInput === "") setPeriodMinInput(String(fmt(minPeriod, 4)));
+    if (periodMaxInput === "") setPeriodMaxInput(String(fmt(maxPeriod, 4)));
+  }, [periodMaxInput, periodMinInput, psaPeriods]);
+
   if (!psaPeriods || !psaValues) {
     return html`<p className="muted">No spectral data available.</p>`;
   }
 
+  const rawPeriodMin = Number(periodMinInput);
+  const rawPeriodMax = Number(periodMaxInput);
+  const fallbackMin = Math.min(...psaPeriods.filter(v => Number.isFinite(v) && v > 0));
+  const fallbackMax = Math.max(...psaPeriods.filter(v => Number.isFinite(v)));
+  const periodMin = Number.isFinite(rawPeriodMin) && rawPeriodMin > 0 ? rawPeriodMin : fallbackMin;
+  const periodMax = Number.isFinite(rawPeriodMax) && rawPeriodMax > periodMin ? rawPeriodMax : fallbackMax;
+
   const hasInputPsa = inputPsaPeriods && inputPsaValues && inputPsaPeriods.length > 1;
   const hasCompare = compareSignals && compareSignals.period_s && compareSignals.psa_m_s2;
+  const accelLabel = accelerationUnitLabel(accelUnit);
+  const altAccelUnit = accelUnit === "g" ? "m/s2" : "g";
+  const altAccelLabel = accelerationUnitLabel(altAccelUnit);
+  const surfacePsaDisplay = convertAccelerationSeries(psaValues, accelUnit);
+  const inputPsaDisplay = hasInputPsa ? convertAccelerationSeries(inputPsaValues, accelUnit) : null;
+  const comparePsaDisplay = hasCompare
+    ? convertAccelerationSeries(compareSignals.psa_m_s2, accelUnit)
+    : null;
   const series = [
-    { x: psaPeriods, y: psaValues, label: "Surface PSA", color: "#D35400" },
-    ...(hasInputPsa ? [{ x: inputPsaPeriods, y: inputPsaValues, label: "Input PSA", color: "#2980B9" }] : []),
-    ...(hasCompare ? [{ x: compareSignals.period_s, y: compareSignals.psa_m_s2, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
+    { ...filterSeriesToRange(psaPeriods, surfacePsaDisplay, periodMin, periodMax), label: "Surface PSA", color: "#D35400" },
+    ...(hasInputPsa ? [{ ...filterSeriesToRange(inputPsaPeriods, inputPsaDisplay, periodMin, periodMax), label: "Input PSA", color: "#2980B9" }] : []),
+    ...(hasCompare ? [{ ...filterSeriesToRange(compareSignals.period_s, comparePsaDisplay, periodMin, periodMax), label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
   const hasTF = transferFreq && transferAbs;
@@ -298,6 +447,9 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
       }
     }
   }
+  const filteredAmpRatio = hasAmpRatio
+    ? filterSeriesToRange(ampRatioPeriods, ampRatioValues, periodMin, periodMax)
+    : { x: [], y: [] };
 
   // PSA Summary Table at standard periods
   const surfAtStd = interpolateAtPeriods(psaPeriods, psaValues, STANDARD_PERIODS);
@@ -309,19 +461,81 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
 
   return html`
     <div className="tab-content">
+      <div className="results-toolbar results-toolbar-tight">
+        <div className="spectral-controls spectral-controls-inline">
+          <div className="spectral-control">
+            <span className="spectral-control-label">X Scale</span>
+            <div className="results-segmented" role="group" aria-label="Spectral chart x-axis scale">
+              <button
+                type="button"
+                className=${`results-segmented-btn${xScale === "linear" ? " active" : ""}`}
+                onClick=${() => setXScale("linear")}>
+                Arithmetic
+              </button>
+              <button
+                type="button"
+                className=${`results-segmented-btn${xScale === "log" ? " active" : ""}`}
+                onClick=${() => setXScale("log")}>
+                Log
+              </button>
+            </div>
+          </div>
+          <div className="spectral-control">
+            <span className="spectral-control-label">Y Scale</span>
+            <div className="results-segmented" role="group" aria-label="Spectral chart y-axis scale">
+              <button
+                type="button"
+                className=${`results-segmented-btn${yScale === "linear" ? " active" : ""}`}
+                onClick=${() => setYScale("linear")}>
+                Arithmetic
+              </button>
+              <button
+                type="button"
+                className=${`results-segmented-btn${yScale === "log" ? " active" : ""}`}
+                onClick=${() => setYScale("log")}>
+                Log
+              </button>
+            </div>
+          </div>
+          <div className="field field-compact">
+            <label>Period Min (s)</label>
+            <input type="number" min="0.0001" step="0.0001" value=${periodMinInput} onInput=${e => setPeriodMinInput(e.target.value)} />
+          </div>
+          <div className="field field-compact">
+            <label>Period Max (s)</label>
+            <input type="number" min="0.001" step="0.001" value=${periodMaxInput} onInput=${e => setPeriodMaxInput(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick=${() => {
+              setXScale("log");
+              setYScale("linear");
+              setPeriodMinInput(String(fmt(fallbackMin, 4)));
+              setPeriodMaxInput(String(fmt(fallbackMax, 4)));
+            }}>
+            Reset View
+          </button>
+        </div>
+      </div>
       <${MultiSeriesChart}
         title="Response Spectra (5% damping)"
         series=${series}
-        xLabel="Period (s)" yLabel="PSA (m/s²)"
-        logX=${true}
+        xLabel="Period (s)" yLabel=${`PSA (${accelLabel})`}
+        logX=${xScale === "log"}
+        logY=${yScale === "log"}
+        xMin=${periodMin}
+        xMax=${periodMax}
         vLines=${t0Lines}
       />
-      ${hasAmpRatio && ampRatioPeriods.length > 2 ? html`
+      ${hasAmpRatio && filteredAmpRatio.x.length > 2 ? html`
         <${ChartCard}
           title="Spectral Amplification Ratio (Surface / Input)"
-          x=${ampRatioPeriods} y=${ampRatioValues}
+          x=${filteredAmpRatio.x} y=${filteredAmpRatio.y}
           xLabel="Period (s)" yLabel="Amplification"
-          color="#E74C3C" logX=${true}
+          color="#E74C3C" logX=${xScale === "log"}
+          xMin=${periodMin}
+          xMax=${periodMax}
         />
       ` : null}
       ${hasTF ? html`
@@ -427,8 +641,8 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
             <thead>
               <tr>
                 <th>Period (s)</th><th>Freq (Hz)</th>
-                <th>Surface PSA (m/s²)</th><th>Surface PSA (g)</th>
-                ${hasInputPsa ? html`<th>Input PSA (m/s²)</th><th>Amp. Ratio</th>` : null}
+                <th>${`Surface PSA (${accelLabel})`}</th><th>${`Surface PSA (${altAccelLabel})`}</th>
+                ${hasInputPsa ? html`<th>${`Input PSA (${accelLabel})`}</th><th>Amp. Ratio</th>` : null}
               </tr>
             </thead>
             <tbody>
@@ -440,10 +654,10 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
                   <tr key=${T}>
                     <td>${fmt(T, 3)}</td>
                     <td>${fmt(1 / T, 2)}</td>
-                    <td>${sv != null ? fmt(sv, 4) : "—"}</td>
-                    <td>${sv != null ? fmt(sv / 9.81, 4) : "—"}</td>
+                    <td>${sv != null ? fmt(convertAccelerationValue(sv, accelUnit), 4) : "—"}</td>
+                    <td>${sv != null ? fmt(convertAccelerationValue(sv, altAccelUnit), 4) : "—"}</td>
                     ${hasInputPsa ? html`
-                      <td>${iv != null ? fmt(iv, 4) : "—"}</td>
+                      <td>${iv != null ? fmt(convertAccelerationValue(iv, accelUnit), 4) : "—"}</td>
                       <td>${ratio != null ? fmt(ratio, 3) : "—"}</td>
                     ` : null}
                   </tr>
@@ -457,13 +671,269 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
   `;
 }
 
+function SpectraSummaryTab({ data, loading, error, accelUnit }) {
+  const rows = data?.rows || [];
+  const [maxPeriodInput, setMaxPeriodInput] = useState("");
+  const accelLabel = accelerationUnitLabel(accelUnit);
+  const altAccelUnit = accelUnit === "g" ? "m/s2" : "g";
+  const altAccelLabel = accelerationUnitLabel(altAccelUnit);
+
+  useEffect(() => {
+    if (!rows.length) {
+      setMaxPeriodInput("");
+      return;
+    }
+    const nextMax = Math.max(...rows.map(row => Number(row.period_s) || 0));
+    setMaxPeriodInput(nextMax > 0 ? String(Number(nextMax.toFixed(4))) : "");
+  }, [data]);
+
+  if (loading) return html`<p className="muted">Loading response spectra summary...</p>`;
+  if (error) return html`<p className="muted">${error}</p>`;
+  if (!rows.length) return html`<p className="muted">No spectra summary data available.</p>`;
+
+  const parsedMaxPeriod = Number(maxPeriodInput);
+  const maxPeriod = Number.isFinite(parsedMaxPeriod) && parsedMaxPeriod > 0 ? parsedMaxPeriod : null;
+  const visibleRows = maxPeriod != null
+    ? rows.filter(row => (Number(row.period_s) || 0) <= maxPeriod)
+    : rows;
+  const periods = visibleRows.map(r => r.period_s);
+  const surfacePsa = visibleRows.map(r => r.surface_psa_m_s2 ?? null).filter(v => v != null);
+  const ampSeries = visibleRows
+    .filter(r => r.amplification_ratio != null)
+    .map(r => ({ x: r.period_s, y: r.amplification_ratio }));
+  const ampPeriods = ampSeries.map(p => p.x);
+  const ampValues = ampSeries.map(p => p.y);
+  const visibleMaxSurfacePsa = visibleRows.length
+    ? Math.max(...visibleRows.map(r => Number(r.surface_psa_m_s2) || 0))
+    : null;
+  const visibleMaxAmplification = visibleRows.length
+    ? Math.max(...visibleRows.map(r => Number(r.amplification_ratio) || 0))
+    : null;
+  const summarySurfaceSeries = visibleRows.map(r =>
+    convertAccelerationValue(Number(r.surface_psa_m_s2) || 0, accelUnit)
+  );
+
+  return html`
+    <div className="tab-content">
+      <div className="row" style=${{ alignItems: "end", marginBottom: "0.5rem" }}>
+        <div className="field" style=${{ maxWidth: "240px" }}>
+          <label htmlFor="spectra-summary-max-period">Spectrum Max Period (s)</label>
+          <input
+            id="spectra-summary-max-period"
+            type="number"
+            min="0.01"
+            step="0.05"
+            value=${maxPeriodInput}
+            onInput=${e => setMaxPeriodInput(e.target.value)}
+          />
+        </div>
+        <p className="muted" style=${{ margin: "0 0 0.35rem 0" }}>
+          This limit only affects the Spectra Summary tab.
+        </p>
+      </div>
+      <div className="metric-row">
+        <div className="metric-card"><span>Visible Rows</span><b>${visibleRows.length}</b></div>
+        <div className="metric-card"><span>Total Rows</span><b>${rows.length}</b></div>
+        <div className="metric-card"><span>Damping</span><b>${fmt((data?.damping_ratio ?? 0.05) * 100, 2)}%</b></div>
+        <div className="metric-card"><span>${`Max Surface PSA (${accelLabel})`}</span><b>${fmt(convertAccelerationValue(visibleMaxSurfacePsa ?? data?.max_surface_psa_m_s2, accelUnit), 4)}</b></div>
+        <div className="metric-card"><span>Max Amplification</span><b>${fmt(visibleMaxAmplification ?? data?.max_amplification_ratio, 3)}</b></div>
+      </div>
+      ${periods.length > 2 && surfacePsa.length > 2 ? html`
+        <${ChartCard}
+          title="Surface PSA Summary"
+          x=${periods}
+          y=${summarySurfaceSeries}
+          xLabel="Period (s)"
+          yLabel=${`Surface PSA (${accelLabel})`}
+          color="#D35400"
+          logX=${true}
+        />
+      ` : null}
+      ${ampPeriods.length > 2 ? html`
+        <${ChartCard}
+          title="Amplification Ratio Summary"
+          x=${ampPeriods}
+          y=${ampValues}
+          xLabel="Period (s)"
+          yLabel="Surface/Input"
+          color="#8E44AD"
+          logX=${true}
+        />
+      ` : null}
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Period (s)</th>
+            <th>Freq (Hz)</th>
+            <th>${`Surface PSA (${accelLabel})`}</th>
+            <th>${`Surface PSA (${altAccelLabel})`}</th>
+            <th>${`Input PSA (${accelLabel})`}</th>
+            <th>Amp. Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${visibleRows.map((row, idx) => html`
+            <tr key=${`spectra-summary-${idx}`}>
+              <td>${fmt(row.period_s, 3)}</td>
+              <td>${fmt(row.frequency_hz, 3)}</td>
+              <td>${row.surface_psa_m_s2 != null ? fmt(convertAccelerationValue(row.surface_psa_m_s2, accelUnit), 4) : "—"}</td>
+              <td>${row.surface_psa_m_s2 != null ? fmt(convertAccelerationValue(row.surface_psa_m_s2, altAccelUnit), 4) : "—"}</td>
+              <td>${row.input_psa_m_s2 != null ? fmt(convertAccelerationValue(row.input_psa_m_s2, accelUnit), 4) : "—"}</td>
+              <td>${fmt(row.amplification_ratio, 3)}</td>
+            </tr>
+          `)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function DisplacementAnimationTab({ data, loading, error }) {
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [displacementMode, setDisplacementMode] = useState("relative");
+
+  useEffect(() => {
+    const frameCount = data?.frame_time_s?.length || 0;
+    setFrameIndex(frameCount > 0 ? frameCount - 1 : 0);
+  }, [data?.frame_time_s?.length]);
+
+  if (loading) return html`<p className="muted">Loading displacement animation...</p>`;
+  if (error) return html`<p className="muted">${error}</p>`;
+
+  const depth = data?.depth_m || [];
+  const totalFrames = data?.displacement_cm || [];
+  const relativeFrames = data?.relative_displacement_cm?.length
+    ? data.relative_displacement_cm
+    : totalFrames.map(frame => {
+        const base = frame && frame.length ? Number(frame[frame.length - 1]) || 0 : 0;
+        return (frame || []).map(v => (Number(v) || 0) - base);
+      });
+  const frameTimes = data?.frame_time_s || [];
+  if (!depth.length || !totalFrames.length || !frameTimes.length) {
+    return html`<p className="muted">No displacement animation data available.</p>`;
+  }
+
+  const clampedFrame = Math.max(0, Math.min(frameIndex, frameTimes.length - 1));
+  const usingRelative = displacementMode === "relative";
+  const frames = usingRelative ? relativeFrames : totalFrames;
+  const profileDisp = frames[clampedFrame] || [];
+  const surfaceSeries = frames.map(frame => frame && frame.length ? frame[0] : 0);
+  const selectedFrameTime = frameTimes[clampedFrame] || 0;
+  const flatDisp = frames.flat().map(v => Number(v) || 0);
+  const peakAbsDisp = flatDisp.length
+    ? Math.max(...flatDisp.map(v => Math.abs(v)), 1e-6)
+    : 1;
+  const profileXLimit = peakAbsDisp * 1.05;
+  const peakSurfaceDispM = (
+    Number(
+      usingRelative
+        ? data?.peak_surface_relative_displacement_cm
+        : data?.peak_surface_displacement_cm
+    ) || 0
+  ) / 100;
+  const peakProfileDispM = (
+    Number(
+      usingRelative
+        ? data?.peak_profile_relative_displacement_cm
+        : data?.peak_profile_displacement_cm
+    ) || peakAbsDisp
+  ) / 100;
+  const profileDispM = profileDisp.map(v => (Number(v) || 0) / 100);
+  const surfaceSeriesM = surfaceSeries.map(v => (Number(v) || 0) / 100);
+  const modeLabel = usingRelative ? "Relative to Top of Rock" : "Total";
+  const displacementLabel = usingRelative ? "Relative Displacement (m)" : "Displacement (m)";
+
+  return html`
+    <div className="tab-content">
+      ${data?.note ? html`
+        <div className=${`results-note-banner${data?.approximate ? " is-warn" : ""}`}>
+          ${data.note}
+        </div>
+      ` : null}
+      <div className="results-toolbar">
+        <div className="results-segmented" role="group" aria-label="Displacement animation mode">
+          <button
+            type="button"
+            className=${`results-segmented-btn${usingRelative ? " active" : ""}`}
+            onClick=${() => setDisplacementMode("relative")}>
+            Relative
+          </button>
+          <button
+            type="button"
+            className=${`results-segmented-btn${!usingRelative ? " active" : ""}`}
+            onClick=${() => setDisplacementMode("total")}>
+            Total
+          </button>
+        </div>
+        <div className="results-toolbar-note">
+          ${usingRelative
+            ? "Relative mode subtracts total displacement at the top of rock, matching the manual's relative displacement convention."
+            : "Total mode shows raw nodal displacement history from the solver output."}
+        </div>
+      </div>
+      <div className="metric-row">
+        <div className="metric-card"><span>Frames</span><b>${frameTimes.length}</b></div>
+        <div className="metric-card"><span>Selected Time (s)</span><b>${fmt(selectedFrameTime, 3)}</b></div>
+        <div className="metric-card"><span>${usingRelative ? "Peak Surface Relative Disp. (m)" : "Peak Surface Disp. (m)"}</span><b>${fmt(peakSurfaceDispM, 5)}</b></div>
+        <div className="metric-card"><span>${usingRelative ? "Peak Profile Relative Disp. (m)" : "Peak Profile Disp. (m)"}</span><b>${fmt(peakProfileDispM, 5)}</b></div>
+        <div className="metric-card"><span>Mode</span><b>${data?.approximate ? "Approximate" : "Recorded"}</b></div>
+        <div className="metric-card"><span>Reference</span><b>${modeLabel}</b></div>
+      </div>
+      <div className="field" style=${{ maxWidth: "360px", marginBottom: "0.5rem" }}>
+        <label htmlFor="disp-frame-slider">Animation Frame</label>
+        <input
+          id="disp-frame-slider"
+          type="range"
+          min="0"
+          max=${Math.max(0, frameTimes.length - 1)}
+          step="1"
+          value=${clampedFrame}
+          onInput=${e => setFrameIndex(Number(e.target.value))}
+        />
+      </div>
+      <${DepthProfileChart}
+        title="Displacement Profile at Selected Frame"
+        subtitle=${`${modeLabel} · t = ${fmt(selectedFrameTime, 3)} s`}
+        depths=${depth}
+        values=${profileDispM}
+        xLabel=${displacementLabel}
+        yLabel="Depth (m)"
+        color="#8E44AD"
+        xMin=${-(profileXLimit / 100)}
+        xMax=${profileXLimit / 100}
+      />
+      <${ChartCard}
+        title="Surface Displacement Animation Track"
+        subtitle=${data?.approximate
+          ? `Integrated proxy response · ${modeLabel}`
+          : `Recorded surface nodal displacement · ${modeLabel}`}
+        x=${frameTimes}
+        y=${surfaceSeriesM}
+        xLabel="Time (s)"
+        yLabel=${usingRelative ? "Surface Relative Displacement (m)" : "Surface Displacement (m)"}
+        color="#D35400"
+        vLines=${[{ x: selectedFrameTime, label: "Selected", color: "#2C3E50" }]}
+      />
+    </div>
+  `;
+}
+
 function ProfileTab({ profile }) {
   if (!profile || !profile.layers || !profile.layers.length) {
     return html`<p className="muted">No profile data.</p>`;
   }
 
   // Build step-profile arrays for depth charts
-  const depths = [], vs = [], gammaMax = [], dampRatio = [], tauPeak = [], sigmaV0 = [], ruMax = [];
+  const depths = [];
+  const vs = [];
+  const gammaMax = [];
+  const dampRatio = [];
+  const tauPeak = [];
+  const sigmaV0 = [];
+  const ruMax = [];
+  const impliedStrength = [];
+  const normalizedStrength = [];
+  const impliedFriction = [];
   let d = 0;
   for (const l of profile.layers) {
     const thick = l.thickness_m || l.thickness || 0;
@@ -473,13 +943,20 @@ function ProfileTab({ profile }) {
     const tp = l.tau_peak_kpa || l.tau_peak || 0;
     const sv = l.sigma_v0_mid_kpa || 0;
     const ru = l.ru_max || 0;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru);
+    const imp = l.implied_strength_kpa || 0;
+    const norm = l.normalized_implied_strength || 0;
+    const phi = l.implied_friction_angle_deg || 0;
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru); impliedStrength.push(imp); normalizedStrength.push(norm); impliedFriction.push(phi);
     d += thick;
-    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru);
+    depths.push(d); vs.push(vsVal); gammaMax.push(gm); dampRatio.push(dr); tauPeak.push(tp); sigmaV0.push(sv); ruMax.push(ru); impliedStrength.push(imp); normalizedStrength.push(norm); impliedFriction.push(phi);
   }
 
   const hasResponse = gammaMax.some(v => v > 0) || tauPeak.some(v => v > 0);
   const hasRu = ruMax.some(v => v > 0);
+  const hasImplied =
+    impliedStrength.some(v => v > 0) ||
+    normalizedStrength.some(v => v > 0) ||
+    impliedFriction.some(v => v > 0);
 
   return html`
     <div className="tab-content">
@@ -512,6 +989,20 @@ function ProfileTab({ profile }) {
             xLabel="ru_max" yLabel="Depth (m)" color="#E74C3C"
           />
         ` : null}
+        ${hasImplied ? html`
+          <${DepthProfileChart}
+            title="Implied Strength" depths=${depths} values=${impliedStrength}
+            xLabel="Implied Strength (kPa)" yLabel="Depth (m)" color="#D35400"
+          />
+          <${DepthProfileChart}
+            title="Normalized Implied Strength" depths=${depths} values=${normalizedStrength}
+            xLabel="τ/σ'v,mid" yLabel="Depth (m)" color="#8E44AD"
+          />
+          <${DepthProfileChart}
+            title="Implied Friction Angle" depths=${depths} values=${impliedFriction}
+            xLabel="φ (deg)" yLabel="Depth (m)" color="#27AE60"
+          />
+        ` : null}
       </div>
       <table className="tbl">
         <thead>
@@ -519,6 +1010,7 @@ function ProfileTab({ profile }) {
             <th>#</th><th>Depth (m)</th><th>Thick (m)</th>
             <th>Vs (m/s)</th><th>γ_wt</th><th>Material</th>
             <th>γ_max (%)</th><th>τ_peak (kPa)</th>
+            <th>Implied τ (kPa)</th><th>Norm. τ</th><th>Implied φ (deg)</th>
           </tr>
         </thead>
         <tbody>
@@ -534,6 +1026,9 @@ function ProfileTab({ profile }) {
                 <td>${l.material || "—"}</td>
                 <td>${l.gamma_max != null ? fmt(l.gamma_max * 100, 3) : "—"}</td>
                 <td>${l.tau_peak_kpa != null ? fmt(l.tau_peak_kpa, 1) : "—"}</td>
+                <td>${l.implied_strength_kpa != null ? fmt(l.implied_strength_kpa, 1) : "—"}</td>
+                <td>${l.normalized_implied_strength != null ? fmt(l.normalized_implied_strength, 3) : "—"}</td>
+                <td>${l.implied_friction_angle_deg != null ? fmt(l.implied_friction_angle_deg, 2) : "—"}</td>
               </tr>
             `;
           })}
@@ -551,7 +1046,13 @@ function MobilizedTab({ hysteresis, profile }) {
   const layers = hysteresis.layers;
 
   // Build depth arrays for mobilized strength ratio chart
-  const depths = [], mobRatios = [], gOverGmax = [], dampingVals = [];
+  const depths = [];
+  const mobRatios = [];
+  const gOverGmax = [];
+  const dampingVals = [];
+  const impliedStrength = [];
+  const normalizedStrength = [];
+  const impliedFriction = [];
   let d = 0;
   const profileLayers = profile?.layers || [];
   for (let i = 0; i < layers.length; i++) {
@@ -560,10 +1061,17 @@ function MobilizedTab({ hysteresis, profile }) {
     const mob = layers[i].mobilized_strength_ratio || 0;
     const gg = layers[i].g_over_gmax || 0;
     const dp = layers[i].damping_proxy || 0;
-    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp);
+    const imp = pl?.implied_strength_kpa || 0;
+    const norm = pl?.normalized_implied_strength || 0;
+    const phi = pl?.implied_friction_angle_deg || 0;
+    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp); impliedStrength.push(imp); normalizedStrength.push(norm); impliedFriction.push(phi);
     d += thick;
-    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp);
+    depths.push(d); mobRatios.push(mob); gOverGmax.push(gg); dampingVals.push(dp); impliedStrength.push(imp); normalizedStrength.push(norm); impliedFriction.push(phi);
   }
+  const hasImplied =
+    impliedStrength.some(v => v > 0) ||
+    normalizedStrength.some(v => v > 0) ||
+    impliedFriction.some(v => v > 0);
 
   return html`
     <div className="tab-content">
@@ -591,6 +1099,23 @@ function MobilizedTab({ hysteresis, profile }) {
           depths=${depths} values=${dampingVals.map(v => v * 100)}
           xLabel="Damping (%)" yLabel="Depth (m)" color="#27AE60"
         />
+        ${hasImplied ? html`
+          <${DepthProfileChart}
+            title="Implied Strength Trend"
+            depths=${depths} values=${impliedStrength}
+            xLabel="Implied τ (kPa)" yLabel="Depth (m)" color="#D35400"
+          />
+          <${DepthProfileChart}
+            title="Normalized Strength Trend"
+            depths=${depths} values=${normalizedStrength}
+            xLabel="τ/σ'v,mid" yLabel="Depth (m)" color="#8E44AD"
+          />
+          <${DepthProfileChart}
+            title="Implied Friction Angle Trend"
+            depths=${depths} values=${impliedFriction}
+            xLabel="φ (deg)" yLabel="Depth (m)" color="#2C3E50"
+          />
+        ` : null}
       </div>
       <table className="tbl">
         <thead>

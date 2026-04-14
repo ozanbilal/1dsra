@@ -15,6 +15,13 @@ def _to_float_array(strain: npt.ArrayLike) -> FloatArray:
     return np.asarray(strain, dtype=np.float64)
 
 
+def gqh_mode_from_params(params: Mapping[str, float]) -> str:
+    theta_keys = {"theta1", "theta2", "theta3", "theta4", "theta5"}
+    if "tau_max" in params and theta_keys.issubset(params):
+        return "strength_controlled"
+    return "legacy"
+
+
 def mkz_modulus_reduction(
     strain: npt.ArrayLike,
     gamma_ref: float,
@@ -54,51 +61,185 @@ def mkz_backbone_stress(
 
 def gqh_modulus_reduction(
     strain: npt.ArrayLike,
-    gamma_ref: float,
+    gamma_ref: float | None = None,
     a1: float = 1.0,
     a2: float = 0.0,
     m: float = 1.0,
+    *,
+    gmax: float | None = None,
+    tau_max: float | None = None,
+    theta1: float | None = None,
+    theta2: float | None = None,
+    theta3: float | None = None,
+    theta4: float | None = None,
+    theta5: float | None = None,
     g_reduction_min: float = 0.0,
 ) -> FloatArray:
-    if gamma_ref <= 0.0:
-        raise ValueError("gamma_ref must be > 0.")
-    if a1 <= 0.0:
-        raise ValueError("a1 must be > 0.")
-    if a2 < 0.0:
-        raise ValueError("a2 must be >= 0.")
-    if m <= 0.0:
-        raise ValueError("m must be > 0.")
-    r = np.abs(_to_float_array(strain)) / gamma_ref
-    denom = 1.0 + (a1 * r) + (a2 * np.power(r, m))
-    reduction = 1.0 / denom
+    gamma = np.abs(_to_float_array(strain))
+    using_strength_control = (
+        gmax is not None
+        and tau_max is not None
+        and theta1 is not None
+        and theta2 is not None
+        and theta3 is not None
+        and theta4 is not None
+        and theta5 is not None
+    )
+    if using_strength_control:
+        if gmax <= 0.0:
+            raise ValueError("gmax must be > 0 for strength-controlled GQH.")
+        if tau_max <= 0.0:
+            raise ValueError("tau_max must be > 0 for strength-controlled GQH.")
+        if theta3 <= 0.0:
+            raise ValueError("theta3 must be > 0 for strength-controlled GQH.")
+        if theta4 <= 0.0:
+            raise ValueError("theta4 must be > 0 for strength-controlled GQH.")
+        if theta5 <= 0.0:
+            raise ValueError("theta5 must be > 0 for strength-controlled GQH.")
+        gamma_ref_strength = tau_max / gmax
+        if gamma_ref_strength <= 0.0:
+            raise ValueError("Derived gamma_ref must be > 0 for strength-controlled GQH.")
+        r = gamma / gamma_ref_strength
+        theta_tau = theta1 + (
+            theta2
+            * (
+                theta4 * np.power(r, theta5)
+                / (np.power(theta3, theta5) + (theta4 * np.power(r, theta5)))
+            )
+        )
+        radicand = np.square(1.0 + r) - (4.0 * theta_tau * r)
+        radicand = np.maximum(radicand, 0.0)
+        near_zero = np.abs(theta_tau) < 1.0e-10
+        ratio = np.where(
+            near_zero,
+            r / (1.0 + r),
+            ((1.0 + r) - np.sqrt(radicand)) / (2.0 * theta_tau),
+        )
+        tau_abs = tau_max * np.clip(ratio, 0.0, 1.5)
+        denom = np.maximum(gmax * gamma, 1.0e-12)
+        reduction = np.where(gamma > 0.0, tau_abs / denom, 1.0)
+    else:
+        if gamma_ref is None or gamma_ref <= 0.0:
+            raise ValueError("gamma_ref must be > 0.")
+        if a1 <= 0.0:
+            raise ValueError("a1 must be > 0.")
+        if a2 < 0.0:
+            raise ValueError("a2 must be >= 0.")
+        if m <= 0.0:
+            raise ValueError("m must be > 0.")
+        r = gamma / gamma_ref
+        denom = 1.0 + (a1 * r) + (a2 * np.power(r, m))
+        reduction = 1.0 / denom
     if g_reduction_min > 0.0:
         reduction = np.maximum(reduction, g_reduction_min)
+    reduction = np.where(np.isfinite(reduction), reduction, 0.0)
     return reduction
 
 
 def gqh_backbone_stress(
     strain: npt.ArrayLike,
     gmax: float,
-    gamma_ref: float,
+    gamma_ref: float | None = None,
     a1: float = 1.0,
     a2: float = 0.0,
     m: float = 1.0,
     tau_max: float | None = None,
+    theta1: float | None = None,
+    theta2: float | None = None,
+    theta3: float | None = None,
+    theta4: float | None = None,
+    theta5: float | None = None,
     g_reduction_min: float = 0.0,
 ) -> FloatArray:
     if gmax <= 0.0:
         raise ValueError("gmax must be > 0.")
     reduction = gqh_modulus_reduction(
-        strain, gamma_ref=gamma_ref, a1=a1, a2=a2, m=m,
+        strain,
+        gamma_ref=gamma_ref,
+        a1=a1,
+        a2=a2,
+        m=m,
+        gmax=gmax,
+        tau_max=tau_max,
+        theta1=theta1,
+        theta2=theta2,
+        theta3=theta3,
+        theta4=theta4,
+        theta5=theta5,
         g_reduction_min=g_reduction_min,
     )
     strain_arr = _to_float_array(strain)
     tau = gmax * strain_arr * reduction
-    if tau_max is not None:
+    using_strength_control = all(
+        value is not None for value in (tau_max, theta1, theta2, theta3, theta4, theta5)
+    )
+    if tau_max is not None and not using_strength_control:
         if tau_max <= 0.0:
             raise ValueError("tau_max must be > 0 when provided.")
         tau = np.sign(tau) * np.minimum(np.abs(tau), tau_max)
     return tau
+
+
+def gqh_modulus_reduction_from_params(
+    strain: npt.ArrayLike,
+    params: Mapping[str, float],
+    *,
+    gmax_fallback: float | None = None,
+) -> FloatArray:
+    mode = gqh_mode_from_params(params)
+    if mode == "strength_controlled":
+        gmax = float(params.get("gmax", gmax_fallback or 0.0))
+        return gqh_modulus_reduction(
+            strain,
+            gmax=gmax,
+            tau_max=float(params["tau_max"]),
+            theta1=float(params["theta1"]),
+            theta2=float(params["theta2"]),
+            theta3=float(params["theta3"]),
+            theta4=float(params["theta4"]),
+            theta5=float(params["theta5"]),
+            g_reduction_min=float(params.get("g_reduction_min", 0.0)),
+        )
+    return gqh_modulus_reduction(
+        strain,
+        gamma_ref=float(params.get("gamma_ref", 1.0e-3)),
+        a1=float(params.get("a1", 1.0)),
+        a2=float(params.get("a2", 0.0)),
+        m=float(params.get("m", 1.0)),
+        g_reduction_min=float(params.get("g_reduction_min", 0.0)),
+    )
+
+
+def gqh_backbone_stress_from_params(
+    strain: npt.ArrayLike,
+    params: Mapping[str, float],
+    *,
+    gmax_fallback: float | None = None,
+) -> FloatArray:
+    gmax = float(params.get("gmax", gmax_fallback or 0.0))
+    mode = gqh_mode_from_params(params)
+    if mode == "strength_controlled":
+        return gqh_backbone_stress(
+            strain,
+            gmax=gmax,
+            tau_max=float(params["tau_max"]),
+            theta1=float(params["theta1"]),
+            theta2=float(params["theta2"]),
+            theta3=float(params["theta3"]),
+            theta4=float(params["theta4"]),
+            theta5=float(params["theta5"]),
+            g_reduction_min=float(params.get("g_reduction_min", 0.0)),
+        )
+    return gqh_backbone_stress(
+        strain,
+        gmax=gmax,
+        gamma_ref=float(params.get("gamma_ref", 1.0e-3)),
+        a1=float(params.get("a1", 1.0)),
+        a2=float(params.get("a2", 0.0)),
+        m=float(params.get("m", 1.0)),
+        tau_max=float(params["tau_max"]) if params.get("tau_max") is not None else None,
+        g_reduction_min=float(params.get("g_reduction_min", 0.0)),
+    )
 
 
 def bounded_damping_from_reduction(
@@ -174,6 +315,11 @@ def generate_masing_loop(
             a2=float(material_params.get("a2", 0.0)),
             m=float(material_params.get("m", 1.0)),
             tau_max=tau_cap,
+            theta1=material_params.get("theta1"),
+            theta2=material_params.get("theta2"),
+            theta3=material_params.get("theta3"),
+            theta4=material_params.get("theta4"),
+            theta5=material_params.get("theta5"),
             g_reduction_min=g_floor,
         )
 
@@ -223,12 +369,9 @@ def layer_hysteretic_proxy(
     if material == MaterialType.GQH:
         gamma_ref = float(material_params.get("gamma_ref", 0.001))
         g_red = float(
-            gqh_modulus_reduction(
+            gqh_modulus_reduction_from_params(
                 np.array([strain]),
-                gamma_ref=gamma_ref,
-                a1=float(material_params.get("a1", 1.0)),
-                a2=float(material_params.get("a2", 0.0)),
-                m=float(material_params.get("m", 1.0)),
+                material_params,
             )[0]
         )
         damping = float(

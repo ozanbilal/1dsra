@@ -56,6 +56,17 @@ def test_load_motion_series_with_csv_header_row(tmp_path: Path) -> None:
     assert np.isclose(acc[1], -0.20)
 
 
+def test_load_motion_prefers_time_column_dt_over_passed_dt(tmp_path: Path) -> None:
+    motion_file = tmp_path / "motion_time_acc.csv"
+    motion_file.write_text(
+        "time_s,acc_m_s2\n0.000,0.10\n0.005,-0.20\n0.010,0.00\n",
+        encoding="utf-8",
+    )
+    mot = load_motion(motion_file, dt=0.002, unit="m/s2")
+    assert np.isclose(mot.dt, 0.005)
+    assert mot.acc.shape == (3,)
+
+
 def test_scale_to_pga_respects_config_units(tmp_path: Path) -> None:
     motion_file = tmp_path / "motion_g.csv"
     motion_file.write_text("0.2\n-0.2\n0.0\n", encoding="utf-8")

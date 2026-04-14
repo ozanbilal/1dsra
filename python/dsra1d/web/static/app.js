@@ -3605,7 +3605,7 @@ function App() {
     <div className="shell">
       <header className="hero">
         <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h1 style=${{ margin: 0 }}>StrataWave Wave-1 Studio</h1>
+          <h1 style=${{ margin: 0 }}>GeoWave Wave-1 Studio</h1>
           <button
             className="btn btn-sm"
             onClick=${() => setShowPreferences(!showPreferences)}
@@ -5016,7 +5016,7 @@ function App() {
                       <input
                         value=${outputRoot}
                         onInput=${(e) => setOutputRoot(e.target.value)}
-                        placeholder="H:\\...\\StrataWave\\out\\ui"
+                        placeholder="H:\\...\\GeoWave\\out\\ui"
                       />
                     </div>
                     <div className="tree-box">

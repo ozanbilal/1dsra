@@ -1,6 +1,6 @@
 # DEEPSOIL Equivalent Reference Pack
 
-Bu klasör, StrataWave/1DSRA için DEEPSOIL-benzeri örnek model setini içerir.
+Bu klasör, GeoWave/1DSRA için DEEPSOIL-benzeri örnek model setini içerir.
 
 Amaç:
 - `linear_reference.yml` ile lineer dalga yayılımını,

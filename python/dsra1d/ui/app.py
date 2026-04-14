@@ -266,7 +266,7 @@ def _render_visual_config_editor(cfg_path: Path) -> None:
 
         payload["project_name"] = st.text_input(
             "Project Name",
-            str(payload.get("project_name", "StrataWave-project")),
+            str(payload.get("project_name", "GeoWave-project")),
             key="cfg_editor_project_name",
         )
 
@@ -1153,7 +1153,7 @@ def main() -> None:
     }
 
     st.set_page_config(
-        page_title="StrataWave Studio",
+        page_title="GeoWave Studio",
         page_icon="🧭",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -1163,7 +1163,7 @@ def main() -> None:
     st.markdown(
         """
         <div class="hero">
-          <h1>StrataWave Studio</h1>
+          <h1>GeoWave Studio</h1>
           <p>Run effective-stress and MKZ/GQH prototyping workflows from one control panel.</p>
           <span class="chip">Validate</span>
           <span class="chip">Run</span>

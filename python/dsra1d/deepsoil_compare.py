@@ -9,9 +9,12 @@ from pathlib import Path
 import numpy as np
 
 from dsra1d.config import MaterialType, ProjectConfig, load_project_config
+from dsra1d.deepsoil_excel import import_deepsoil_excel_bundle
 from dsra1d.materials import generate_masing_loop
+from dsra1d.motion import effective_input_acceleration
 from dsra1d.motion.io import load_motion_series
 from dsra1d.post import compute_spectra
+from dsra1d.profile_diagnostics import compute_profile_diagnostics
 from dsra1d.store import ResultStore, load_result
 
 
@@ -29,7 +32,17 @@ class DeepsoilProfileComparison:
     gamma_max_nrmse: float | None = None
     ru_max_nrmse: float | None = None
     sigma_v_eff_min_nrmse: float | None = None
+    effective_stress_kpa_nrmse: float | None = None
+    pga_g_nrmse: float | None = None
+    max_displacement_m_nrmse: float | None = None
+    max_strain_pct_nrmse: float | None = None
+    max_stress_ratio_nrmse: float | None = None
     vs_m_s_nrmse: float | None = None
+    implied_strength_kpa_nrmse: float | None = None
+    normalized_implied_strength_nrmse: float | None = None
+    implied_friction_angle_deg_nrmse: float | None = None
+    mobilized_strength_nrmse: float | None = None
+    mobilized_friction_angle_deg_nrmse: float | None = None
 
 
 @dataclass(slots=True)
@@ -64,6 +77,7 @@ class DeepsoilComparisonResult:
     psa_pct_diff_at_peak: float
     psa_peak_period_s: float
     used_reference_psa_csv: bool
+    surface_psa_peak_period_diff_pct: float | None = None
     # Anderson (2004) GoF metrics
     arias_intensity_sw: float = 0.0
     arias_intensity_ref: float = 0.0
@@ -71,6 +85,18 @@ class DeepsoilComparisonResult:
     xcorr_lag_samples: int = 0
     xcorr_lag_s: float = 0.0
     xcorr_peak_coeff: float = 0.0
+    input_history_nrmse: float | None = None
+    input_psa_nrmse: float | None = None
+    applied_input_history_nrmse: float | None = None
+    applied_input_psa_nrmse: float | None = None
+    input_dt_used_s: float | None = None
+    input_pga_loaded_m_s2: float | None = None
+    applied_input_pga_loaded_m_s2: float | None = None
+    boundary_condition: str = ""
+    motion_input_type: str = ""
+    damping_mode: str = ""
+    base_motion_semantics_ok: bool | None = None
+    reference_kind: str = ""
     warnings: list[str] = field(default_factory=list)
     profile: DeepsoilProfileComparison | None = None
     hysteresis: DeepsoilHysteresisComparison | None = None
@@ -211,7 +237,7 @@ def _time_history_metrics(
     start = max(float(sw_time[0]), float(ref_time[0]))
     end = min(float(sw_time[-1]), float(ref_time[-1]))
     if end <= start:
-        raise ValueError("StrataWave and DEEPSOIL time histories do not overlap.")
+        raise ValueError("GeoWave and DEEPSOIL time histories do not overlap.")
 
     compare_dt = min(float(sw_dt), float(ref_dt))
     if not np.isfinite(compare_dt) or compare_dt <= 0.0:
@@ -236,7 +262,7 @@ def _time_history_metrics(
     dt_ratio = max(float(sw_dt), float(ref_dt)) / min(float(sw_dt), float(ref_dt))
     if dt_ratio > 1.05:
         warnings.append(
-            f"Time-step mismatch detected (StrataWave={sw_dt:.6g}s, DEEPSOIL={ref_dt:.6g}s)."
+            f"Time-step mismatch detected (GeoWave={sw_dt:.6g}s, DEEPSOIL={ref_dt:.6g}s)."
         )
 
     overlap_duration = float(common_time[-1] - common_time[0]) if common_time.size > 1 else 0.0
@@ -303,25 +329,17 @@ def _gof_metrics(
     return ia_sw, ia_ref, ia_ratio, lag_samples, lag_s, peak_coeff
 
 
-def _psa_metrics(
-    store: ResultStore,
+def _psa_metrics_from_arrays(
+    sw_periods: np.ndarray,
+    sw_psa: np.ndarray,
     ref_time: np.ndarray,
     ref_acc: np.ndarray,
     ref_dt: float,
     *,
     damping: float,
     ref_psa_path: Path | None,
-) -> tuple[int, float, float, float, float, float, bool, list[str]]:
+) -> tuple[int, float, float, float, float, float, float, bool, list[str]]:
     warnings: list[str] = []
-    if store.spectra_periods.size >= 3 and store.spectra_psa.size == store.spectra_periods.size:
-        sw_periods = np.asarray(store.spectra_periods, dtype=np.float64)
-        sw_psa = np.asarray(store.spectra_psa, dtype=np.float64)
-    else:
-        spectra = compute_spectra(store.acc_surface, store.dt_s, damping=damping)
-        sw_periods = spectra.periods
-        sw_psa = spectra.psa
-        warnings.append("Run did not contain stored spectra; recomputed StrataWave PSA.")
-
     if ref_psa_path is None:
         ref_spectra = compute_spectra(ref_acc, ref_dt, damping=damping, periods=sw_periods)
         common_periods = sw_periods
@@ -336,7 +354,7 @@ def _psa_metrics(
         common_periods = sw_periods[mask]
         if common_periods.size < 3:
             raise ValueError(
-                "Insufficient overlapping PSA periods between StrataWave and DEEPSOIL."
+                "Insufficient overlapping PSA periods between GeoWave and DEEPSOIL."
             )
         sw_common = sw_psa[mask]
         ref_psa = np.interp(common_periods, ref_periods, ref_psa_raw).astype(np.float64)
@@ -350,15 +368,20 @@ def _psa_metrics(
     peak_idx = int(np.argmax(np.abs(ref_psa))) if ref_psa.size > 0 else 0
     peak_period = float(common_periods[peak_idx]) if common_periods.size > 0 else float("nan")
     peak_ref = float(ref_psa[peak_idx]) if ref_psa.size > 0 else 0.0
+    sw_peak_idx = int(np.argmax(np.abs(sw_common))) if sw_common.size > 0 else 0
+    sw_peak_period = (
+        float(common_periods[sw_peak_idx]) if common_periods.size > 0 else float("nan")
+    )
     peak_pct_diff = (
         float(100.0 * diff[peak_idx] / peak_ref)
         if peak_ref != 0.0 and diff.size > 0
         else float("nan")
     )
-
-    if ref_time.size > 0 and store.time.size > 0:
-        if abs(float(store.time[-1]) - float(ref_time[-1])) > max(store.dt_s, ref_dt) * 2.0:
-            warnings.append("Surface records have different end times; check truncation/windowing.")
+    peak_period_diff_pct = (
+        float(100.0 * (sw_peak_period - peak_period) / peak_period)
+        if peak_period > 0.0 and np.isfinite(sw_peak_period)
+        else float("nan")
+    )
 
     return (
         int(common_periods.size),
@@ -367,6 +390,64 @@ def _psa_metrics(
         max_abs_diff,
         peak_pct_diff,
         peak_period,
+        peak_period_diff_pct,
+        used_reference_psa_csv,
+        warnings,
+    )
+
+
+def _psa_metrics(
+    store: ResultStore,
+    ref_time: np.ndarray,
+    ref_acc: np.ndarray,
+    ref_dt: float,
+    *,
+    damping: float,
+    ref_psa_path: Path | None,
+) -> tuple[int, float, float, float, float, float, float, bool, list[str]]:
+    warnings: list[str] = []
+    if store.spectra_periods.size >= 3 and store.spectra_psa.size == store.spectra_periods.size:
+        sw_periods = np.asarray(store.spectra_periods, dtype=np.float64)
+        sw_psa = np.asarray(store.spectra_psa, dtype=np.float64)
+    else:
+        spectra = compute_spectra(store.acc_surface, store.dt_s, damping=damping)
+        sw_periods = spectra.periods
+        sw_psa = spectra.psa
+        warnings.append("Run did not contain stored spectra; recomputed GeoWave PSA.")
+
+    (
+        point_count,
+        rmse,
+        nrmse,
+        max_abs_diff,
+        peak_pct_diff,
+        peak_period,
+        peak_period_diff_pct,
+        used_reference_psa_csv,
+        psa_warnings,
+    ) = _psa_metrics_from_arrays(
+        sw_periods,
+        sw_psa,
+        ref_time,
+        ref_acc,
+        ref_dt,
+        damping=damping,
+        ref_psa_path=ref_psa_path,
+    )
+    warnings.extend(psa_warnings)
+
+    if ref_time.size > 0 and store.time.size > 0:
+        if abs(float(store.time[-1]) - float(ref_time[-1])) > max(store.dt_s, ref_dt) * 2.0:
+            warnings.append("Surface records have different end times; check truncation/windowing.")
+
+    return (
+        point_count,
+        rmse,
+        nrmse,
+        max_abs_diff,
+        peak_pct_diff,
+        peak_period,
+        peak_period_diff_pct,
         used_reference_psa_csv,
         warnings,
     )
@@ -459,7 +540,15 @@ def _load_profile_reference(path: Path) -> dict[str, np.ndarray]:
     gamma_max: list[float] = []
     ru_max: list[float] = []
     sigma_v_eff_min: list[float] = []
+    effective_stress_kpa: list[float] = []
+    pga_g: list[float] = []
+    max_displacement_m: list[float] = []
+    max_strain_pct: list[float] = []
+    max_stress_ratio: list[float] = []
     vs_m_s: list[float] = []
+    implied_strength_kpa: list[float] = []
+    normalized_implied_strength: list[float] = []
+    implied_friction_angle_deg: list[float] = []
     keep_mask: list[bool] = []
 
     for row in rows:
@@ -483,7 +572,66 @@ def _load_profile_reference(path: Path) -> dict[str, np.ndarray]:
             )
             or float("nan")
         )
+        effective_stress_kpa.append(
+            _optional_float_from_mapping(
+                row,
+                ("effective_stress_kpa", "effective_stress", "stress_kpa", "stress"),
+            )
+            or float("nan")
+        )
+        pga_g.append(_optional_float_from_mapping(row, ("pga_g", "pga")) or float("nan"))
+        max_displacement_m.append(
+            _optional_float_from_mapping(
+                row,
+                ("max_displacement_m", "maximum_displacement", "displacement_m"),
+            )
+            or float("nan")
+        )
+        max_strain_pct.append(
+            _optional_float_from_mapping(
+                row,
+                ("max_strain_pct", "max_strain", "strain_pct", "strain"),
+            )
+            or float("nan")
+        )
+        max_stress_ratio.append(
+            _optional_float_from_mapping(
+                row,
+                ("max_stress_ratio", "stress_ratio", "shear_stress_ratio"),
+            )
+            or float("nan")
+        )
         vs_m_s.append(_optional_float_from_mapping(row, ("vs_m_s", "vs")) or float("nan"))
+        implied_strength_kpa.append(
+            _optional_float_from_mapping(
+                row,
+                ("implied_strength_kpa", "implied_strength", "imp_strength_kpa"),
+            )
+            or float("nan")
+        )
+        normalized_implied_strength.append(
+            _optional_float_from_mapping(
+                row,
+                (
+                    "normalized_implied_strength",
+                    "normalized_strength",
+                    "normalized_imp_strength",
+                ),
+            )
+            or float("nan")
+        )
+        implied_friction_angle_deg.append(
+            _optional_float_from_mapping(
+                row,
+                (
+                    "implied_friction_angle_deg",
+                    "implied_friction_angle",
+                    "imp_friction_angle_deg",
+                    "phi_deg",
+                ),
+            )
+            or float("nan")
+        )
         keep_mask.append(True)
 
     if not keep_mask:
@@ -495,7 +643,21 @@ def _load_profile_reference(path: Path) -> dict[str, np.ndarray]:
         "gamma_max": np.asarray(gamma_max, dtype=np.float64)[order],
         "ru_max": np.asarray(ru_max, dtype=np.float64)[order],
         "sigma_v_eff_min": np.asarray(sigma_v_eff_min, dtype=np.float64)[order],
+        "effective_stress_kpa": np.asarray(effective_stress_kpa, dtype=np.float64)[order],
+        "pga_g": np.asarray(pga_g, dtype=np.float64)[order],
+        "max_displacement_m": np.asarray(max_displacement_m, dtype=np.float64)[order],
+        "max_strain_pct": np.asarray(max_strain_pct, dtype=np.float64)[order],
+        "max_stress_ratio": np.asarray(max_stress_ratio, dtype=np.float64)[order],
         "vs_m_s": np.asarray(vs_m_s, dtype=np.float64)[order],
+        "implied_strength_kpa": np.asarray(implied_strength_kpa, dtype=np.float64)[order],
+        "normalized_implied_strength": np.asarray(
+            normalized_implied_strength,
+            dtype=np.float64,
+        )[order],
+        "implied_friction_angle_deg": np.asarray(
+            implied_friction_angle_deg,
+            dtype=np.float64,
+        )[order],
     }
 
 
@@ -563,6 +725,49 @@ def _read_layer_pwp_profile_stats(
     return ru_max, delta_u_max, sigma_v_eff_min
 
 
+def _load_layer_response_summary(run_dir: Path) -> dict[int, dict[str, float]]:
+    summary_path = run_dir / "layer_response_summary.csv"
+    if not summary_path.exists():
+        return {}
+    rows: dict[int, dict[str, float]] = {}
+    with summary_path.open("r", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            try:
+                idx = int(float(row.get("layer_index", "")))
+            except (TypeError, ValueError):
+                continue
+            payload: dict[str, float] = {}
+            for field in ("gamma_max", "tau_peak_kpa", "secant_g_pa", "secant_g_over_gmax", "z_mid_m"):
+                raw = row.get(field)
+                try:
+                    payload[field] = float(raw) if raw not in (None, "") else float("nan")
+                except (TypeError, ValueError):
+                    payload[field] = float("nan")
+            rows[idx] = payload
+    return rows
+
+
+def _load_layer_calibration_stress_by_index(cfg: ProjectConfig | None) -> dict[int, float]:
+    if cfg is None:
+        return {}
+    stresses: dict[int, float] = {}
+    for idx, layer in enumerate(cfg.profile.layers):
+        calibration = getattr(layer, "calibration", None)
+        if calibration is None:
+            continue
+        mean_stress = getattr(calibration, "mean_effective_stress_kpa", None)
+        if mean_stress is None:
+            continue
+        try:
+            value = float(mean_stress)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value) and value > 0.0:
+            stresses[int(idx)] = value
+    return stresses
+
+
 def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
     sqlite_path = run_dir / "results.sqlite"
     if not sqlite_path.exists():
@@ -608,7 +813,44 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
     gamma_max: list[float] = []
     ru_max: list[float] = []
     sigma_v_eff_min: list[float] = []
+    effective_stress_kpa: list[float] = []
+    pga_g: list[float] = []
+    max_displacement_m: list[float] = []
+    max_strain_pct: list[float] = []
+    max_stress_ratio: list[float] = []
+    mobilized_strength_kpa: list[float] = []
+    mobilized_friction_angle_deg: list[float] = []
     vs_values: list[float] = []
+    implied_strength_kpa: list[float] = []
+    normalized_implied_strength: list[float] = []
+    implied_friction_angle_deg: list[float] = []
+    layer_index_values: list[float] = []
+    diagnostics_by_idx: dict[int, object] = {}
+    layer_response_summary = _load_layer_response_summary(run_dir)
+    store = load_result(run_dir)
+    calibration_stress_by_idx: dict[int, float] = {}
+    node_pga_g = np.array([], dtype=np.float64)
+    node_max_disp = np.array([], dtype=np.float64)
+    if store.node_depth_m.size > 0 and store.nodal_displacement_m.ndim == 2:
+        node_depth = np.asarray(store.node_depth_m, dtype=np.float64).reshape(-1)
+        disp = np.asarray(store.nodal_displacement_m, dtype=np.float64)
+        if disp.shape[0] == node_depth.size and disp.shape[1] > 1 and store.dt_s > 0.0:
+            node_max_disp = np.max(np.abs(disp), axis=1)
+            vel = np.gradient(disp, store.dt_s, axis=1)
+            acc = np.gradient(vel, store.dt_s, axis=1)
+            node_pga_g = np.max(np.abs(acc), axis=1) / 9.81
+
+    cfg = _load_run_config_snapshot(run_dir)
+    if cfg is not None:
+        calibration_stress_by_idx = _load_layer_calibration_stress_by_index(cfg)
+        try:
+            diagnostics = compute_profile_diagnostics(
+                list(cfg.profile.layers),
+                water_table_depth_m=cfg.profile.water_table_depth_m,
+            )
+            diagnostics_by_idx = {int(row.index): row for row in diagnostics}
+        except Exception:
+            diagnostics_by_idx = {}
 
     cum_depth = 0.0
     for idx, name, thickness, unit_weight, vs, _material in layer_rows:
@@ -629,25 +871,104 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
             layer_idx=layer_idx,
             sigma_v0_mid_kpa=sigma_v0_mid_kpa,
         )
-        gamma_val = gamma_by_idx.get(layer_idx)
-        if gamma_val is None:
+        response_row = layer_response_summary.get(layer_idx, {})
+        gamma_val = response_row.get("gamma_max")
+        if gamma_val is None or not np.isfinite(gamma_val):
+            gamma_val = gamma_by_idx.get(layer_idx)
+        if gamma_val is None or not np.isfinite(gamma_val):
             gamma_val = gamma_by_idx.get(layer_idx + 1)
 
         z_mid.append(z_mid_m)
+        layer_index_values.append(float(layer_idx))
         gamma_max.append(float(gamma_val) if gamma_val is not None else float("nan"))
         ru_max.append(float(ru_i) if ru_i is not None else float("nan"))
         sigma_v_eff_min.append(float(sigma_eff_i) if sigma_eff_i is not None else float("nan"))
         vs_values.append(float(vs))
+        diag = diagnostics_by_idx.get(layer_idx)
+        if diag is None:
+            diag = diagnostics_by_idx.get(layer_idx - 1)
+        sigma_mid_eff_from_calibration = calibration_stress_by_idx.get(layer_idx)
+        if sigma_mid_eff_from_calibration is None:
+            sigma_mid_eff_from_calibration = calibration_stress_by_idx.get(layer_idx - 1)
+        sigma_mid_eff = (
+            float(sigma_mid_eff_from_calibration)
+            if sigma_mid_eff_from_calibration is not None
+            else (
+                float(getattr(diag, "sigma_v_eff_mid_kpa"))
+                if diag is not None and getattr(diag, "sigma_v_eff_mid_kpa", None) is not None
+                else (float(sigma_eff_i) if sigma_eff_i is not None else float("nan"))
+            )
+        )
+        effective_stress_kpa.append(sigma_mid_eff)
+        if node_max_disp.size == store.node_depth_m.size and node_max_disp.size > 0:
+            max_displacement_m.append(
+                float(np.interp(z_mid_m, store.node_depth_m, node_max_disp))
+            )
+        else:
+            max_displacement_m.append(float("nan"))
+        if node_pga_g.size == store.node_depth_m.size and node_pga_g.size > 0:
+            pga_g.append(float(np.interp(z_mid_m, store.node_depth_m, node_pga_g)))
+        else:
+            pga_g.append(float("nan"))
+        max_strain_pct.append(
+            float(gamma_val * 100.0) if gamma_val is not None and np.isfinite(gamma_val) else float("nan")
+        )
+        tau_peak_kpa = response_row.get("tau_peak_kpa")
+        if tau_peak_kpa is not None and np.isfinite(tau_peak_kpa) and sigma_mid_eff > 0.0:
+            max_stress_ratio.append(float(tau_peak_kpa / sigma_mid_eff))
+            mobilized_strength_kpa.append(float(tau_peak_kpa))
+            mobilized_friction_angle_deg.append(
+                float(np.degrees(np.arctan(float(tau_peak_kpa) / sigma_mid_eff)))
+            )
+        else:
+            max_stress_ratio.append(float("nan"))
+            mobilized_strength_kpa.append(float("nan"))
+            mobilized_friction_angle_deg.append(float("nan"))
+        implied_strength_kpa.append(
+            float(getattr(diag, "implied_strength_kpa"))
+            if diag is not None and getattr(diag, "implied_strength_kpa") is not None
+            else float("nan")
+        )
+        normalized_implied_strength.append(
+            float(getattr(diag, "normalized_implied_strength"))
+            if diag is not None and getattr(diag, "normalized_implied_strength") is not None
+            else float("nan")
+        )
+        implied_friction_angle_deg.append(
+            float(getattr(diag, "implied_friction_angle_deg"))
+            if diag is not None and getattr(diag, "implied_friction_angle_deg") is not None
+            else float("nan")
+        )
 
     if not z_mid:
         raise ValueError(f"No layer profile data found in run sqlite: {sqlite_path}")
 
     return {
+        "layer_index": np.asarray(layer_index_values, dtype=np.float64),
         "depth_m": np.asarray(z_mid, dtype=np.float64),
         "gamma_max": np.asarray(gamma_max, dtype=np.float64),
         "ru_max": np.asarray(ru_max, dtype=np.float64),
         "sigma_v_eff_min": np.asarray(sigma_v_eff_min, dtype=np.float64),
+        "effective_stress_kpa": np.asarray(effective_stress_kpa, dtype=np.float64),
+        "pga_g": np.asarray(pga_g, dtype=np.float64),
+        "max_displacement_m": np.asarray(max_displacement_m, dtype=np.float64),
+        "max_strain_pct": np.asarray(max_strain_pct, dtype=np.float64),
+        "max_stress_ratio": np.asarray(max_stress_ratio, dtype=np.float64),
+        "mobilized_strength_kpa": np.asarray(mobilized_strength_kpa, dtype=np.float64),
+        "mobilized_friction_angle_deg": np.asarray(
+            mobilized_friction_angle_deg,
+            dtype=np.float64,
+        ),
         "vs_m_s": np.asarray(vs_values, dtype=np.float64),
+        "implied_strength_kpa": np.asarray(implied_strength_kpa, dtype=np.float64),
+        "normalized_implied_strength": np.asarray(
+            normalized_implied_strength,
+            dtype=np.float64,
+        ),
+        "implied_friction_angle_deg": np.asarray(
+            implied_friction_angle_deg,
+            dtype=np.float64,
+        ),
     }
 
 
@@ -683,9 +1004,65 @@ def _profile_metric_nrmse(
     return int(common_depth.size), nrmse
 
 
+def _layer_metric_nrmse(
+    sw_idx: np.ndarray,
+    sw_values: np.ndarray,
+    ref_idx: np.ndarray,
+    ref_values: np.ndarray,
+) -> tuple[int, float] | None:
+    sw_mask = np.isfinite(sw_idx) & np.isfinite(sw_values)
+    ref_mask = np.isfinite(ref_idx) & np.isfinite(ref_values)
+    if int(np.count_nonzero(sw_mask)) < 1 or int(np.count_nonzero(ref_mask)) < 1:
+        return None
+    sw_map = {int(round(idx)): float(val) for idx, val in zip(sw_idx[sw_mask], sw_values[sw_mask], strict=False)}
+    ref_map = {int(round(idx)): float(val) for idx, val in zip(ref_idx[ref_mask], ref_values[ref_mask], strict=False)}
+    common = sorted(set(sw_map) & set(ref_map))
+    if not common:
+        return None
+    sw_arr = np.asarray([sw_map[idx] for idx in common], dtype=np.float64)
+    ref_arr = np.asarray([ref_map[idx] for idx in common], dtype=np.float64)
+    diff = sw_arr - ref_arr
+    rmse = float(np.sqrt(np.mean(diff**2)))
+    ref_peak = float(np.max(np.abs(ref_arr))) if ref_arr.size > 0 else 0.0
+    nrmse = float(rmse / ref_peak) if ref_peak > 0.0 else float("nan")
+    return int(len(common)), nrmse
+
+
+def _load_mobilized_strength_reference(path: Path) -> dict[str, np.ndarray]:
+    rows = _load_header_rows(path)
+    layer_idx: list[float] = []
+    shear_strength: list[float] = []
+    friction_angle: list[float] = []
+    for row in rows:
+        layer = _optional_float_from_mapping(row, ("layer", "layer_idx", "layer_index"))
+        strength = _optional_float_from_mapping(
+            row,
+            ("shear_strength_kpa", "shear_strength", "strength_kpa"),
+        )
+        friction = _optional_float_from_mapping(
+            row,
+            ("friction_angle_deg", "friction_angle", "phi_deg"),
+        )
+        if layer is None:
+            continue
+        # DeepSoil workbook uses 1-based layer numbering.
+        layer_idx.append(float(layer) - 1.0)
+        shear_strength.append(float(strength) if strength is not None else float("nan"))
+        friction_angle.append(float(friction) if friction is not None else float("nan"))
+    if not layer_idx:
+        raise ValueError(f"Mobilized strength CSV requires layer rows: {path}")
+    order = np.argsort(np.asarray(layer_idx, dtype=np.float64))
+    return {
+        "layer_index": np.asarray(layer_idx, dtype=np.float64)[order],
+        "mobilized_strength_kpa": np.asarray(shear_strength, dtype=np.float64)[order],
+        "mobilized_friction_angle_deg": np.asarray(friction_angle, dtype=np.float64)[order],
+    }
+
+
 def _compare_profile_metrics(
     run_dir: Path,
     profile_csv: Path,
+    mobilized_strength_csv: Path | None = None,
 ) -> DeepsoilProfileComparison:
     sw_profile = _load_profile_from_run(run_dir)
     ref_profile = _load_profile_reference(profile_csv)
@@ -695,13 +1072,31 @@ def _compare_profile_metrics(
         "gamma_max_nrmse": None,
         "ru_max_nrmse": None,
         "sigma_v_eff_min_nrmse": None,
+        "effective_stress_kpa_nrmse": None,
+        "pga_g_nrmse": None,
+        "max_displacement_m_nrmse": None,
+        "max_strain_pct_nrmse": None,
+        "max_stress_ratio_nrmse": None,
         "vs_m_s_nrmse": None,
+        "implied_strength_kpa_nrmse": None,
+        "normalized_implied_strength_nrmse": None,
+        "implied_friction_angle_deg_nrmse": None,
+        "mobilized_strength_nrmse": None,
+        "mobilized_friction_angle_deg_nrmse": None,
     }
     for source_key, result_key in (
         ("gamma_max", "gamma_max_nrmse"),
         ("ru_max", "ru_max_nrmse"),
         ("sigma_v_eff_min", "sigma_v_eff_min_nrmse"),
+        ("effective_stress_kpa", "effective_stress_kpa_nrmse"),
+        ("pga_g", "pga_g_nrmse"),
+        ("max_displacement_m", "max_displacement_m_nrmse"),
+        ("max_strain_pct", "max_strain_pct_nrmse"),
+        ("max_stress_ratio", "max_stress_ratio_nrmse"),
         ("vs_m_s", "vs_m_s_nrmse"),
+        ("implied_strength_kpa", "implied_strength_kpa_nrmse"),
+        ("normalized_implied_strength", "normalized_implied_strength_nrmse"),
+        ("implied_friction_angle_deg", "implied_friction_angle_deg_nrmse"),
     ):
         compared = _profile_metric_nrmse(
             sw_profile["depth_m"],
@@ -715,6 +1110,24 @@ def _compare_profile_metrics(
         depth_points = max(depth_points, n_points)
         compared_metrics.append(source_key)
         metric_results[result_key] = nrmse
+    if mobilized_strength_csv is not None:
+        ref_mobilized = _load_mobilized_strength_reference(mobilized_strength_csv)
+        for source_key, result_key in (
+            ("mobilized_strength_kpa", "mobilized_strength_nrmse"),
+            ("mobilized_friction_angle_deg", "mobilized_friction_angle_deg_nrmse"),
+        ):
+            compared = _layer_metric_nrmse(
+                sw_profile["layer_index"],
+                sw_profile[source_key],
+                ref_mobilized["layer_index"],
+                ref_mobilized[source_key],
+            )
+            if compared is None:
+                continue
+            n_points, nrmse = compared
+            depth_points = max(depth_points, n_points)
+            compared_metrics.append(source_key)
+            metric_results[result_key] = nrmse
     if not compared_metrics:
         raise ValueError(f"No overlapping profile metrics found in reference CSV: {profile_csv}")
     return DeepsoilProfileComparison(
@@ -723,7 +1136,17 @@ def _compare_profile_metrics(
         gamma_max_nrmse=metric_results["gamma_max_nrmse"],
         ru_max_nrmse=metric_results["ru_max_nrmse"],
         sigma_v_eff_min_nrmse=metric_results["sigma_v_eff_min_nrmse"],
+        effective_stress_kpa_nrmse=metric_results["effective_stress_kpa_nrmse"],
+        pga_g_nrmse=metric_results["pga_g_nrmse"],
+        max_displacement_m_nrmse=metric_results["max_displacement_m_nrmse"],
+        max_strain_pct_nrmse=metric_results["max_strain_pct_nrmse"],
+        max_stress_ratio_nrmse=metric_results["max_stress_ratio_nrmse"],
         vs_m_s_nrmse=metric_results["vs_m_s_nrmse"],
+        implied_strength_kpa_nrmse=metric_results["implied_strength_kpa_nrmse"],
+        normalized_implied_strength_nrmse=metric_results["normalized_implied_strength_nrmse"],
+        implied_friction_angle_deg_nrmse=metric_results["implied_friction_angle_deg_nrmse"],
+        mobilized_strength_nrmse=metric_results["mobilized_strength_nrmse"],
+        mobilized_friction_angle_deg_nrmse=metric_results["mobilized_friction_angle_deg_nrmse"],
     )
 
 
@@ -1054,6 +1477,9 @@ def _evaluate_case_policy(
                 result.profile.ru_max_nrmse,
                 result.profile.sigma_v_eff_min_nrmse,
                 result.profile.vs_m_s_nrmse,
+                result.profile.implied_strength_kpa_nrmse,
+                result.profile.normalized_implied_strength_nrmse,
+                result.profile.implied_friction_angle_deg_nrmse,
             )
             if value is not None and np.isfinite(value)
         ]
@@ -1081,10 +1507,14 @@ def _evaluate_case_policy(
 def render_deepsoil_comparison_markdown(
     result: DeepsoilComparisonResult,
     *,
-    surface_csv: Path,
+    surface_csv: Path | None,
     psa_csv: Path | None,
     profile_csv: Path | None,
     hysteresis_csv: Path | None,
+    input_motion_csv: Path | None = None,
+    input_psa_csv: Path | None = None,
+    mobilized_strength_csv: Path | None = None,
+    deepsoil_excel: Path | None = None,
 ) -> str:
     warnings_block = (
         "\n".join(f"- {warning}" for warning in result.warnings)
@@ -1096,20 +1526,41 @@ def render_deepsoil_comparison_markdown(
         if psa_csv is not None
         else "computed from DEEPSOIL surface acceleration"
     )
+    input_psa_source = (
+        str(input_psa_csv)
+        if input_psa_csv is not None
+        else "computed from DEEPSOIL input acceleration"
+    )
     profile_source = str(profile_csv) if profile_csv is not None else "not provided"
     hysteresis_source = str(hysteresis_csv) if hysteresis_csv is not None else "not provided"
+    input_motion_source = str(input_motion_csv) if input_motion_csv is not None else "not provided"
+    mobilized_source = (
+        str(mobilized_strength_csv) if mobilized_strength_csv is not None else "not provided"
+    )
+    workbook_source = str(deepsoil_excel) if deepsoil_excel is not None else "not provided"
     profile_block: list[str] = []
     if result.profile is not None:
         profile_block.extend(
             [
                 "## Profile",
                 f"- Profile CSV: `{profile_source}`",
+                f"- Mobilized strength CSV: `{mobilized_source}`",
                 f"- Depth points compared: `{result.profile.depth_points}`",
                 f"- Compared metrics: `{', '.join(result.profile.compared_metrics)}`",
                 f"- gamma_max NRMSE: `{result.profile.gamma_max_nrmse}`",
                 f"- ru_max NRMSE: `{result.profile.ru_max_nrmse}`",
                 f"- sigma'_v,min NRMSE: `{result.profile.sigma_v_eff_min_nrmse}`",
+                f"- Effective stress NRMSE: `{result.profile.effective_stress_kpa_nrmse}`",
+                f"- PGA-vs-depth NRMSE: `{result.profile.pga_g_nrmse}`",
+                f"- Max displacement NRMSE: `{result.profile.max_displacement_m_nrmse}`",
+                f"- Max strain NRMSE: `{result.profile.max_strain_pct_nrmse}`",
+                f"- Max stress ratio NRMSE: `{result.profile.max_stress_ratio_nrmse}`",
                 f"- Vs NRMSE: `{result.profile.vs_m_s_nrmse}`",
+                f"- Implied strength NRMSE: `{result.profile.implied_strength_kpa_nrmse}`",
+                f"- Normalized implied strength NRMSE: `{result.profile.normalized_implied_strength_nrmse}`",
+                f"- Implied friction angle NRMSE: `{result.profile.implied_friction_angle_deg_nrmse}`",
+                f"- Mobilized strength NRMSE: `{result.profile.mobilized_strength_nrmse}`",
+                f"- Mobilized friction angle NRMSE: `{result.profile.mobilized_friction_angle_deg_nrmse}`",
                 "",
             ]
         )
@@ -1133,16 +1584,29 @@ def render_deepsoil_comparison_markdown(
             f"# DEEPSOIL Comparison: {result.run_id}",
             "",
             "## Inputs",
-            f"- StrataWave run: `{result.run_dir}`",
-            f"- DEEPSOIL surface CSV: `{surface_csv}`",
+            f"- GeoWave run: `{result.run_dir}`",
+            f"- DEEPSOIL workbook: `{workbook_source}`",
+            f"- DEEPSOIL surface CSV: `{surface_csv if surface_csv is not None else 'not provided'}`",
+            f"- DEEPSOIL input motion CSV: `{input_motion_source}`",
             f"- DEEPSOIL PSA source: `{psa_source}`",
+            f"- DEEPSOIL input PSA source: `{input_psa_source}`",
+            f"- Reference kind: `{result.reference_kind}`",
+            "",
+            "## Semantics",
+            f"- Boundary condition: `{result.boundary_condition}`",
+            f"- Motion input type: `{result.motion_input_type}`",
+            f"- Damping mode: `{result.damping_mode}`",
+            f"- Input dt used: `{result.input_dt_used_s}` s",
+            f"- Input PGA as loaded: `{result.input_pga_loaded_m_s2}` m/s^2",
+            f"- Applied input PGA: `{result.applied_input_pga_loaded_m_s2}` m/s^2",
+            f"- Base motion semantics ok: `{result.base_motion_semantics_ok}`",
             "",
             "## Surface Acceleration",
-            f"- StrataWave dt: `{result.stratawave_dt_s:.8f}` s",
+            f"- GeoWave dt: `{result.stratawave_dt_s:.8f}` s",
             f"- DEEPSOIL dt: `{result.deepsoil_dt_s:.8f}` s",
             f"- Overlap duration: `{result.overlap_duration_s:.4f}` s",
             f"- Overlap samples: `{result.overlap_samples}`",
-            f"- PGA (StrataWave): `{result.stratawave_pga_m_s2:.6f}` m/s^2",
+            f"- PGA (GeoWave): `{result.stratawave_pga_m_s2:.6f}` m/s^2",
             f"- PGA (DEEPSOIL): `{result.deepsoil_pga_m_s2:.6f}` m/s^2",
             f"- PGA ratio: `{result.pga_ratio:.6f}`",
             f"- PGA diff: `{result.pga_pct_diff:.3f}` %",
@@ -1157,6 +1621,13 @@ def render_deepsoil_comparison_markdown(
             f"- PSA max abs diff: `{result.psa_max_abs_diff_m_s2:.6f}` m/s^2",
             f"- PSA diff at reference peak: `{result.psa_pct_diff_at_peak:.3f}` %",
             f"- Reference peak period: `{result.psa_peak_period_s:.4f}` s",
+            f"- Surface PSA peak-period diff: `{result.surface_psa_peak_period_diff_pct}` %",
+            "",
+            "## Input Motion",
+            f"- Input history NRMSE: `{result.input_history_nrmse}`",
+            f"- Input PSA NRMSE: `{result.input_psa_nrmse}`",
+            f"- Applied input history NRMSE: `{result.applied_input_history_nrmse}`",
+            f"- Applied input PSA NRMSE: `{result.applied_input_psa_nrmse}`",
             "",
             *profile_block,
             *hysteresis_block,
@@ -1222,10 +1693,14 @@ def render_deepsoil_comparison_batch_markdown(
 def compare_deepsoil_run(
     run_dir: str | Path,
     *,
-    surface_csv: str | Path,
+    surface_csv: str | Path | None = None,
+    input_motion_csv: str | Path | None = None,
     psa_csv: str | Path | None = None,
+    input_psa_csv: str | Path | None = None,
     profile_csv: str | Path | None = None,
+    mobilized_strength_csv: str | Path | None = None,
     hysteresis_csv: str | Path | None = None,
+    deepsoil_excel: str | Path | None = None,
     hysteresis_layer: int = 0,
     out_dir: str | Path | None = None,
     surface_dt_override: float | None = None,
@@ -1233,9 +1708,33 @@ def compare_deepsoil_run(
 ) -> DeepsoilComparisonResult:
     run_path = Path(run_dir)
     store = load_result(run_path)
+    output_dir = Path(out_dir) if out_dir is not None else None
+    imported_bundle = None
+    if deepsoil_excel is not None:
+        bundle_dir = (
+            output_dir / "_deepsoil_bundle"
+            if output_dir is not None
+            else run_path / "_deepsoil_bundle"
+        )
+        imported_bundle = import_deepsoil_excel_bundle(deepsoil_excel, bundle_dir)
+        surface_csv = surface_csv or imported_bundle.surface_csv
+        input_motion_csv = input_motion_csv or imported_bundle.input_motion_csv
+        psa_csv = psa_csv or imported_bundle.psa_surface_csv
+        input_psa_csv = input_psa_csv or imported_bundle.psa_input_csv
+        profile_csv = profile_csv or imported_bundle.profile_csv
+        mobilized_strength_csv = mobilized_strength_csv or imported_bundle.mobilized_strength_csv
+        hysteresis_csv = hysteresis_csv or imported_bundle.hysteresis_csv
+    if surface_csv is None:
+        raise ValueError("compare_deepsoil_run requires surface_csv or deepsoil_excel.")
+
     surface_path = Path(surface_csv)
+    input_motion_path = Path(input_motion_csv) if input_motion_csv is not None else None
     ref_psa_path = Path(psa_csv) if psa_csv is not None else None
+    ref_input_psa_path = Path(input_psa_csv) if input_psa_csv is not None else None
     ref_profile_path = Path(profile_csv) if profile_csv is not None else None
+    ref_mobilized_path = (
+        Path(mobilized_strength_csv) if mobilized_strength_csv is not None else None
+    )
     ref_hysteresis_path = Path(hysteresis_csv) if hysteresis_csv is not None else None
 
     ref_time, ref_acc = load_motion_series(
@@ -1244,9 +1743,10 @@ def compare_deepsoil_run(
         fallback_dt=store.dt_s,
     )
     ref_dt = float(np.median(np.diff(ref_time))) if ref_time.size > 1 else float(store.dt_s)
+    warnings = list(imported_bundle.warnings) if imported_bundle is not None else []
 
     sw_pga, ref_pga, pga_ratio, pga_pct_diff = _pga_metrics(store.acc_surface, ref_acc)
-    overlap_duration, overlap_samples, rmse, nrmse, corr, warnings = _time_history_metrics(
+    overlap_duration, overlap_samples, rmse, nrmse, corr, surface_warnings = _time_history_metrics(
         store.time,
         store.acc_surface,
         ref_time,
@@ -1254,6 +1754,7 @@ def compare_deepsoil_run(
         store.dt_s,
         ref_dt,
     )
+    warnings.extend(surface_warnings)
     ia_sw, ia_ref, ia_ratio, xcorr_lag, xcorr_lag_s, xcorr_peak = _gof_metrics(
         store.time,
         store.acc_surface,
@@ -1269,6 +1770,7 @@ def compare_deepsoil_run(
         psa_max_abs_diff,
         psa_peak_pct_diff,
         psa_peak_period,
+        surface_psa_peak_period_diff_pct,
         used_reference_psa_csv,
         psa_warnings,
     ) = _psa_metrics(
@@ -1280,15 +1782,150 @@ def compare_deepsoil_run(
         ref_psa_path=ref_psa_path,
     )
     warnings.extend(psa_warnings)
+    cfg = _load_run_config_snapshot(run_path)
+    input_history_nrmse: float | None = None
+    input_psa_nrmse: float | None = None
+    applied_input_history_nrmse: float | None = None
+    applied_input_psa_nrmse: float | None = None
+    if input_motion_path is not None and store.input_time.size > 1 and store.acc_input.size > 1:
+        ref_input_time, ref_input_acc = load_motion_series(
+            input_motion_path,
+            dt_override=None,
+            fallback_dt=store.input_dt_s if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0 else store.dt_s,
+        )
+        ref_input_dt = (
+            float(np.median(np.diff(ref_input_time)))
+            if ref_input_time.size > 1
+            else (
+                float(store.input_dt_s)
+                if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0
+                else float(store.dt_s)
+            )
+        )
+        (
+            _input_overlap_duration,
+            _input_overlap_samples,
+            _input_rmse,
+            input_history_nrmse,
+            _input_corr,
+            input_warnings,
+        ) = _time_history_metrics(
+            store.input_time,
+            store.acc_input,
+            ref_input_time,
+            ref_input_acc,
+            float(store.input_dt_s) if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0 else float(store.dt_s),
+            ref_input_dt,
+        )
+        warnings.extend(f"Input motion: {message}" for message in input_warnings)
+        input_spectra = compute_spectra(
+            store.acc_input,
+            float(store.input_dt_s) if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0 else float(store.dt_s),
+            damping=damping,
+        )
+        (
+            _input_psa_points,
+            _input_psa_rmse,
+            input_psa_nrmse,
+            _input_psa_max_abs_diff,
+            _input_psa_peak_pct_diff,
+            _input_psa_peak_period,
+            _input_psa_peak_period_diff_pct,
+            _used_ref_input_psa_csv,
+            input_psa_warnings,
+        ) = _psa_metrics_from_arrays(
+            np.asarray(input_spectra.periods, dtype=np.float64),
+            np.asarray(input_spectra.psa, dtype=np.float64),
+            ref_input_time,
+            ref_input_acc,
+            ref_input_dt,
+            damping=damping,
+            ref_psa_path=ref_input_psa_path,
+        )
+        warnings.extend(f"Input PSA: {message}" for message in input_psa_warnings)
+        sw_applied_acc = np.asarray(store.acc_applied_input, dtype=np.float64)
+        if sw_applied_acc.size <= 1 and cfg is not None:
+            sw_applied_acc = effective_input_acceleration(cfg, store.acc_input)
+        ref_applied_input_acc = (
+            effective_input_acceleration(cfg, ref_input_acc)
+            if cfg is not None
+            else np.asarray(ref_input_acc, dtype=np.float64)
+        )
+        if sw_applied_acc.size > 1:
+            (
+                _applied_overlap_duration,
+                _applied_overlap_samples,
+                _applied_rmse,
+                applied_input_history_nrmse,
+                _applied_corr,
+                applied_input_warnings,
+            ) = _time_history_metrics(
+                store.input_time,
+                sw_applied_acc,
+                ref_input_time,
+                ref_applied_input_acc,
+                float(store.input_dt_s)
+                if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0
+                else float(store.dt_s),
+                ref_input_dt,
+            )
+            warnings.extend(
+                f"Applied input: {message}" for message in applied_input_warnings
+            )
+            applied_input_spectra = compute_spectra(
+                sw_applied_acc,
+                float(store.input_dt_s)
+                if np.isfinite(store.input_dt_s) and store.input_dt_s > 0.0
+                else float(store.dt_s),
+                damping=damping,
+            )
+            (
+                _applied_input_psa_points,
+                _applied_input_psa_rmse,
+                applied_input_psa_nrmse,
+                _applied_input_psa_max_abs_diff,
+                _applied_input_psa_peak_pct_diff,
+                _applied_input_psa_peak_period,
+                _applied_input_psa_peak_period_diff_pct,
+                _used_ref_applied_input_psa_csv,
+                applied_input_psa_warnings,
+            ) = _psa_metrics_from_arrays(
+                np.asarray(applied_input_spectra.periods, dtype=np.float64),
+                np.asarray(applied_input_spectra.psa, dtype=np.float64),
+                ref_input_time,
+                ref_applied_input_acc,
+                ref_input_dt,
+                damping=damping,
+                ref_psa_path=None,
+            )
+            warnings.extend(
+                f"Applied input PSA: {message}"
+                for message in applied_input_psa_warnings
+            )
     profile_result: DeepsoilProfileComparison | None = None
     if ref_profile_path is not None:
-        profile_result = _compare_profile_metrics(run_path, ref_profile_path)
+        profile_result = _compare_profile_metrics(
+            run_path,
+            ref_profile_path,
+            mobilized_strength_csv=ref_mobilized_path,
+        )
     hysteresis_result: DeepsoilHysteresisComparison | None = None
     if ref_hysteresis_path is not None:
         hysteresis_result = _compare_hysteresis_metrics(
             run_path,
             ref_hysteresis_path,
             layer_index=hysteresis_layer,
+        )
+    boundary_condition = cfg.boundary_condition.value if cfg is not None else ""
+    motion_input_type = cfg.motion.input_type if cfg is not None else ""
+    damping_mode = cfg.analysis.damping_mode if cfg is not None else ""
+    base_motion_semantics_ok = None
+    if cfg is not None:
+        base_motion_semantics_ok = (
+            boundary_condition == "rigid"
+            and motion_input_type == "outcrop"
+            and damping_mode == "frequency_independent"
+            and not bool(cfg.analysis.viscous_damping_update)
         )
 
     result = DeepsoilComparisonResult(
@@ -1312,19 +1949,41 @@ def compare_deepsoil_run(
         psa_pct_diff_at_peak=psa_peak_pct_diff,
         psa_peak_period_s=psa_peak_period,
         used_reference_psa_csv=used_reference_psa_csv,
+        surface_psa_peak_period_diff_pct=surface_psa_peak_period_diff_pct,
         arias_intensity_sw=ia_sw,
         arias_intensity_ref=ia_ref,
         arias_intensity_ratio=ia_ratio,
         xcorr_lag_samples=xcorr_lag,
         xcorr_lag_s=xcorr_lag_s,
         xcorr_peak_coeff=xcorr_peak,
+        input_history_nrmse=input_history_nrmse,
+        input_psa_nrmse=input_psa_nrmse,
+        applied_input_history_nrmse=applied_input_history_nrmse,
+        applied_input_psa_nrmse=applied_input_psa_nrmse,
+        input_dt_used_s=float(store.input_dt_s) if np.isfinite(store.input_dt_s) else None,
+        input_pga_loaded_m_s2=(
+            float(np.max(np.abs(store.acc_input))) if store.acc_input.size > 0 else None
+        ),
+        applied_input_pga_loaded_m_s2=(
+            float(np.max(np.abs(store.acc_applied_input)))
+            if store.acc_applied_input.size > 0
+            else (
+                float(np.max(np.abs(effective_input_acceleration(cfg, store.acc_input))))
+                if cfg is not None and store.acc_input.size > 0
+                else None
+            )
+        ),
+        boundary_condition=boundary_condition,
+        motion_input_type=motion_input_type,
+        damping_mode=damping_mode,
+        base_motion_semantics_ok=base_motion_semantics_ok,
+        reference_kind=imported_bundle.case_kind if imported_bundle is not None else "",
         profile=profile_result,
         hysteresis=hysteresis_result,
         warnings=warnings,
     )
 
-    if out_dir is not None:
-        output_dir = Path(out_dir)
+    if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
         json_path = output_dir / "deepsoil_compare.json"
         markdown_path = output_dir / "deepsoil_compare.md"
@@ -1335,6 +1994,10 @@ def compare_deepsoil_run(
             psa_csv=ref_psa_path,
             profile_csv=ref_profile_path,
             hysteresis_csv=ref_hysteresis_path,
+            input_motion_csv=input_motion_path,
+            input_psa_csv=ref_input_psa_path,
+            mobilized_strength_csv=ref_mobilized_path,
+            deepsoil_excel=Path(deepsoil_excel) if deepsoil_excel is not None else None,
         )
         markdown_path.write_text(markdown, encoding="utf-8")
         result.artifacts = DeepsoilComparisonArtifacts(
@@ -1374,11 +2037,28 @@ def compare_deepsoil_manifest(
             raise ValueError(f"Manifest case #{idx} must be an object.")
         name = str(case_raw.get("name", f"case-{idx:02d}"))
         run_dir = _resolve_manifest_path(base_dir, case_raw.get("run"))
-        surface_csv = _resolve_manifest_path(base_dir, case_raw.get("surface_csv"))
+        deepsoil_excel_value = case_raw.get("deepsoil_excel")
+        deepsoil_excel = (
+            _resolve_manifest_path(base_dir, deepsoil_excel_value) if deepsoil_excel_value else None
+        )
+        surface_value = case_raw.get("surface_csv")
+        surface_csv = _resolve_manifest_path(base_dir, surface_value) if surface_value else None
+        input_motion_value = case_raw.get("input_motion_csv")
+        input_motion_csv = (
+            _resolve_manifest_path(base_dir, input_motion_value) if input_motion_value else None
+        )
         psa_value = case_raw.get("psa_csv")
         psa_csv = _resolve_manifest_path(base_dir, psa_value) if psa_value else None
+        input_psa_value = case_raw.get("input_psa_csv")
+        input_psa_csv = (
+            _resolve_manifest_path(base_dir, input_psa_value) if input_psa_value else None
+        )
         profile_value = case_raw.get("profile_csv")
         profile_csv = _resolve_manifest_path(base_dir, profile_value) if profile_value else None
+        mobilized_value = case_raw.get("mobilized_strength_csv")
+        mobilized_strength_csv = (
+            _resolve_manifest_path(base_dir, mobilized_value) if mobilized_value else None
+        )
         hysteresis_value = case_raw.get("hysteresis_csv")
         hysteresis_csv = (
             _resolve_manifest_path(base_dir, hysteresis_value) if hysteresis_value else None
@@ -1397,9 +2077,13 @@ def compare_deepsoil_manifest(
         result = compare_deepsoil_run(
             run_dir,
             surface_csv=surface_csv,
+            input_motion_csv=input_motion_csv,
             psa_csv=psa_csv,
+            input_psa_csv=input_psa_csv,
             profile_csv=profile_csv,
+            mobilized_strength_csv=mobilized_strength_csv,
             hysteresis_csv=hysteresis_csv,
+            deepsoil_excel=deepsoil_excel,
             hysteresis_layer=hysteresis_layer,
             out_dir=None,
             surface_dt_override=surface_dt_override,
@@ -1413,15 +2097,25 @@ def compare_deepsoil_manifest(
             {
                 "name": name,
                 "run_dir": str(run_dir),
-                "surface_csv": str(surface_csv),
+                "deepsoil_excel": str(deepsoil_excel) if deepsoil_excel is not None else "",
+                "surface_csv": str(surface_csv) if surface_csv is not None else "",
+                "input_motion_csv": str(input_motion_csv) if input_motion_csv is not None else "",
                 "psa_csv": str(psa_csv) if psa_csv is not None else "",
+                "input_psa_csv": str(input_psa_csv) if input_psa_csv is not None else "",
                 "profile_csv": str(profile_csv) if profile_csv is not None else "",
+                "mobilized_strength_csv": (
+                    str(mobilized_strength_csv) if mobilized_strength_csv is not None else ""
+                ),
                 "hysteresis_csv": str(hysteresis_csv) if hysteresis_csv is not None else "",
                 "metrics": {
                     "pga_pct_diff": result.pga_pct_diff,
                     "surface_corrcoef": result.surface_corrcoef,
                     "surface_nrmse": result.surface_nrmse,
                     "psa_nrmse": result.psa_nrmse,
+                    "input_history_nrmse": result.input_history_nrmse,
+                    "input_psa_nrmse": result.input_psa_nrmse,
+                    "applied_input_history_nrmse": result.applied_input_history_nrmse,
+                    "applied_input_psa_nrmse": result.applied_input_psa_nrmse,
                     "profile": asdict(result.profile) if result.profile is not None else {},
                     "hysteresis": (
                         asdict(result.hysteresis) if result.hysteresis is not None else {}

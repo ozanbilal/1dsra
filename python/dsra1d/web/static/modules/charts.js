@@ -1,8 +1,8 @@
 /**
- * StrataWave v2 — SVG Chart Components
+ * GeoWave v2 — SVG Chart Components
  *
  * ChartCard          — single series line chart
- * MultiSeriesChart   — multi-series overlay with log-x support
+ * MultiSeriesChart   — multi-series overlay with log axes support
  * DepthProfileChart  — horizontal depth-oriented profile
  */
 import { html, useState, useCallback, useRef } from "./setup.js";
@@ -41,14 +41,19 @@ function isMajorLogTick(t) {
 
 function buildGeometry(x, y, w, h, pad, opts = {}) {
   const logX = opts.logX || false;
+  const logY = opts.logY || false;
   const xArr = Array.isArray(x) ? x : [];
   const yArr = Array.isArray(y) ? y : [];
   if (xArr.length < 2 || yArr.length < 2) return null;
 
-  const xMin = opts.xMin != null ? opts.xMin : Math.min(...xArr);
-  const xMax = opts.xMax != null ? opts.xMax : Math.max(...xArr);
-  const yMin = opts.yMin != null ? opts.yMin : Math.min(...yArr);
-  const yMax = opts.yMax != null ? opts.yMax : Math.max(...yArr);
+  const filteredX = logX ? xArr.filter(v => Number.isFinite(v) && v > 0) : xArr.filter(Number.isFinite);
+  const filteredY = logY ? yArr.filter(v => Number.isFinite(v) && v > 0) : yArr.filter(Number.isFinite);
+  if (filteredX.length < 2 || filteredY.length < 2) return null;
+
+  const xMin = opts.xMin != null ? opts.xMin : Math.min(...filteredX);
+  const xMax = opts.xMax != null ? opts.xMax : Math.max(...filteredX);
+  const yMin = opts.yMin != null ? opts.yMin : Math.min(...filteredY);
+  const yMax = opts.yMax != null ? opts.yMax : Math.max(...filteredY);
 
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
@@ -63,21 +68,42 @@ function buildGeometry(x, y, w, h, pad, opts = {}) {
     return pad.left + ((v - xMin) / (xMax - xMin || 1)) * plotW;
   }
 
+  function invertX(px) {
+    const frac = (px - pad.left) / (plotW || 1);
+    const clamped = Math.min(1, Math.max(0, frac));
+    if (logX) {
+      const lMin = Math.log10(Math.max(xMin, 1e-10));
+      const lMax = Math.log10(Math.max(xMax, 1e-9));
+      return Math.pow(10, lMin + clamped * (lMax - lMin));
+    }
+    return xMin + clamped * (xMax - xMin);
+  }
+
   function scaleY(v) {
+    if (logY) {
+      const lMin = Math.log10(Math.max(yMin, 1e-12));
+      const lMax = Math.log10(Math.max(yMax, 1e-11));
+      const lv = Math.log10(Math.max(v, 1e-12));
+      return pad.top + plotH - ((lv - lMin) / (lMax - lMin || 1)) * plotH;
+    }
     return pad.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
   }
 
-  const points = xArr.map((xi, i) => `${scaleX(xi)},${scaleY(yArr[i])}`).join(" ");
+  const points = xArr
+    .map((xi, i) => ({ x: xi, y: yArr[i] }))
+    .filter(({ x, y }) => Number.isFinite(x) && Number.isFinite(y) && (!logX || x > 0) && (!logY || y > 0))
+    .map(({ x, y }) => `${scaleX(x)},${scaleY(y)}`)
+    .join(" ");
 
   const xTicks = logX ? logTicks(xMin, xMax) : linearTicks(xMin, xMax, 5);
-  const yTicks = linearTicks(yMin, yMax, 5);
+  const yTicks = logY ? logTicks(yMin, yMax) : linearTicks(yMin, yMax, 5);
 
-  return { points, scaleX, scaleY, xTicks, yTicks, xMin, xMax, yMin, yMax, plotW, plotH, pad };
+  return { points, scaleX, scaleY, invertX, xTicks, yTicks, xMin, xMax, yMin, yMax, plotW, plotH, pad };
 }
 
 // ── Axis renderer ────────────────────────────────────────
 
-function Axes({ geo, w, h, xLabel, yLabel, logX }) {
+function Axes({ geo, w, h, xLabel, yLabel, logX, logY }) {
   if (!geo) return null;
   const { scaleX, scaleY, xTicks, yTicks, pad, plotH } = geo;
 
@@ -114,15 +140,18 @@ function Axes({ geo, w, h, xLabel, yLabel, logX }) {
       ${yTicks.map(t => {
         const ty = scaleY(t);
         if (ty < pad.top || ty > pad.top + plotH) return null;
+        const isMajor = logY ? isMajorLogTick(t) : true;
         return html`
           <g key=${"yt" + t}>
             <line x1=${pad.left - 4} y1=${ty} x2=${pad.left} y2=${ty}
               stroke="var(--ink-40)" stroke-width="1" />
             <line x1=${pad.left} y1=${ty} x2=${w - pad.right} y2=${ty}
               stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
-            <text x=${pad.left - 6} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="9">
-              ${fmt(t, 3)}
-            </text>
+            ${isMajor ? html`
+              <text x=${pad.left - 6} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="9">
+                ${logY ? t.toExponential(0) : fmt(t, 3)}
+              </text>
+            ` : null}
           </g>
         `;
       })}
@@ -153,24 +182,35 @@ function nearestIndex(arr, target) {
   return lo;
 }
 
-function svgMouseX(e, svgEl, w) {
-  if (!svgEl) return null;
-  const rect = svgEl.getBoundingClientRect();
-  return (e.clientX - rect.left) / rect.width * w;
+function svgMouseX(e) {
+  const svgEl = e.currentTarget?.ownerSVGElement || e.currentTarget;
+  if (!svgEl || typeof svgEl.createSVGPoint !== "function") return null;
+  const ctm = svgEl.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svgEl.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  return pt.matrixTransform(ctm.inverse()).x;
 }
 
-function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, logX }) {
+function formatHoverNumber(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  const abs = Math.abs(numeric);
+  if ((abs > 0 && abs < 1e-3) || abs >= 1e4) return numeric.toExponential(3);
+  return fmt(numeric, abs >= 100 ? 2 : 4);
+}
+
+function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, invertX, xLabel }) {
   const [hover, setHover] = useState(null);
 
   const onMove = useCallback((e) => {
-    const svg = e.currentTarget;
-    const rect = svg.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) / rect.width * w;
+    const mx = svgMouseX(e);
+    if (mx == null) { setHover(null); return; }
     if (mx < pad.left || mx > pad.left + plotW) { setHover(null); return; }
-    // Inverse scaleX
-    const frac = (mx - pad.left) / plotW;
-    setHover({ mx, frac });
-  }, [w, pad, plotW]);
+    const xValue = typeof invertX === "function" ? invertX(mx) : null;
+    setHover({ mx, xValue });
+  }, [invertX, pad, plotW]);
 
   const onLeave = useCallback(() => setHover(null), []);
 
@@ -181,12 +221,19 @@ function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, log
 
   // Find nearest values for each series
   const items = seriesData.map(s => {
-    const idx = nearestIndex(s.xSorted || s.x, s.xAtFrac ? s.xAtFrac(hover.frac) : (s.x[0] + hover.frac * (s.x[s.x.length - 1] - s.x[0])));
-    return { label: s.label, color: s.color, x: s.x[idx], y: s.y[idx], sx: scaleX(s.x[idx]), sy: scaleY(s.y[idx]) };
-  }).filter(it => isFinite(it.x) && isFinite(it.y));
+    const xVals = Array.isArray(s.x) ? s.x : [];
+    const yVals = Array.isArray(s.y) ? s.y : [];
+    if (!xVals.length || !yVals.length || hover.xValue == null) return null;
+    const idx = nearestIndex(xVals, hover.xValue);
+    return { label: s.label, color: s.color, x: xVals[idx], y: yVals[idx], sx: scaleX(xVals[idx]), sy: scaleY(yVals[idx]) };
+  }).filter(it => it && isFinite(it.x) && isFinite(it.y));
 
   const cx = items.length > 0 ? items[0].sx : hover.mx;
-  const tooltipX = cx + 8 > w - 90 ? cx - 90 : cx + 8;
+  const hoverXValue = items.length > 0 ? items[0].x : hover.xValue;
+  const xLine = `${xLabel || "X"}: ${formatHoverNumber(hoverXValue)}`;
+  const tooltipWidth = 132;
+  const tooltipX = cx + 8 > w - tooltipWidth - 6 ? cx - tooltipWidth - 8 : cx + 8;
+  const tooltipHeight = 16 + items.length * 12;
 
   return html`
     <g>
@@ -198,11 +245,14 @@ function HoverOverlay({ pad, plotW, plotH, w, h, seriesData, scaleX, scaleY, log
         <circle key=${i} cx=${it.sx} cy=${it.sy} r="3" fill=${it.color} stroke="white" stroke-width="1" />
       `)}
       <g transform="translate(${tooltipX}, ${pad.top + 4})">
-        <rect x="0" y="0" width="82" height=${12 + items.length * 12} rx="3"
+        <rect x="0" y="0" width=${tooltipWidth} height=${tooltipHeight} rx="3"
           fill="var(--card, #fff)" stroke="var(--ink-10)" stroke-width="0.5" opacity="0.95" />
+        <text x="4" y="11" fill="var(--ink-70)" font-size="8" font-weight="600">
+          ${xLine}
+        </text>
         ${items.map((it, i) => html`
-          <text key=${i} x="4" y=${12 + i * 12} fill=${it.color} font-size="8" font-weight="600">
-            ${it.label ? it.label.slice(0, 8) + ": " : ""}${fmt(it.y, 4)}
+          <text key=${i} x="4" y=${23 + i * 12} fill=${it.color} font-size="8" font-weight="600">
+            ${it.label ? it.label.slice(0, 10) + ": " : ""}${formatHoverNumber(it.y)}
           </text>
         `)}
       </g>
@@ -227,7 +277,8 @@ function downloadSvg(svgEl, filename) {
 
 function ExportButton({ svgRef, title }) {
   return html`
-    <button className="chart-export-btn" title="Download SVG"
+    <button type="button" className="chart-export-btn" title="Download SVG"
+      aria-label=${`Download ${title || "chart"} as SVG`}
       onClick=${() => downloadSvg(svgRef.current, (title || "chart").replace(/\s+/g, "_") + ".svg")}
       style=${{ position: "absolute", top: "4px", right: "4px", background: "var(--surface, #fff)", border: "1px solid var(--ink-10)", borderRadius: "3px", padding: "1px 5px", fontSize: "9px", cursor: "pointer", opacity: 0.5, color: "var(--ink-60)" }}>
       SVG
@@ -261,8 +312,8 @@ function VerticalLines({ lines, scaleX, pad, plotH }) {
   });
 }
 
-export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, w = 480, h = 240, vLines }) {
-  const geo = buildGeometry(x, y, w, h, PAD, { logX });
+export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 840, h = 240, vLines }) {
+  const geo = buildGeometry(x, y, w, h, PAD, { logX, logY, xMin, xMax, yMin, yMax });
   const svgRef = useRef(null);
   if (!geo) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
@@ -273,18 +324,18 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
       <${ExportButton} svgRef=${svgRef} title=${title} />
       <svg ref=${svgRef} viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
-        <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
+        <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} logY=${logY} />
         <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
         <${VerticalLines} lines=${vLines} scaleX=${geo.scaleX} pad=${PAD} plotH=${geo.plotH} />
         <${HoverOverlay} pad=${PAD} plotW=${geo.plotW} plotH=${geo.plotH}
           w=${w} h=${h} seriesData=${seriesData}
-          scaleX=${geo.scaleX} scaleY=${geo.scaleY} logX=${logX} />
+          scaleX=${geo.scaleX} scaleY=${geo.scaleY} invertX=${geo.invertX} xLabel=${xLabel} />
       </svg>
     </div>
   `;
 }
 
-export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, w = 480, h = 260, vLines }) {
+export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 960, h = 260, vLines }) {
   const svgRef = useRef(null);
   if (!series || !series.length) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
@@ -292,15 +343,30 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
   let gxMin = Infinity, gxMax = -Infinity, gyMin = Infinity, gyMax = -Infinity;
   for (const s of series) {
     if (!s.x || !s.y || s.x.length < 2) continue;
-    for (const v of s.x) { if (v < gxMin) gxMin = v; if (v > gxMax) gxMax = v; }
-    for (const v of s.y) { if (v < gyMin) gyMin = v; if (v > gyMax) gyMax = v; }
+    for (const v of s.x) {
+      if (!Number.isFinite(v) || (logX && v <= 0)) continue;
+      if (v < gxMin) gxMin = v;
+      if (v > gxMax) gxMax = v;
+    }
+    for (const v of s.y) {
+      if (!Number.isFinite(v) || (logY && v <= 0)) continue;
+      if (v < gyMin) gyMin = v;
+      if (v > gyMax) gyMax = v;
+    }
   }
   if (!isFinite(gxMin)) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   const padLegend = { ...PAD, bottom: PAD.bottom + series.length * 14 };
   const totalH = h + series.length * 14;
 
-  const geos = series.map(s => buildGeometry(s.x, s.y, w, totalH, padLegend, { logX, xMin: gxMin, xMax: gxMax, yMin: gyMin, yMax: gyMax }));
+  const geos = series.map(s => buildGeometry(s.x, s.y, w, totalH, padLegend, {
+    logX,
+    logY,
+    xMin: xMin != null ? xMin : gxMin,
+    xMax: xMax != null ? xMax : gxMax,
+    yMin: yMin != null ? yMin : gyMin,
+    yMax: yMax != null ? yMax : gyMax,
+  }));
 
   const seriesData = series.map((s, i) => ({
     x: s.x, y: s.y, label: s.label || `Series ${i + 1}`,
@@ -312,7 +378,7 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
       <h4>${title}${subtitle ? html` <small className="muted">${subtitle}</small>` : null}</h4>
       <${ExportButton} svgRef=${svgRef} title=${title} />
       <svg ref=${svgRef} viewBox="0 0 ${w} ${totalH}" width="100%" preserveAspectRatio="xMidYMid meet">
-        <${Axes} geo=${geos[0]} w=${w} h=${totalH} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} />
+        <${Axes} geo=${geos[0]} w=${w} h=${totalH} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} logY=${logY} />
         ${geos.map((geo, i) => geo ? html`
           <polyline key=${i} points=${geo.points} fill="none"
             stroke=${series[i].color || COLORS[i % COLORS.length]} stroke-width="1.5" />
@@ -320,7 +386,7 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
         <${VerticalLines} lines=${vLines} scaleX=${geos[0]?.scaleX} pad=${padLegend} plotH=${geos[0]?.plotH || 0} />
         <${HoverOverlay} pad=${padLegend} plotW=${geos[0]?.plotW || 0} plotH=${geos[0]?.plotH || 0}
           w=${w} h=${totalH} seriesData=${seriesData}
-          scaleX=${geos[0]?.scaleX} scaleY=${geos[0]?.scaleY} logX=${logX} />
+          scaleX=${geos[0]?.scaleX} scaleY=${geos[0]?.scaleY} invertX=${geos[0]?.invertX} xLabel=${xLabel} />
         <!-- Legend -->
         ${series.map((s, i) => html`
           <g key=${"leg" + i} transform="translate(${PAD.left + 10}, ${totalH - series.length * 14 + i * 14})">
@@ -340,69 +406,91 @@ const LAYER_COLORS = ["#E74C3C","#2980B9","#27AE60","#F1C40F","#E67E22","#9B59B6
 /**
  * DEEPSOIL-style Soil Profile Plot — stratigraphy ribbon + multiple depth columns
  */
-export function SoilProfilePlot({ layers, w = 900, h = 400 }) {
-  if (!layers || !layers.length) return html`<div className="chart-card"><h4>Soil Profile</h4><p className="muted">No layers</p></div>`;
+export function SoilProfilePlot({ layers, diagnostics = null, w = 1320, h = 440 }) {
+  if (!layers || !layers.length) {
+    return html`<div className="chart-card"><h4>Soil Profile</h4><p className="muted">No layers</p></div>`;
+  }
 
-  const pad = { top: 20, right: 10, bottom: 40, left: 50 };
-  const totalDepth = layers.reduce((s, l) => s + (l.thickness_m || l.thickness || 0), 0);
-  if (totalDepth <= 0) return null;
-
-  const plotH = h - pad.top - pad.bottom;
-  const sy = (d) => pad.top + (d / totalDepth) * plotH;
-
-  // Build step data for each column
+  const pad = { top: 22, right: 18, bottom: 44, left: 54 };
+  const sourceRows = (diagnostics && diagnostics.length ? diagnostics : layers) || [];
   const stepData = [];
   let depth = 0;
-  for (const l of layers) {
-    const t = l.thickness_m || l.thickness || 0;
-    const mp = l.material_params || {};
-    const vs = l.vs_m_s || l.vs || 0;
-    const gmax = mp.gmax || 0;
-    const fmax = vs > 0 && t > 0 ? vs / (4 * t) : 0;
-    const dmin = (mp.damping_min || 0) * 100;
-    const tau = gmax * (mp.gamma_ref || 0.01); // implied shear strength approx
 
-    stepData.push({ d0: depth, d1: depth + t, vs, fmax, dmin, tau, name: l.name || "", material: l.material || "mkz" });
+  for (let i = 0; i < sourceRows.length; i++) {
+    const row = sourceRows[i] || {};
+    const layer = layers[i] || {};
+    const t = row.thickness_m || row.thickness || layer.thickness_m || layer.thickness || 0;
+    const vs = row.vs_m_s || row.vs || layer.vs_m_s || layer.vs || 0;
+    const maxFreq = row.max_frequency_hz ?? (vs > 0 && t > 0 ? vs / (4 * t) : 0);
+    const dSmallPct = row.small_strain_damping_ratio != null
+      ? row.small_strain_damping_ratio * 100
+      : ((layer.material_params?.damping_min || 0) * 100);
+    const impliedStrength = row.implied_strength_kpa ?? 0;
+    const normalizedStrength = row.normalized_implied_strength ?? 0;
+    const impliedPhi = row.implied_friction_angle_deg ?? 0;
+    stepData.push({
+      d0: depth,
+      d1: depth + t,
+      name: row.name || layer.name || "",
+      vs,
+      max_frequency_hz: maxFreq,
+      small_strain_damping_pct: dSmallPct,
+      implied_strength_kpa: impliedStrength,
+      normalized_implied_strength: normalizedStrength,
+      implied_friction_angle_deg: impliedPhi,
+    });
     depth += t;
   }
 
-  // Columns config
+  const totalDepth = depth;
+  if (totalDepth <= 0) return null;
+  const plotH = h - pad.top - pad.bottom;
+  const sy = (d) => pad.top + (d / totalDepth) * plotH;
+
   const columns = [
-    { key: "vs", label: "Vs (m/s)", unit: "" },
-    { key: "fmax", label: "Max Freq (Hz)", unit: "" },
-    { key: "dmin", label: "Damping (%)", unit: "" },
-    { key: "tau", label: "Imp. Strength (kPa)", unit: "" },
+    { key: "vs", label: "Vs (m/s)" },
+    { key: "max_frequency_hz", label: "Max Freq (Hz)" },
+    { key: "small_strain_damping_pct", label: "Small-Strain Damping (%)" },
+    { key: "implied_strength_kpa", label: "Implied Strength (kPa)" },
+    { key: "normalized_implied_strength", label: "Normalized Strength" },
+    { key: "implied_friction_angle_deg", label: "Implied Friction Angle (deg)" },
   ];
 
-  const stratW = 100;
-  const colW = (w - pad.left - pad.right - stratW) / columns.length;
+  const stratW = 170;
+  const colGap = 22;
+  const usableWidth = w - pad.left - pad.right - stratW - colGap * columns.length;
+  const colW = usableWidth / columns.length;
 
   function StepColumn({ colIdx, dataKey, label }) {
-    const vals = stepData.map(s => s[dataKey]);
+    const vals = stepData.map((s) => Number(s[dataKey]) || 0);
     const maxVal = Math.max(...vals, 0.001);
-    const x0 = pad.left + stratW + colIdx * colW;
+    const x0 = pad.left + stratW + colGap + colIdx * (colW + colGap);
+    const innerLeft = x0 + 10;
+    const innerWidth = Math.max(colW - 20, 8);
 
     return html`
       <g>
-        <!-- Column header -->
-        <text x=${x0 + colW / 2} y=${pad.top - 6} text-anchor="middle" fill="var(--ink-60)" font-size="8" font-weight="600">${label}</text>
-        <!-- Axis line -->
-        <line x1=${x0 + 4} y1=${pad.top} x2=${x0 + 4} y2=${pad.top + plotH} stroke="var(--ink-10)" />
-        <!-- Step profile -->
+        <text x=${x0 + colW / 2} y=${pad.top - 8} text-anchor="middle" fill="var(--ink-60)" font-size="8.5" font-weight="600">${label}</text>
+        <rect x=${x0} y=${pad.top} width=${colW} height=${plotH}
+          fill="rgba(41,128,185,0.025)" stroke="rgba(41,128,185,0.12)" stroke-width="0.6" rx="8" />
+        <line x1=${innerLeft} y1=${pad.top + 2} x2=${innerLeft} y2=${pad.top + plotH - 2} stroke="var(--ink-10)" />
         ${stepData.map((s, i) => {
-          const barW = (s[dataKey] / maxVal) * (colW - 12);
+          const value = Number(s[dataKey]) || 0;
+          const barW = (value / maxVal) * innerWidth;
+          const x1 = innerLeft + Math.max(barW, 0);
+          const textX = Math.min(x0 + colW - 8, x1 + 8);
           return html`
-            <g key=${i}>
-              <rect x=${x0 + 6} y=${sy(s.d0)} width=${Math.max(barW, 0)} height=${sy(s.d1) - sy(s.d0)}
+            <g key=${`${dataKey}-${i}`}>
+              <rect x=${innerLeft} y=${sy(s.d0)} width=${Math.max(barW, 0)} height=${sy(s.d1) - sy(s.d0)}
                 fill="#2980B9" fill-opacity="0.15" stroke="#2980B9" stroke-width="0.5" />
-              <line x1=${x0 + 6} y1=${sy(s.d0)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d0)}
-                stroke="#2980B9" stroke-width="1.5" />
-              <line x1=${x0 + 6} y1=${sy(s.d1)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d1)}
-                stroke="#2980B9" stroke-width="1.5" />
-              <line x1=${x0 + 6 + Math.max(barW, 0)} y1=${sy(s.d0)} x2=${x0 + 6 + Math.max(barW, 0)} y2=${sy(s.d1)}
-                stroke="#2980B9" stroke-width="1.5" />
-              <text x=${x0 + 10 + Math.max(barW, 0)} y=${(sy(s.d0) + sy(s.d1)) / 2 + 3}
-                fill="var(--ink-60)" font-size="8">${fmt(s[dataKey], 1)}</text>
+              <line x1=${innerLeft} y1=${sy(s.d0)} x2=${x1} y2=${sy(s.d0)}
+                stroke="#2980B9" stroke-width="1.4" />
+              <line x1=${innerLeft} y1=${sy(s.d1)} x2=${x1} y2=${sy(s.d1)}
+                stroke="#2980B9" stroke-width="1.4" />
+              <line x1=${x1} y1=${sy(s.d0)} x2=${x1} y2=${sy(s.d1)}
+                stroke="#2980B9" stroke-width="1.4" />
+              <text x=${textX} y=${(sy(s.d0) + sy(s.d1)) / 2 + 3}
+                fill="var(--ink-60)" font-size="8" text-anchor=${textX >= x0 + colW - 8 ? "end" : "start"}>${fmt(value, 1)}</text>
             </g>
           `;
         })}
@@ -414,34 +502,31 @@ export function SoilProfilePlot({ layers, w = 900, h = 400 }) {
     <div className="chart-card">
       <h4>Soil Profile Definition</h4>
       <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
-        <!-- Depth axis -->
         <text x=${14} y=${pad.top + plotH / 2} text-anchor="middle" fill="var(--ink-70)" font-size="10" font-weight="600"
           transform="rotate(-90, 14, ${pad.top + plotH / 2})">Depth (m)</text>
-        ${[0, 0.25, 0.5, 0.75, 1.0].map(frac => {
+        ${[0, 0.25, 0.5, 0.75, 1.0].map((frac) => {
           const d = frac * totalDepth;
           const yp = sy(d);
           return html`
-            <g key=${"dtick" + frac}>
+            <g key=${`dtick-${frac}`}>
               <line x1=${pad.left - 4} y1=${yp} x2=${pad.left} y2=${yp} stroke="var(--ink-40)" />
               <text x=${pad.left - 6} y=${yp + 3} text-anchor="end" fill="var(--ink-60)" font-size="8">${fmt(d, 1)}</text>
             </g>
           `;
         })}
 
-        <!-- Stratigraphy column -->
-        <text x=${pad.left + stratW / 2} y=${pad.top - 6} text-anchor="middle" fill="var(--ink-60)" font-size="8" font-weight="600">Layers</text>
+        <text x=${pad.left + stratW / 2} y=${pad.top - 8} text-anchor="middle" fill="var(--ink-60)" font-size="8.5" font-weight="600">Layers</text>
         ${stepData.map((s, i) => html`
-          <g key=${"strat" + i}>
-            <rect x=${pad.left} y=${sy(s.d0)} width=${stratW - 10} height=${sy(s.d1) - sy(s.d0)}
+          <g key=${`strat-${i}`}>
+            <rect x=${pad.left} y=${sy(s.d0)} width=${stratW - 14} height=${sy(s.d1) - sy(s.d0)}
               fill=${LAYER_COLORS[i % LAYER_COLORS.length]} stroke="white" stroke-width="1" rx="2" />
-            <text x=${pad.left + (stratW - 10) / 2} y=${(sy(s.d0) + sy(s.d1)) / 2 + 4}
+            <text x=${pad.left + (stratW - 14) / 2} y=${(sy(s.d0) + sy(s.d1)) / 2 + 4}
               text-anchor="middle" fill="white" font-size="9" font-weight="600">
               ${s.name || `Layer ${i + 1}`}
             </text>
           </g>
         `)}
 
-        <!-- Value columns -->
         ${columns.map((col, ci) => html`
           <${StepColumn} key=${col.key} colIdx=${ci} dataKey=${col.key} label=${col.label} />
         `)}
@@ -450,7 +535,19 @@ export function SoilProfilePlot({ layers, w = 900, h = 400 }) {
   `;
 }
 
-export function DepthProfileChart({ title, subtitle, depths, values, xLabel, yLabel, color, w = 300, h = 300 }) {
+export function DepthProfileChart({
+  title,
+  subtitle,
+  depths,
+  values,
+  xLabel,
+  yLabel,
+  color,
+  w = 300,
+  h = 300,
+  xMin = null,
+  xMax = null,
+}) {
   if (!depths || !values || depths.length < 2) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   const pad = { top: 24, right: 12, bottom: 32, left: 52 };
@@ -461,9 +558,11 @@ export function DepthProfileChart({ title, subtitle, depths, values, xLabel, yLa
   const dMax = Math.max(...depths);
   const rawVMin = Math.min(...values);
   const rawVMax = Math.max(...values);
-  // Include 0 in x range if all values are positive (depth profiles start at 0)
-  const vMin = rawVMin > 0 ? 0 : rawVMin;
-  const vMax = rawVMax === vMin ? vMin + 1 : rawVMax;
+  const autoVMin = rawVMin > 0 ? 0 : rawVMin;
+  const autoVMax = rawVMax === autoVMin ? autoVMin + 1 : rawVMax;
+  const vMin = Number.isFinite(xMin) ? xMin : autoVMin;
+  const vMaxBase = Number.isFinite(xMax) ? xMax : autoVMax;
+  const vMax = vMaxBase === vMin ? vMin + 1 : vMaxBase;
 
   function sx(v) { return pad.left + ((v - vMin) / (vMax - vMin)) * plotW; }
   function sy(d) { return pad.top + ((d - dMin) / (dMax - dMin || 1)) * plotH; }

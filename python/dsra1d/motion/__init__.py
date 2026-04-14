@@ -4,14 +4,22 @@ from dsra1d.motion.io import (
     load_motion,
     load_motion_series,
 )
-from dsra1d.motion.processing import apply_baseline_correction, pga, preprocess_motion
+from dsra1d.motion.excitation import effective_input_acceleration
+from dsra1d.motion.processing import (
+    apply_baseline_correction,
+    pga,
+    preprocess_motion,
+    process_motion_components,
+)
 
 __all__ = [
     "PeerAT2ImportResult",
     "apply_baseline_correction",
+    "effective_input_acceleration",
     "import_peer_at2_to_csv",
     "load_motion",
     "load_motion_series",
     "pga",
     "preprocess_motion",
+    "process_motion_components",
 ]

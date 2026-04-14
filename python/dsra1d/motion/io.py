@@ -11,6 +11,277 @@ from dsra1d.types import Motion
 from dsra1d.units import SI_ACCEL_UNIT, accel_factor_to_si
 
 
+_NUM_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?")
+_NUMERIC_ONLY_RE = re.compile(r"^[\s+\-0-9EeDd.,;]+$")
+_DT_TEXT_RE = re.compile(r"\bDT\b\s*[:=]\s*([-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?)", re.IGNORECASE)
+_NPTS_TEXT_RE = re.compile(r"\bNPTS\b\s*[:=]\s*(\d+)", re.IGNORECASE)
+_COMPACT_NPTS_MIN = 16
+_COMPACT_DT_MIN = 1e-6
+_COMPACT_DT_MAX = 1.0
+
+
+def _normalize_decimal_commas(text: str) -> str:
+    return re.sub(r"(?<=\d),(?=\d)", ".", text)
+
+
+def _iter_numbers(text: str):
+    if not text:
+        return
+    normalized = _normalize_decimal_commas(text)
+    for match in _NUM_RE.finditer(normalized):
+        token = match.group(0).replace("D", "E").replace("d", "e")
+        try:
+            yield float(token)
+        except ValueError:
+            continue
+
+
+def _as_int_like(value) -> int | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(numeric):
+        return None
+    rounded = round(numeric)
+    if abs(numeric - rounded) > 1.0e-9:
+        return None
+    return int(rounded)
+
+
+def _is_valid_compact_dt(value) -> bool:
+    try:
+        dt = float(value)
+    except (TypeError, ValueError):
+        return False
+    return np.isfinite(dt) and _COMPACT_DT_MIN < dt <= _COMPACT_DT_MAX
+
+
+def _normalize_delimiter(delimiter: str | None) -> str | None:
+    if delimiter is None:
+        return None
+    raw = str(delimiter).strip()
+    if not raw or raw.lower() == "auto":
+        return None
+    lowered = raw.lower()
+    if lowered in {"comma", ","}:
+        return ","
+    if lowered in {"semicolon", ";"}:
+        return ";"
+    if lowered in {"tab", "\\t"}:
+        return "\t"
+    if lowered in {"space", "whitespace"}:
+        return None
+    return raw
+
+
+def detect_compact_header(
+    lines: list[str],
+    *,
+    max_meaningful: int = 3,
+    max_scan_lines: int = 16,
+) -> dict[str, object]:
+    result: dict[str, object] = {"dt": None, "npts": None, "data_start": 0, "mode": None}
+    if not lines:
+        return result
+
+    meaningful: list[tuple[int, str]] = []
+    scan_limit = min(len(lines), max_scan_lines)
+    for idx in range(scan_limit):
+        stripped = str(lines[idx] or "").strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        meaningful.append((idx, stripped))
+        if len(meaningful) >= max_meaningful:
+            break
+
+    if not meaningful:
+        return result
+
+    for idx, text in meaningful:
+        dt_match = _DT_TEXT_RE.search(text)
+        if not dt_match:
+            continue
+        token = dt_match.group(1).replace("D", "E").replace("d", "e")
+        try:
+            dt = float(token)
+        except ValueError:
+            continue
+        if not _is_valid_compact_dt(dt):
+            continue
+        npts = None
+        npts_match = _NPTS_TEXT_RE.search(text)
+        if npts_match:
+            npts = _as_int_like(npts_match.group(1))
+        return {
+            "dt": float(dt),
+            "npts": npts if isinstance(npts, int) and npts >= _COMPACT_NPTS_MIN else None,
+            "data_start": idx + 1,
+            "mode": "dt_text",
+        }
+
+    for idx, text in meaningful:
+        nums = list(_iter_numbers(text))
+        if len(nums) != 2 or not _NUMERIC_ONLY_RE.match(text):
+            continue
+        npts = _as_int_like(nums[0])
+        dt = nums[1]
+        if isinstance(npts, int) and npts >= _COMPACT_NPTS_MIN and _is_valid_compact_dt(dt):
+            return {
+                "dt": float(dt),
+                "npts": int(npts),
+                "data_start": idx + 1,
+                "mode": "compact_same_line",
+            }
+
+    if len(meaningful) >= 2:
+        for i in range(len(meaningful) - 1):
+            idx1, text1 = meaningful[i]
+            idx2, text2 = meaningful[i + 1]
+            nums1 = list(_iter_numbers(text1))
+            nums2 = list(_iter_numbers(text2))
+            if (
+                len(nums1) == 1
+                and len(nums2) == 1
+                and _NUMERIC_ONLY_RE.match(text1)
+                and _NUMERIC_ONLY_RE.match(text2)
+            ):
+                npts = _as_int_like(nums1[0])
+                dt = nums2[0]
+                if isinstance(npts, int) and npts >= _COMPACT_NPTS_MIN and _is_valid_compact_dt(dt):
+                    return {
+                        "dt": float(dt),
+                        "npts": int(npts),
+                        "data_start": idx2 + 1,
+                        "mode": "compact_split_lines",
+                    }
+
+    return result
+
+
+def _parse_numeric_stream_lines(
+    lines: list[str],
+    *,
+    dt_override: float | None = None,
+    fallback_dt: float = 1.0,
+) -> tuple[np.ndarray, float]:
+    header = detect_compact_header(lines)
+    dt = float(header.get("dt")) if header.get("dt") is not None else float(fallback_dt)
+    data_start = int(header.get("data_start") or 0)
+    if dt_override is not None:
+        dt = float(dt_override)
+
+    values: list[float] = []
+    for line in lines[data_start:]:
+        for value in _iter_numbers(line):
+            values.append(value)
+    return np.asarray(values, dtype=np.float64), float(dt)
+
+
+def _parse_single_value_per_line(
+    lines: list[str],
+    *,
+    dt_override: float | None = None,
+    fallback_dt: float = 1.0,
+) -> tuple[np.ndarray, float]:
+    header = detect_compact_header(lines)
+    data_start = int(header.get("data_start") or 0)
+    dt = float(header.get("dt")) if header.get("dt") is not None else float(fallback_dt)
+    if dt_override is not None:
+        dt = float(dt_override)
+
+    values: list[float] = []
+    for line in lines[data_start:]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        for value in _iter_numbers(stripped):
+            values.append(value)
+            break
+    return np.asarray(values, dtype=np.float64), float(dt)
+
+
+def _parse_generic_motion_columns(
+    path_obj: Path,
+    *,
+    delimiter: str | None = None,
+    skip_rows: int = 0,
+    time_col: int = 0,
+    acc_col: int = 1,
+    has_time: bool = True,
+    dt_override: float | None = None,
+    fallback_dt: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    lines = path_obj.read_text(encoding="utf-8", errors="ignore").splitlines()
+    try:
+        skip_rows = int(float(skip_rows))
+    except (TypeError, ValueError):
+        skip_rows = 0
+    skip_rows = max(skip_rows, 0)
+    if skip_rows >= len(lines):
+        skip_rows = 0
+    lines = lines[skip_rows:]
+
+    delimiter = _normalize_delimiter(delimiter)
+    if delimiter is None:
+        first_data = ""
+        for raw_line in lines:
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            first_data = stripped
+            break
+        if "," in first_data:
+            delimiter = ","
+        elif ";" in first_data:
+            delimiter = ";"
+        elif "\t" in first_data:
+            delimiter = "\t"
+        else:
+            delimiter = None
+
+    try:
+        time_col = int(float(time_col))
+    except (TypeError, ValueError):
+        time_col = 0
+    try:
+        acc_col = int(float(acc_col))
+    except (TypeError, ValueError):
+        acc_col = 1
+    time_col = max(time_col, 0)
+    acc_col = max(acc_col, 0)
+
+    time_vals: list[float] = []
+    acc_vals: list[float] = []
+    normalize_decimal = delimiter in {None, ";", "\t"}
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        normalized = _normalize_decimal_commas(stripped) if normalize_decimal else stripped
+        parts = normalized.split(delimiter) if delimiter else normalized.split()
+        try:
+            if has_time and len(parts) > max(time_col, acc_col):
+                time_vals.append(float(parts[time_col]))
+                acc_vals.append(float(parts[acc_col]))
+            elif not has_time and len(parts) > acc_col:
+                acc_vals.append(float(parts[acc_col]))
+        except (ValueError, IndexError):
+            continue
+
+    if not acc_vals:
+        raise ValueError(f"No numeric motion samples found in {path_obj.name}.")
+
+    acc = np.asarray(acc_vals, dtype=np.float64)
+    if has_time and len(time_vals) > 1:
+        time = np.asarray(time_vals, dtype=np.float64)
+        return time, acc
+
+    dt = float(dt_override) if dt_override is not None else float(fallback_dt)
+    return np.arange(acc.size, dtype=np.float64) * dt, acc
+
+
 def _load_numeric_series(path_obj: Path) -> np.ndarray:
     try:
         raw = np.loadtxt(path_obj, delimiter=",", ndmin=1)
@@ -82,12 +353,63 @@ def load_motion_series(
     *,
     dt_override: float | None = None,
     fallback_dt: float = 1.0,
+    format_hint: str = "auto",
+    delimiter: str | None = None,
+    skip_rows: int = 0,
+    time_col: int = 0,
+    acc_col: int = 1,
+    has_time: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     path_obj = Path(path)
-    raw = _load_numeric_series(path_obj)
+    format_key = str(format_hint or "auto").strip().lower()
     dt_fallback = float(fallback_dt)
     if not np.isfinite(dt_fallback) or dt_fallback <= 0.0:
         dt_fallback = 1.0
+
+    has_custom_parse = (
+        format_key != "auto"
+        or _normalize_delimiter(delimiter) is not None
+        or int(skip_rows or 0) != 0
+        or int(time_col or 0) != 0
+        or int(acc_col or 1) != 1
+        or bool(has_time) is False
+    )
+
+    if format_key == "single":
+        lines = path_obj.read_text(encoding="utf-8", errors="ignore").splitlines()
+        acc, dt = _parse_single_value_per_line(
+            lines,
+            dt_override=dt_override,
+            fallback_dt=dt_fallback,
+        )
+        return np.arange(acc.size, dtype=np.float64) * dt, acc
+
+    if format_key == "numeric_stream":
+        lines = path_obj.read_text(encoding="utf-8", errors="ignore").splitlines()
+        acc, dt = _parse_numeric_stream_lines(
+            lines,
+            dt_override=dt_override,
+            fallback_dt=dt_fallback,
+        )
+        return np.arange(acc.size, dtype=np.float64) * dt, acc
+
+    if format_key in {"time_acc", "generic"} or has_custom_parse:
+        try:
+            return _parse_generic_motion_columns(
+                path_obj,
+                delimiter=delimiter,
+                skip_rows=skip_rows,
+                time_col=time_col,
+                acc_col=acc_col,
+                has_time=has_time,
+                dt_override=dt_override,
+                fallback_dt=dt_fallback,
+            )
+        except ValueError:
+            if format_key in {"time_acc", "generic"}:
+                raise
+
+    raw = _load_numeric_series(path_obj)
     if raw.ndim == 1:
         acc = np.asarray(raw, dtype=np.float64)
         dt = float(dt_override) if dt_override is not None else dt_fallback
@@ -188,10 +510,16 @@ def import_peer_at2_to_csv(
 
 def load_motion(path: str | Path, dt: float, unit: str = "m/s2") -> Motion:
     path_obj = Path(path)
-    raw = _load_numeric_series(path_obj)
-    if raw.ndim > 1:
-        acc = raw[:, -1]
-    else:
-        acc = raw
+    time, acc = load_motion_series(path_obj, fallback_dt=float(dt))
+    dt_inferred = float(dt)
+    if time.size > 1:
+        dt_candidate = float(np.median(np.diff(np.asarray(time, dtype=np.float64))))
+        if np.isfinite(dt_candidate) and dt_candidate > 0.0:
+            dt_inferred = dt_candidate
     acc_si = acc * accel_factor_to_si(unit)
-    return Motion(dt=dt, acc=acc_si.astype(np.float64), unit=SI_ACCEL_UNIT, source=path_obj)
+    return Motion(
+        dt=dt_inferred,
+        acc=acc_si.astype(np.float64),
+        unit=SI_ACCEL_UNIT,
+        source=path_obj,
+    )

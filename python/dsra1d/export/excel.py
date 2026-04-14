@@ -1,4 +1,4 @@
-"""Multi-sheet Excel (.xlsx) export for StrataWave run results.
+"""Multi-sheet Excel (.xlsx) export for GeoWave run results.
 
 Produces a DEEPSOIL-equivalent workbook with:
   Sheet 1 - Summary: project metadata, PGA, solver info
@@ -69,7 +69,7 @@ def _write_summary_sheet(
     ws.title = "Summary"
 
     info_rows = [
-        ("Project Name", config_snapshot.get("project_name", "StrataWave Analysis")),
+        ("Project Name", config_snapshot.get("project_name", "GeoWave Analysis")),
         ("Run ID", run_meta.get("run_id", "N/A")),
         ("Solver Backend", run_meta.get("backend", "N/A")),
         ("Boundary Condition", config_snapshot.get("analysis", {}).get("boundary_condition", "N/A")),
@@ -228,7 +228,7 @@ def export_run_to_xlsx(
     output_path: Path | None = None,
     include_pro_sheets: bool = True,
 ) -> Path:
-    """Export a StrataWave run to multi-sheet Excel workbook.
+    """Export a GeoWave run to multi-sheet Excel workbook.
 
     Parameters
     ----------

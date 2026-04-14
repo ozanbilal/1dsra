@@ -116,6 +116,7 @@ class _ElementConstitutiveState:
     gamma_rev: float = 0.0
     tau_rev: float = 0.0
     has_reversal: bool = False
+    gamma_max_seen: float = 0.0
 
     def _backbone(self, gamma: float) -> float:
         return _element_backbone_stress(
@@ -150,6 +151,7 @@ class _ElementConstitutiveState:
             tau = self._backbone(gamma)
             self.gamma_prev = gamma
             self.tau_prev = tau
+            self.gamma_max_seen = max(self.gamma_max_seen, abs(gamma))
             self.initialized = True
             return tau
 
@@ -163,6 +165,7 @@ class _ElementConstitutiveState:
             self.tau_prev = tau
             self.gamma_rev = 0.0
             self.tau_rev = 0.0
+            self.gamma_max_seen = abs(gamma)
             self.initialized = True
             return tau
 
@@ -192,14 +195,20 @@ class _ElementConstitutiveState:
             )
 
             if self.mrdf_coeffs is not None:
-                # Phillips-Hashash / DeepSoil-style MRDF correction:
-                # interpolate between the local translated reference branch
-                # and the Masing branch, both anchored at the reversal point.
-                gamma_amp = abs_delta_gamma / 2.0
-                g_over_gmax = self._reduction(gamma_amp)
+                # Phillips-Hashash / DeepSoil-style MRDF correction.
+                # Keep the translated local reference branch as the anchor and
+                # evaluate the MRDF factor at the maximum strain experienced up
+                # to the current point (DEEPSOIL manual Eq. 4.6-4.7).
+                gamma_hist = max(
+                    self.gamma_max_seen,
+                    abs(self.gamma_prev),
+                    abs(gamma),
+                    abs(self.gamma_rev),
+                )
+                g_over_gmax = self._reduction(gamma_hist)
                 f_mrdf = evaluate_mrdf_factor(
                     self.mrdf_coeffs,
-                    gamma_amp,
+                    gamma_hist,
                     g_over_gmax=g_over_gmax,
                 )
                 tau_ref = self.tau_rev + (branch_sign * self._backbone(abs_delta_gamma))
@@ -209,6 +218,7 @@ class _ElementConstitutiveState:
 
         self.gamma_prev = gamma
         self.tau_prev = tau
+        self.gamma_max_seen = max(self.gamma_max_seen, abs(gamma))
         return tau
 
     def tangent_modulus(self, gamma: float) -> float:
@@ -264,15 +274,19 @@ class _ElementConstitutiveState:
         shifted = abs_delta_gamma / k
         g_t_masing = _backbone_tangent(shifted)
         if self.mrdf_coeffs is not None:
-            gamma_amp = abs_delta_gamma / 2.0
-            g_over_gmax = self._reduction(gamma_amp)
+            gamma_hist = max(
+                self.gamma_max_seen,
+                abs(gamma),
+                abs(self.gamma_rev),
+            )
+            g_over_gmax = self._reduction(gamma_hist)
             f_mrdf = evaluate_mrdf_factor(
                 self.mrdf_coeffs,
-                gamma_amp,
+                gamma_hist,
                 g_over_gmax=g_over_gmax,
             )
             g_t_ref = _backbone_tangent(abs_delta_gamma)
-            return g_t_ref + f_mrdf * (g_t_masing - g_t_ref)
+            return max(g_t_ref + f_mrdf * (g_t_masing - g_t_ref), tangent_floor)
         return g_t_masing
 
 

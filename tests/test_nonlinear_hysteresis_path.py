@@ -116,6 +116,32 @@ def test_mrdf_zero_factor_uses_local_translated_reference_branch() -> None:
     assert tau[2] == pytest.approx(expected, rel=1.0e-8, abs=1.0e-10)
 
 
+def test_mrdf_uiuc_factor_depends_on_historical_max_strain() -> None:
+    params = {
+        "gmax": 70000.0,
+        "gamma_ref": 0.0010,
+        "reload_factor": 2.0,
+        "mrdf_p1": 0.82,
+        "mrdf_p2": 0.55,
+        "mrdf_p3": 20.0,
+    }
+    low_history = np.array([0.0, 0.0020, 0.0010], dtype=np.float64)
+    high_history = np.array([0.0, 0.0040, 0.0030], dtype=np.float64)
+    tau_low = simulate_hysteretic_stress_path(
+        MaterialType.MKZ,
+        params,
+        low_history,
+        gmax_fallback=70000.0,
+    )
+    tau_high = simulate_hysteretic_stress_path(
+        MaterialType.MKZ,
+        params,
+        high_history,
+        gmax_fallback=70000.0,
+    )
+    assert abs(tau_high[-1] - tau_low[-1]) > 1.0e-6
+
+
 def test_elastic_path_reduces_to_linear_stress() -> None:
     strain = np.array([0.0, 1.0e-4, 2.0e-4, -1.0e-4, 3.0e-4], dtype=np.float64)
     tau = simulate_hysteretic_stress_path(

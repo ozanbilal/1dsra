@@ -23,6 +23,7 @@ class DeepsoilComparisonArtifacts:
     output_dir: Path
     json_path: Path
     markdown_path: Path
+    layer_parity_csv: Path | None = None
 
 
 @dataclass(slots=True)
@@ -49,10 +50,45 @@ class DeepsoilProfileComparison:
 class DeepsoilHysteresisComparison:
     layer_index: int
     point_count: int
+    sw_gamma_peak: float
+    ref_gamma_peak: float
     gamma_peak_pct_diff: float
+    sw_tau_peak_kpa: float
+    ref_tau_peak_kpa: float
     tau_peak_pct_diff: float
+    sw_loop_energy: float
+    ref_loop_energy: float
     loop_energy_pct_diff: float
     stress_path_nrmse: float
+
+
+@dataclass(slots=True)
+class DeepsoilLayerParityRow:
+    layer_index: int
+    z_mid_m: float
+    sw_gamma_max: float | None = None
+    ref_gamma_max: float | None = None
+    gamma_max_pct_diff: float | None = None
+    sw_tau_peak_kpa: float | None = None
+    ref_tau_peak_kpa: float | None = None
+    tau_peak_pct_diff: float | None = None
+    sw_secant_g_over_gmax: float | None = None
+    ref_secant_g_over_gmax: float | None = None
+    secant_g_over_gmax_pct_diff: float | None = None
+    stress_path_nrmse: float | None = None
+    loop_energy_pct_diff: float | None = None
+
+
+@dataclass(slots=True)
+class DeepsoilLayerParityComparison:
+    row_count: int
+    gamma_max_nrmse: float | None = None
+    tau_peak_kpa_nrmse: float | None = None
+    secant_g_over_gmax_nrmse: float | None = None
+    worst_gamma_layer_index: int | None = None
+    worst_tau_layer_index: int | None = None
+    worst_secant_layer_index: int | None = None
+    rows: list[DeepsoilLayerParityRow] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -100,6 +136,7 @@ class DeepsoilComparisonResult:
     warnings: list[str] = field(default_factory=list)
     profile: DeepsoilProfileComparison | None = None
     hysteresis: DeepsoilHysteresisComparison | None = None
+    layer_parity: DeepsoilLayerParityComparison | None = None
     artifacts: DeepsoilComparisonArtifacts | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -820,6 +857,10 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
     max_stress_ratio: list[float] = []
     mobilized_strength_kpa: list[float] = []
     mobilized_friction_angle_deg: list[float] = []
+    tau_peak_kpa_values: list[float] = []
+    secant_g_pa_values: list[float] = []
+    secant_g_over_gmax_values: list[float] = []
+    gmax_kpa_values: list[float] = []
     vs_values: list[float] = []
     implied_strength_kpa: list[float] = []
     normalized_implied_strength: list[float] = []
@@ -880,6 +921,8 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
 
         z_mid.append(z_mid_m)
         layer_index_values.append(float(layer_idx))
+        gmax_kpa = _estimate_gmax_kpa(float(vs), float(unit_weight))
+        gmax_kpa_values.append(gmax_kpa)
         gamma_max.append(float(gamma_val) if gamma_val is not None else float("nan"))
         ru_max.append(float(ru_i) if ru_i is not None else float("nan"))
         sigma_v_eff_min.append(float(sigma_eff_i) if sigma_eff_i is not None else float("nan"))
@@ -914,6 +957,19 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
             float(gamma_val * 100.0) if gamma_val is not None and np.isfinite(gamma_val) else float("nan")
         )
         tau_peak_kpa = response_row.get("tau_peak_kpa")
+        tau_peak_kpa_values.append(
+            float(tau_peak_kpa) if tau_peak_kpa is not None and np.isfinite(tau_peak_kpa) else float("nan")
+        )
+        secant_g_pa_values.append(
+            float(response_row.get("secant_g_pa"))
+            if np.isfinite(response_row.get("secant_g_pa", float("nan")))
+            else float("nan")
+        )
+        secant_g_over_gmax_values.append(
+            float(response_row.get("secant_g_over_gmax"))
+            if np.isfinite(response_row.get("secant_g_over_gmax", float("nan")))
+            else float("nan")
+        )
         if tau_peak_kpa is not None and np.isfinite(tau_peak_kpa) and sigma_mid_eff > 0.0:
             max_stress_ratio.append(float(tau_peak_kpa / sigma_mid_eff))
             mobilized_strength_kpa.append(float(tau_peak_kpa))
@@ -959,6 +1015,10 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
             mobilized_friction_angle_deg,
             dtype=np.float64,
         ),
+        "tau_peak_kpa": np.asarray(tau_peak_kpa_values, dtype=np.float64),
+        "secant_g_pa": np.asarray(secant_g_pa_values, dtype=np.float64),
+        "secant_g_over_gmax": np.asarray(secant_g_over_gmax_values, dtype=np.float64),
+        "gmax_kpa": np.asarray(gmax_kpa_values, dtype=np.float64),
         "vs_m_s": np.asarray(vs_values, dtype=np.float64),
         "implied_strength_kpa": np.asarray(implied_strength_kpa, dtype=np.float64),
         "normalized_implied_strength": np.asarray(
@@ -1028,6 +1088,28 @@ def _layer_metric_nrmse(
     return int(len(common)), nrmse
 
 
+def _metric_nrmse(sw_values: np.ndarray, ref_values: np.ndarray) -> float | None:
+    sw_arr = np.asarray(sw_values, dtype=np.float64)
+    ref_arr = np.asarray(ref_values, dtype=np.float64)
+    mask = np.isfinite(sw_arr) & np.isfinite(ref_arr)
+    if int(np.count_nonzero(mask)) < 1:
+        return None
+    sw_common = sw_arr[mask]
+    ref_common = ref_arr[mask]
+    diff = sw_common - ref_common
+    rmse = float(np.sqrt(np.mean(diff**2)))
+    ref_peak = float(np.max(np.abs(ref_common))) if ref_common.size > 0 else 0.0
+    return float(rmse / ref_peak) if ref_peak > 0.0 else float("nan")
+
+
+def _pct_diff(sw_value: float | None, ref_value: float | None) -> float | None:
+    if sw_value is None or ref_value is None:
+        return None
+    if not np.isfinite(sw_value) or not np.isfinite(ref_value) or ref_value == 0.0:
+        return None
+    return float(100.0 * (sw_value - ref_value) / ref_value)
+
+
 def _load_mobilized_strength_reference(path: Path) -> dict[str, np.ndarray]:
     rows = _load_header_rows(path)
     layer_idx: list[float] = []
@@ -1056,6 +1138,33 @@ def _load_mobilized_strength_reference(path: Path) -> dict[str, np.ndarray]:
         "layer_index": np.asarray(layer_idx, dtype=np.float64)[order],
         "mobilized_strength_kpa": np.asarray(shear_strength, dtype=np.float64)[order],
         "mobilized_friction_angle_deg": np.asarray(friction_angle, dtype=np.float64)[order],
+    }
+
+
+def _pick_reference_layer_midpoint_rows(
+    ref_profile: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    depth = np.asarray(ref_profile["depth_m"], dtype=np.float64)
+    max_strain_pct = np.asarray(ref_profile["max_strain_pct"], dtype=np.float64)
+    effective_stress = np.asarray(ref_profile["effective_stress_kpa"], dtype=np.float64)
+    max_stress_ratio = np.asarray(ref_profile["max_stress_ratio"], dtype=np.float64)
+    mask = np.isfinite(depth) & (
+        np.isfinite(max_strain_pct)
+        | np.isfinite(effective_stress)
+        | np.isfinite(max_stress_ratio)
+    )
+    if int(np.count_nonzero(mask)) < 1:
+        return {
+            "depth_m": np.array([], dtype=np.float64),
+            "max_strain_pct": np.array([], dtype=np.float64),
+            "effective_stress_kpa": np.array([], dtype=np.float64),
+            "max_stress_ratio": np.array([], dtype=np.float64),
+        }
+    return {
+        "depth_m": depth[mask],
+        "max_strain_pct": max_strain_pct[mask],
+        "effective_stress_kpa": effective_stress[mask],
+        "max_stress_ratio": max_stress_ratio[mask],
     }
 
 
@@ -1147,6 +1256,142 @@ def _compare_profile_metrics(
         implied_friction_angle_deg_nrmse=metric_results["implied_friction_angle_deg_nrmse"],
         mobilized_strength_nrmse=metric_results["mobilized_strength_nrmse"],
         mobilized_friction_angle_deg_nrmse=metric_results["mobilized_friction_angle_deg_nrmse"],
+    )
+
+
+def _build_layer_parity(
+    run_dir: Path,
+    profile_csv: Path,
+    *,
+    mobilized_strength_csv: Path | None = None,
+    hysteresis: DeepsoilHysteresisComparison | None = None,
+) -> DeepsoilLayerParityComparison | None:
+    sw_profile = _load_profile_from_run(run_dir)
+    ref_profile = _load_profile_reference(profile_csv)
+    ref_layer_rows = _pick_reference_layer_midpoint_rows(ref_profile)
+    ref_depths = np.asarray(ref_layer_rows["depth_m"], dtype=np.float64)
+    if ref_depths.size < 1:
+        return None
+
+    ref_mobilized = (
+        _load_mobilized_strength_reference(mobilized_strength_csv)
+        if mobilized_strength_csv is not None
+        else None
+    )
+    ref_tau_by_idx: dict[int, float] = {}
+    if ref_mobilized is not None:
+        for idx, tau in zip(
+            np.asarray(ref_mobilized["layer_index"], dtype=np.float64),
+            np.asarray(ref_mobilized["mobilized_strength_kpa"], dtype=np.float64),
+            strict=False,
+        ):
+            if np.isfinite(idx) and np.isfinite(tau):
+                ref_tau_by_idx[int(round(idx))] = float(tau)
+
+    row_count = int(
+        min(
+            np.asarray(sw_profile["layer_index"], dtype=np.float64).size,
+            ref_depths.size,
+        )
+    )
+    if row_count < 1:
+        return None
+
+    rows: list[DeepsoilLayerParityRow] = []
+    sw_gamma_values: list[float] = []
+    ref_gamma_values: list[float] = []
+    sw_tau_values: list[float] = []
+    ref_tau_values: list[float] = []
+    sw_secant_values: list[float] = []
+    ref_secant_values: list[float] = []
+
+    for i in range(row_count):
+        layer_idx = int(round(float(sw_profile["layer_index"][i])))
+        z_mid = float(sw_profile["depth_m"][i])
+        sw_gamma = float(sw_profile["gamma_max"][i]) if np.isfinite(sw_profile["gamma_max"][i]) else None
+        ref_gamma_pct = float(ref_layer_rows["max_strain_pct"][i]) if np.isfinite(ref_layer_rows["max_strain_pct"][i]) else None
+        ref_gamma = (ref_gamma_pct / 100.0) if ref_gamma_pct is not None else None
+
+        sw_tau = float(sw_profile["tau_peak_kpa"][i]) if np.isfinite(sw_profile["tau_peak_kpa"][i]) else None
+        ref_tau = ref_tau_by_idx.get(layer_idx)
+        if ref_tau is None:
+            ref_eff = float(ref_layer_rows["effective_stress_kpa"][i]) if np.isfinite(ref_layer_rows["effective_stress_kpa"][i]) else None
+            ref_ratio = float(ref_layer_rows["max_stress_ratio"][i]) if np.isfinite(ref_layer_rows["max_stress_ratio"][i]) else None
+            if ref_eff is not None and ref_ratio is not None:
+                ref_tau = float(ref_eff * ref_ratio)
+
+        sw_secant = (
+            float(sw_profile["secant_g_over_gmax"][i])
+            if np.isfinite(sw_profile["secant_g_over_gmax"][i])
+            else None
+        )
+        ref_secant = None
+        gmax_kpa = float(sw_profile["gmax_kpa"][i]) if np.isfinite(sw_profile["gmax_kpa"][i]) else None
+        if (
+            ref_tau is not None
+            and ref_gamma is not None
+            and gmax_kpa is not None
+            and ref_gamma > 0.0
+            and gmax_kpa > 0.0
+        ):
+            ref_secant = float(ref_tau / (ref_gamma * gmax_kpa))
+
+        row = DeepsoilLayerParityRow(
+            layer_index=layer_idx,
+            z_mid_m=z_mid,
+            sw_gamma_max=sw_gamma,
+            ref_gamma_max=ref_gamma,
+            gamma_max_pct_diff=_pct_diff(sw_gamma, ref_gamma),
+            sw_tau_peak_kpa=sw_tau,
+            ref_tau_peak_kpa=ref_tau,
+            tau_peak_pct_diff=_pct_diff(sw_tau, ref_tau),
+            sw_secant_g_over_gmax=sw_secant,
+            ref_secant_g_over_gmax=ref_secant,
+            secant_g_over_gmax_pct_diff=_pct_diff(sw_secant, ref_secant),
+        )
+        if hysteresis is not None and hysteresis.layer_index == layer_idx:
+            row.stress_path_nrmse = float(hysteresis.stress_path_nrmse)
+            row.loop_energy_pct_diff = float(hysteresis.loop_energy_pct_diff)
+        rows.append(row)
+
+        if sw_gamma is not None and ref_gamma is not None:
+            sw_gamma_values.append(sw_gamma)
+            ref_gamma_values.append(ref_gamma)
+        if sw_tau is not None and ref_tau is not None:
+            sw_tau_values.append(sw_tau)
+            ref_tau_values.append(ref_tau)
+        if sw_secant is not None and ref_secant is not None:
+            sw_secant_values.append(sw_secant)
+            ref_secant_values.append(ref_secant)
+
+    def _worst_layer_index(field_name: str) -> int | None:
+        candidates = [
+            (row.layer_index, abs(getattr(row, field_name)))
+            for row in rows
+            if getattr(row, field_name) is not None and np.isfinite(getattr(row, field_name))
+        ]
+        if not candidates:
+            return None
+        return int(max(candidates, key=lambda item: item[1])[0])
+
+    return DeepsoilLayerParityComparison(
+        row_count=len(rows),
+        gamma_max_nrmse=_metric_nrmse(
+            np.asarray(sw_gamma_values, dtype=np.float64),
+            np.asarray(ref_gamma_values, dtype=np.float64),
+        ),
+        tau_peak_kpa_nrmse=_metric_nrmse(
+            np.asarray(sw_tau_values, dtype=np.float64),
+            np.asarray(ref_tau_values, dtype=np.float64),
+        ),
+        secant_g_over_gmax_nrmse=_metric_nrmse(
+            np.asarray(sw_secant_values, dtype=np.float64),
+            np.asarray(ref_secant_values, dtype=np.float64),
+        ),
+        worst_gamma_layer_index=_worst_layer_index("gamma_max_pct_diff"),
+        worst_tau_layer_index=_worst_layer_index("tau_peak_pct_diff"),
+        worst_secant_layer_index=_worst_layer_index("secant_g_over_gmax_pct_diff"),
+        rows=rows,
     )
 
 
@@ -1400,8 +1645,14 @@ def _compare_hysteresis_metrics(
     return DeepsoilHysteresisComparison(
         layer_index=layer_index,
         point_count=int(sw_strain_r.size),
+        sw_gamma_peak=sw_gamma_peak,
+        ref_gamma_peak=ref_gamma_peak,
         gamma_peak_pct_diff=gamma_peak_pct_diff,
+        sw_tau_peak_kpa=sw_tau_peak,
+        ref_tau_peak_kpa=ref_tau_peak,
         tau_peak_pct_diff=tau_peak_pct_diff,
+        sw_loop_energy=sw_energy,
+        ref_loop_energy=ref_energy,
         loop_energy_pct_diff=loop_energy_pct_diff,
         stress_path_nrmse=stress_nrmse,
     )
@@ -1564,6 +1815,58 @@ def render_deepsoil_comparison_markdown(
                 "",
             ]
         )
+    layer_parity_block: list[str] = []
+    if result.layer_parity is not None:
+        layer_parity_block.extend(
+            [
+                "## Layer-by-Layer Parity",
+                f"- Layer rows compared: `{result.layer_parity.row_count}`",
+                f"- gamma_max NRMSE: `{result.layer_parity.gamma_max_nrmse}`",
+                f"- tau_peak NRMSE: `{result.layer_parity.tau_peak_kpa_nrmse}`",
+                f"- Secant G/Gmax NRMSE: `{result.layer_parity.secant_g_over_gmax_nrmse}`",
+                (
+                    f"- Worst gamma layer: `L{result.layer_parity.worst_gamma_layer_index + 1}`"
+                    if result.layer_parity.worst_gamma_layer_index is not None
+                    else "- Worst gamma layer: `None`"
+                ),
+                (
+                    f"- Worst tau layer: `L{result.layer_parity.worst_tau_layer_index + 1}`"
+                    if result.layer_parity.worst_tau_layer_index is not None
+                    else "- Worst tau layer: `None`"
+                ),
+                (
+                    f"- Worst secant layer: `L{result.layer_parity.worst_secant_layer_index + 1}`"
+                    if result.layer_parity.worst_secant_layer_index is not None
+                    else "- Worst secant layer: `None`"
+                ),
+                "",
+                "| Layer | z_mid (m) | gamma_max sw | gamma_max ref | gamma diff % | tau_peak sw (kPa) | tau_peak ref (kPa) | tau diff % | Gsec/Gmax sw | Gsec/Gmax ref | secant diff % | stress-path NRMSE | loop energy diff % |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in result.layer_parity.rows:
+            layer_parity_block.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"L{row.layer_index + 1}",
+                        f"{row.z_mid_m:.3f}",
+                        f"{row.sw_gamma_max:.6e}" if row.sw_gamma_max is not None else "",
+                        f"{row.ref_gamma_max:.6e}" if row.ref_gamma_max is not None else "",
+                        f"{row.gamma_max_pct_diff:.3f}" if row.gamma_max_pct_diff is not None else "",
+                        f"{row.sw_tau_peak_kpa:.6f}" if row.sw_tau_peak_kpa is not None else "",
+                        f"{row.ref_tau_peak_kpa:.6f}" if row.ref_tau_peak_kpa is not None else "",
+                        f"{row.tau_peak_pct_diff:.3f}" if row.tau_peak_pct_diff is not None else "",
+                        f"{row.sw_secant_g_over_gmax:.6f}" if row.sw_secant_g_over_gmax is not None else "",
+                        f"{row.ref_secant_g_over_gmax:.6f}" if row.ref_secant_g_over_gmax is not None else "",
+                        f"{row.secant_g_over_gmax_pct_diff:.3f}" if row.secant_g_over_gmax_pct_diff is not None else "",
+                        f"{row.stress_path_nrmse:.6f}" if row.stress_path_nrmse is not None else "",
+                        f"{row.loop_energy_pct_diff:.3f}" if row.loop_energy_pct_diff is not None else "",
+                    ]
+                )
+                + " |"
+            )
+        layer_parity_block.append("")
     hysteresis_block: list[str] = []
     if result.hysteresis is not None:
         hysteresis_block.extend(
@@ -1572,8 +1875,14 @@ def render_deepsoil_comparison_markdown(
                 f"- Hysteresis CSV: `{hysteresis_source}`",
                 f"- Layer index: `{result.hysteresis.layer_index}`",
                 f"- Resampled points: `{result.hysteresis.point_count}`",
+                f"- sw gamma_peak: `{result.hysteresis.sw_gamma_peak:.6e}`",
+                f"- ref gamma_peak: `{result.hysteresis.ref_gamma_peak:.6e}`",
                 f"- Stress-path NRMSE: `{result.hysteresis.stress_path_nrmse:.6f}`",
+                f"- sw loop energy: `{result.hysteresis.sw_loop_energy:.6e}`",
+                f"- ref loop energy: `{result.hysteresis.ref_loop_energy:.6e}`",
                 f"- Loop energy diff: `{result.hysteresis.loop_energy_pct_diff:.3f}` %",
+                f"- sw tau_peak: `{result.hysteresis.sw_tau_peak_kpa:.6f}` kPa",
+                f"- ref tau_peak: `{result.hysteresis.ref_tau_peak_kpa:.6f}` kPa",
                 f"- tau_peak diff: `{result.hysteresis.tau_peak_pct_diff:.3f}` %",
                 f"- gamma_peak diff: `{result.hysteresis.gamma_peak_pct_diff:.3f}` %",
                 "",
@@ -1630,12 +1939,54 @@ def render_deepsoil_comparison_markdown(
             f"- Applied input PSA NRMSE: `{result.applied_input_psa_nrmse}`",
             "",
             *profile_block,
+            *layer_parity_block,
             *hysteresis_block,
             "## Warnings",
             warnings_block,
             "",
         ]
     )
+
+
+def _write_layer_parity_csv(path: Path, layer_parity: DeepsoilLayerParityComparison) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(
+            [
+                "layer",
+                "z_mid_m",
+                "sw_gamma_max",
+                "ref_gamma_max",
+                "gamma_max_pct_diff",
+                "sw_tau_peak_kpa",
+                "ref_tau_peak_kpa",
+                "tau_peak_pct_diff",
+                "sw_secant_g_over_gmax",
+                "ref_secant_g_over_gmax",
+                "secant_g_over_gmax_pct_diff",
+                "stress_path_nrmse",
+                "loop_energy_pct_diff",
+            ]
+        )
+        for row in layer_parity.rows:
+            writer.writerow(
+                [
+                    row.layer_index + 1,
+                    row.z_mid_m,
+                    row.sw_gamma_max,
+                    row.ref_gamma_max,
+                    row.gamma_max_pct_diff,
+                    row.sw_tau_peak_kpa,
+                    row.ref_tau_peak_kpa,
+                    row.tau_peak_pct_diff,
+                    row.sw_secant_g_over_gmax,
+                    row.ref_secant_g_over_gmax,
+                    row.secant_g_over_gmax_pct_diff,
+                    row.stress_path_nrmse,
+                    row.loop_energy_pct_diff,
+                ]
+            )
 
 
 def render_deepsoil_comparison_batch_markdown(
@@ -1916,6 +2267,14 @@ def compare_deepsoil_run(
             ref_hysteresis_path,
             layer_index=hysteresis_layer,
         )
+    layer_parity_result: DeepsoilLayerParityComparison | None = None
+    if ref_profile_path is not None:
+        layer_parity_result = _build_layer_parity(
+            run_path,
+            ref_profile_path,
+            mobilized_strength_csv=ref_mobilized_path,
+            hysteresis=hysteresis_result,
+        )
     boundary_condition = cfg.boundary_condition.value if cfg is not None else ""
     motion_input_type = cfg.motion.input_type if cfg is not None else ""
     damping_mode = cfg.analysis.damping_mode if cfg is not None else ""
@@ -1980,6 +2339,7 @@ def compare_deepsoil_run(
         reference_kind=imported_bundle.case_kind if imported_bundle is not None else "",
         profile=profile_result,
         hysteresis=hysteresis_result,
+        layer_parity=layer_parity_result,
         warnings=warnings,
     )
 
@@ -1987,6 +2347,16 @@ def compare_deepsoil_run(
         output_dir.mkdir(parents=True, exist_ok=True)
         json_path = output_dir / "deepsoil_compare.json"
         markdown_path = output_dir / "deepsoil_compare.md"
+        layer_parity_csv = None
+        if result.layer_parity is not None:
+            layer_parity_csv = output_dir / "layer_parity.csv"
+            _write_layer_parity_csv(layer_parity_csv, result.layer_parity)
+        result.artifacts = DeepsoilComparisonArtifacts(
+            output_dir=output_dir,
+            json_path=json_path,
+            markdown_path=markdown_path,
+            layer_parity_csv=layer_parity_csv,
+        )
         json_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
         markdown = render_deepsoil_comparison_markdown(
             result,
@@ -2000,11 +2370,6 @@ def compare_deepsoil_run(
             deepsoil_excel=Path(deepsoil_excel) if deepsoil_excel is not None else None,
         )
         markdown_path.write_text(markdown, encoding="utf-8")
-        result.artifacts = DeepsoilComparisonArtifacts(
-            output_dir=output_dir,
-            json_path=json_path,
-            markdown_path=markdown_path,
-        )
 
     return result
 
@@ -2119,6 +2484,9 @@ def compare_deepsoil_manifest(
                     "profile": asdict(result.profile) if result.profile is not None else {},
                     "hysteresis": (
                         asdict(result.hysteresis) if result.hysteresis is not None else {}
+                    ),
+                    "layer_parity": (
+                        asdict(result.layer_parity) if result.layer_parity is not None else {}
                     ),
                 },
                 "checks": verdict["checks"],

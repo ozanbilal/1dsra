@@ -494,9 +494,16 @@ def test_compare_deepsoil_run_accepts_real_workbook_bundle(tmp_path: Path) -> No
     assert "effective_stress_kpa" in result.profile.compared_metrics
     assert "max_strain_pct" in result.profile.compared_metrics
     assert "mobilized_strength_kpa" in result.profile.compared_metrics
+    assert result.layer_parity is not None
+    assert result.layer_parity.row_count == 5
+    assert result.layer_parity.gamma_max_nrmse is not None
+    assert result.layer_parity.tau_peak_kpa_nrmse is not None
+    assert result.layer_parity.secant_g_over_gmax_nrmse is not None
     assert result.artifacts is not None
     assert result.artifacts.json_path.exists()
     assert result.artifacts.markdown_path.exists()
+    assert result.artifacts.layer_parity_csv is not None
+    assert result.artifacts.layer_parity_csv.exists()
 
 
 def test_load_profile_from_run_prefers_calibration_mean_effective_stress(

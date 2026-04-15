@@ -63,6 +63,9 @@ def test_load_literal_deepsoil_example_preserves_theta_values() -> None:
     assert first.material_params["theta3"] == pytest.approx(15.4881661891248)
     assert first.material_params["theta4"] == pytest.approx(1.0)
     assert first.material_params["theta5"] == pytest.approx(0.99)
+    assert first.material_params["reload_factor"] == pytest.approx(1.1)
+    assert first.material_params["adaptive_reload_mode_code"] == pytest.approx(1.0)
+    assert first.material_params["adaptive_reload_exponent"] == pytest.approx(0.5)
 
 
 def test_load_fitted_candidate_example_preserves_calibration() -> None:

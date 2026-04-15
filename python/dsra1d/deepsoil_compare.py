@@ -10,7 +10,7 @@ import numpy as np
 
 from dsra1d.config import MaterialType, ProjectConfig, load_project_config
 from dsra1d.deepsoil_excel import import_deepsoil_excel_bundle
-from dsra1d.materials import generate_masing_loop
+from dsra1d.materials import generate_masing_loop, gqh_backbone_stress_from_params
 from dsra1d.motion import effective_input_acceleration
 from dsra1d.motion.io import load_motion_series
 from dsra1d.post import compute_spectra
@@ -24,6 +24,8 @@ class DeepsoilComparisonArtifacts:
     json_path: Path
     markdown_path: Path
     layer_parity_csv: Path | None = None
+    backbone_diagnostic_csv: Path | None = None
+    hysteresis_envelope_csv: Path | None = None
 
 
 @dataclass(slots=True)
@@ -92,6 +94,69 @@ class DeepsoilLayerParityComparison:
 
 
 @dataclass(slots=True)
+class DeepsoilBackboneDiagnosticRow:
+    layer_index: int
+    z_mid_m: float
+    material: str
+    reload_factor: float | None = None
+    ref_gamma_max: float | None = None
+    ref_tau_peak_kpa: float | None = None
+    ref_secant_g_over_gmax: float | None = None
+    sw_backbone_tau_peak_kpa: float | None = None
+    sw_backbone_tau_pct_diff: float | None = None
+    sw_backbone_secant_g_over_gmax: float | None = None
+    sw_backbone_secant_pct_diff: float | None = None
+    sw_backbone_tangent_g_over_gmax: float | None = None
+    backbone_masing_loop_energy: float | None = None
+    backbone_masing_loop_energy_pct_diff: float | None = None
+
+
+@dataclass(slots=True)
+class DeepsoilBackboneDiagnostic:
+    row_count: int
+    tau_peak_kpa_nrmse: float | None = None
+    secant_g_over_gmax_nrmse: float | None = None
+    backbone_loop_energy_nrmse: float | None = None
+    worst_tau_layer_index: int | None = None
+    worst_secant_layer_index: int | None = None
+    rows: list[DeepsoilBackboneDiagnosticRow] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class DeepsoilReloadDiagnostic:
+    layer_index: int
+    reload_factor: float | None
+    backbone_tau_pct_diff: float | None
+    backbone_secant_pct_diff: float | None
+    backbone_masing_loop_energy_pct_diff: float | None
+    sw_loop_energy_pct_diff: float | None
+    stress_path_nrmse: float | None
+    backbone_closer_than_sw: bool | None
+    suspected_driver: str
+    rationale: str
+    recorded_envelope_tau_nrmse: float | None = None
+    backbone_envelope_tau_nrmse: float | None = None
+    recorded_envelope_secant_nrmse: float | None = None
+    backbone_envelope_secant_nrmse: float | None = None
+    backbone_envelope_tau_closer: bool | None = None
+    backbone_envelope_secant_closer: bool | None = None
+
+
+@dataclass(slots=True)
+class DeepsoilEnvelopeDiagnostic:
+    layer_index: int
+    point_count: int
+    gamma_min: float
+    gamma_max: float
+    recorded_tau_nrmse: float | None = None
+    backbone_tau_nrmse: float | None = None
+    recorded_secant_nrmse: float | None = None
+    backbone_secant_nrmse: float | None = None
+    backbone_tau_closer: bool | None = None
+    backbone_secant_closer: bool | None = None
+
+
+@dataclass(slots=True)
 class DeepsoilComparisonResult:
     run_id: str
     run_dir: Path
@@ -137,6 +202,9 @@ class DeepsoilComparisonResult:
     profile: DeepsoilProfileComparison | None = None
     hysteresis: DeepsoilHysteresisComparison | None = None
     layer_parity: DeepsoilLayerParityComparison | None = None
+    backbone_diagnostic: DeepsoilBackboneDiagnostic | None = None
+    reload_diagnostic: DeepsoilReloadDiagnostic | None = None
+    envelope_diagnostic: DeepsoilEnvelopeDiagnostic | None = None
     artifacts: DeepsoilComparisonArtifacts | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -1110,6 +1178,223 @@ def _pct_diff(sw_value: float | None, ref_value: float | None) -> float | None:
     return float(100.0 * (sw_value - ref_value) / ref_value)
 
 
+def _gqh_backbone_tangent_from_params(
+    gamma: float,
+    params: dict[str, float],
+    *,
+    gmax_fallback: float,
+) -> float | None:
+    if not np.isfinite(gamma):
+        return None
+    ag = abs(float(gamma))
+    step = max(ag * 1.0e-4, 1.0e-8)
+    tau_p = float(
+        gqh_backbone_stress_from_params(
+            np.array([ag + step], dtype=np.float64),
+            params,
+            gmax_fallback=gmax_fallback,
+        )[0]
+    )
+    tau_m = float(
+        gqh_backbone_stress_from_params(
+            np.array([max(ag - step, 0.0)], dtype=np.float64),
+            params,
+            gmax_fallback=gmax_fallback,
+        )[0]
+    )
+    return float((tau_p - tau_m) / max(2.0 * step, 1.0e-12))
+
+
+def _classify_reload_driver(
+    *,
+    backbone_tau_pct_diff: float | None,
+    backbone_secant_pct_diff: float | None,
+    backbone_loop_energy_pct_diff: float | None,
+    sw_loop_energy_pct_diff: float | None,
+    stress_path_nrmse: float | None,
+) -> tuple[str, str, bool | None]:
+    tau_abs = abs(backbone_tau_pct_diff) if backbone_tau_pct_diff is not None else None
+    sec_abs = (
+        abs(backbone_secant_pct_diff) if backbone_secant_pct_diff is not None else None
+    )
+    back_loop_abs = (
+        abs(backbone_loop_energy_pct_diff)
+        if backbone_loop_energy_pct_diff is not None
+        else None
+    )
+    sw_loop_abs = abs(sw_loop_energy_pct_diff) if sw_loop_energy_pct_diff is not None else None
+    backbone_closer = (
+        bool(back_loop_abs < sw_loop_abs)
+        if back_loop_abs is not None and sw_loop_abs is not None
+        else None
+    )
+    backbone_close = bool(
+        tau_abs is not None
+        and sec_abs is not None
+        and tau_abs <= 10.0
+        and sec_abs <= 10.0
+    )
+    backbone_loop_close = bool(back_loop_abs is not None and back_loop_abs <= 40.0)
+    sw_loop_bad = bool(sw_loop_abs is not None and sw_loop_abs >= 60.0)
+    stress_bad = bool(stress_path_nrmse is not None and stress_path_nrmse >= 0.20)
+
+    if backbone_close and backbone_loop_close and (sw_loop_bad or stress_bad):
+        return (
+            "reload_semantics",
+            "Backbone tau/secant matches reasonably, but recorded cyclic loop still departs from the reference.",
+            backbone_closer,
+        )
+    if backbone_close and backbone_closer and (sw_loop_bad or stress_bad):
+        return (
+            "reload_semantics",
+            "Classical backbone/Masing energy is closer to DEEPSOIL than the recorded solver loop, pointing at reload semantics.",
+            backbone_closer,
+        )
+    if not backbone_close and (sw_loop_bad or stress_bad):
+        return (
+            "mixed_backbone_and_reload",
+            "Backbone tau/secant already departs from DEEPSOIL and cyclic loop error remains large.",
+            backbone_closer,
+        )
+    if not backbone_close:
+        return (
+            "theta_backbone_semantics",
+            "Backbone tau/secant mismatch is already significant at the workbook strain level.",
+            backbone_closer,
+        )
+    return (
+        "inconclusive",
+        "Backbone and cyclic metrics are not separated enough to isolate a single dominant source.",
+        backbone_closer,
+    )
+
+
+def _monotonic_hysteresis_envelope(
+    strain: np.ndarray,
+    stress: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    gamma_abs = np.abs(np.asarray(strain, dtype=np.float64))
+    tau_abs = np.abs(np.asarray(stress, dtype=np.float64))
+    mask = np.isfinite(gamma_abs) & np.isfinite(tau_abs) & (gamma_abs > 0.0)
+    if int(np.count_nonzero(mask)) < 8:
+        raise ValueError("Hysteresis envelope requires at least 8 finite nonzero points.")
+    gamma_abs = gamma_abs[mask]
+    tau_abs = tau_abs[mask]
+    order = np.argsort(gamma_abs)
+    gamma_sorted = gamma_abs[order]
+    tau_sorted = tau_abs[order]
+    tau_env = np.maximum.accumulate(tau_sorted)
+    unique_gamma, unique_indices = np.unique(gamma_sorted, return_index=True)
+    return unique_gamma.astype(np.float64), tau_env[unique_indices].astype(np.float64)
+
+
+def _build_hysteresis_envelope_diagnostic(
+    run_dir: Path,
+    *,
+    layer_index: int,
+    hysteresis_csv: Path,
+) -> tuple[DeepsoilEnvelopeDiagnostic | None, list[dict[str, float]] | None]:
+    cfg = _load_run_config_snapshot(run_dir)
+    if cfg is None or not (0 <= layer_index < len(cfg.profile.layers)):
+        return None, None
+
+    sw_strain, sw_stress = _load_run_hysteresis(run_dir, layer_index=layer_index)
+    ref_strain, ref_stress = _load_reference_hysteresis(hysteresis_csv)
+    sw_gamma_env, sw_tau_env = _monotonic_hysteresis_envelope(sw_strain, sw_stress)
+    ref_gamma_env, ref_tau_env = _monotonic_hysteresis_envelope(ref_strain, ref_stress)
+
+    gamma_lo = max(float(np.min(sw_gamma_env)), float(np.min(ref_gamma_env)))
+    gamma_hi = min(float(np.max(sw_gamma_env)), float(np.max(ref_gamma_env)))
+    if not np.isfinite(gamma_lo) or not np.isfinite(gamma_hi) or gamma_hi <= gamma_lo:
+        return None, None
+
+    common_gamma = np.logspace(np.log10(gamma_lo), np.log10(gamma_hi), 48, dtype=np.float64)
+    sw_tau_common = np.interp(common_gamma, sw_gamma_env, sw_tau_env).astype(np.float64)
+    ref_tau_common = np.interp(common_gamma, ref_gamma_env, ref_tau_env).astype(np.float64)
+
+    layer_cfg = cfg.profile.layers[layer_index]
+    params = dict(layer_cfg.material_params)
+    gmax_value = float(params.get("gmax", 0.0))
+    if gmax_value <= 0.0:
+        gmax_value = _estimate_gmax_kpa(float(layer_cfg.vs_m_s), float(layer_cfg.unit_weight_kn_m3))
+    backbone_tau = gqh_backbone_stress_from_params(
+        common_gamma,
+        params,
+        gmax_fallback=gmax_value,
+    ).astype(np.float64)
+
+    denom = np.maximum(common_gamma * gmax_value, 1.0e-12)
+    ref_secant = (ref_tau_common / denom).astype(np.float64)
+    sw_secant = (sw_tau_common / denom).astype(np.float64)
+    backbone_secant = (backbone_tau / denom).astype(np.float64)
+    backbone_tangent = np.asarray(
+        [
+            _gqh_backbone_tangent_from_params(
+                float(gamma),
+                params,
+                gmax_fallback=gmax_value,
+            )
+            for gamma in common_gamma
+        ],
+        dtype=np.float64,
+    )
+    backbone_tangent_norm = np.where(
+        np.isfinite(backbone_tangent),
+        backbone_tangent / max(gmax_value, 1.0e-12),
+        np.nan,
+    ).astype(np.float64)
+
+    recorded_tau_nrmse = _metric_nrmse(sw_tau_common, ref_tau_common)
+    backbone_tau_nrmse = _metric_nrmse(backbone_tau, ref_tau_common)
+    recorded_secant_nrmse = _metric_nrmse(sw_secant, ref_secant)
+    backbone_secant_nrmse = _metric_nrmse(backbone_secant, ref_secant)
+
+    diagnostic = DeepsoilEnvelopeDiagnostic(
+        layer_index=layer_index,
+        point_count=int(common_gamma.size),
+        gamma_min=float(common_gamma[0]),
+        gamma_max=float(common_gamma[-1]),
+        recorded_tau_nrmse=recorded_tau_nrmse,
+        backbone_tau_nrmse=backbone_tau_nrmse,
+        recorded_secant_nrmse=recorded_secant_nrmse,
+        backbone_secant_nrmse=backbone_secant_nrmse,
+        backbone_tau_closer=(
+            bool(backbone_tau_nrmse < recorded_tau_nrmse)
+            if backbone_tau_nrmse is not None and recorded_tau_nrmse is not None
+            else None
+        ),
+        backbone_secant_closer=(
+            bool(backbone_secant_nrmse < recorded_secant_nrmse)
+            if backbone_secant_nrmse is not None and recorded_secant_nrmse is not None
+            else None
+        ),
+    )
+    rows = [
+        {
+            "gamma": float(gamma),
+            "ref_tau_env_kpa": float(ref_tau),
+            "sw_tau_env_kpa": float(sw_tau),
+            "backbone_tau_kpa": float(back_tau),
+            "ref_secant_g_over_gmax": float(ref_gsec),
+            "sw_secant_g_over_gmax": float(sw_gsec),
+            "backbone_secant_g_over_gmax": float(back_gsec),
+            "backbone_tangent_g_over_gmax": float(back_gtan),
+        }
+        for gamma, ref_tau, sw_tau, back_tau, ref_gsec, sw_gsec, back_gsec, back_gtan in zip(
+            common_gamma,
+            ref_tau_common,
+            sw_tau_common,
+            backbone_tau,
+            ref_secant,
+            sw_secant,
+            backbone_secant,
+            backbone_tangent_norm,
+            strict=True,
+        )
+    ]
+    return diagnostic, rows
+
+
 def _load_mobilized_strength_reference(path: Path) -> dict[str, np.ndarray]:
     rows = _load_header_rows(path)
     layer_idx: list[float] = []
@@ -1393,6 +1678,200 @@ def _build_layer_parity(
         worst_secant_layer_index=_worst_layer_index("secant_g_over_gmax_pct_diff"),
         rows=rows,
     )
+
+
+def _build_backbone_diagnostic(
+    run_dir: Path,
+    layer_parity: DeepsoilLayerParityComparison | None,
+    *,
+    hysteresis: DeepsoilHysteresisComparison | None = None,
+) -> tuple[DeepsoilBackboneDiagnostic | None, DeepsoilReloadDiagnostic | None]:
+    if layer_parity is None:
+        return None, None
+    cfg = _load_run_config_snapshot(run_dir)
+    if cfg is None:
+        return None, None
+
+    sw_profile = _load_profile_from_run(run_dir)
+    gmax_by_idx: dict[int, float] = {}
+    for idx_raw, gmax_raw in zip(
+        np.asarray(sw_profile["layer_index"], dtype=np.float64),
+        np.asarray(sw_profile["gmax_kpa"], dtype=np.float64),
+        strict=False,
+    ):
+        if np.isfinite(idx_raw) and np.isfinite(gmax_raw):
+            gmax_by_idx[int(round(idx_raw))] = float(gmax_raw)
+
+    rows: list[DeepsoilBackboneDiagnosticRow] = []
+    sw_tau_values: list[float] = []
+    ref_tau_values: list[float] = []
+    sw_secant_values: list[float] = []
+    ref_secant_values: list[float] = []
+    sw_loop_energy_values: list[float] = []
+    ref_loop_energy_values: list[float] = []
+
+    for row in layer_parity.rows:
+        if not (0 <= row.layer_index < len(cfg.profile.layers)):
+            continue
+        layer_cfg = cfg.profile.layers[row.layer_index]
+        if layer_cfg.material != MaterialType.GQH:
+            continue
+        if row.ref_gamma_max is None or row.ref_gamma_max <= 0.0:
+            continue
+
+        params = dict(layer_cfg.material_params)
+        gmax_fallback = float(gmax_by_idx.get(row.layer_index, 0.0))
+        gmax_value = float(params.get("gmax", gmax_fallback if gmax_fallback > 0.0 else 0.0))
+        if "gamma_ref" not in params and gmax_value > 0.0 and params.get("tau_max") is not None:
+            try:
+                tau_max_value = float(params["tau_max"])
+            except (TypeError, ValueError):
+                tau_max_value = 0.0
+            if tau_max_value > 0.0:
+                params["gamma_ref"] = tau_max_value / gmax_value
+
+        sw_backbone_tau = float(
+            gqh_backbone_stress_from_params(
+                np.array([row.ref_gamma_max], dtype=np.float64),
+                params,
+                gmax_fallback=gmax_fallback,
+            )[0]
+        )
+        sw_backbone_secant = None
+        if gmax_value > 0.0 and row.ref_gamma_max > 0.0:
+            sw_backbone_secant = float(sw_backbone_tau / (row.ref_gamma_max * gmax_value))
+        sw_backbone_tangent = _gqh_backbone_tangent_from_params(
+            row.ref_gamma_max,
+            params,
+            gmax_fallback=gmax_fallback,
+        )
+        sw_backbone_tangent_norm = (
+            float(sw_backbone_tangent / gmax_value)
+            if sw_backbone_tangent is not None and gmax_value > 0.0
+            else None
+        )
+
+        backbone_loop_energy = None
+        backbone_loop_energy_pct_diff = None
+        try:
+            backbone_loop = generate_masing_loop(
+                layer_cfg.material,
+                params,
+                strain_amplitude=row.ref_gamma_max,
+            )
+            backbone_loop_energy = float(backbone_loop.energy_dissipation)
+            if (
+                hysteresis is not None
+                and hysteresis.layer_index == row.layer_index
+                and np.isfinite(hysteresis.ref_loop_energy)
+                and hysteresis.ref_loop_energy > 0.0
+            ):
+                backbone_loop_energy_pct_diff = _pct_diff(
+                    backbone_loop_energy,
+                    float(hysteresis.ref_loop_energy),
+                )
+        except Exception:
+            backbone_loop_energy = None
+            backbone_loop_energy_pct_diff = None
+
+        diag_row = DeepsoilBackboneDiagnosticRow(
+            layer_index=row.layer_index,
+            z_mid_m=row.z_mid_m,
+            material=layer_cfg.material.value,
+            reload_factor=(
+                float(params["reload_factor"])
+                if params.get("reload_factor") is not None
+                else None
+            ),
+            ref_gamma_max=row.ref_gamma_max,
+            ref_tau_peak_kpa=row.ref_tau_peak_kpa,
+            ref_secant_g_over_gmax=row.ref_secant_g_over_gmax,
+            sw_backbone_tau_peak_kpa=sw_backbone_tau,
+            sw_backbone_tau_pct_diff=_pct_diff(sw_backbone_tau, row.ref_tau_peak_kpa),
+            sw_backbone_secant_g_over_gmax=sw_backbone_secant,
+            sw_backbone_secant_pct_diff=_pct_diff(sw_backbone_secant, row.ref_secant_g_over_gmax),
+            sw_backbone_tangent_g_over_gmax=sw_backbone_tangent_norm,
+            backbone_masing_loop_energy=backbone_loop_energy,
+            backbone_masing_loop_energy_pct_diff=backbone_loop_energy_pct_diff,
+        )
+        rows.append(diag_row)
+
+        if diag_row.sw_backbone_tau_peak_kpa is not None and diag_row.ref_tau_peak_kpa is not None:
+            sw_tau_values.append(diag_row.sw_backbone_tau_peak_kpa)
+            ref_tau_values.append(diag_row.ref_tau_peak_kpa)
+        if (
+            diag_row.sw_backbone_secant_g_over_gmax is not None
+            and diag_row.ref_secant_g_over_gmax is not None
+        ):
+            sw_secant_values.append(diag_row.sw_backbone_secant_g_over_gmax)
+            ref_secant_values.append(diag_row.ref_secant_g_over_gmax)
+        if (
+            diag_row.backbone_masing_loop_energy is not None
+            and hysteresis is not None
+            and hysteresis.layer_index == row.layer_index
+            and np.isfinite(hysteresis.ref_loop_energy)
+            and hysteresis.ref_loop_energy > 0.0
+        ):
+            sw_loop_energy_values.append(diag_row.backbone_masing_loop_energy)
+            ref_loop_energy_values.append(float(hysteresis.ref_loop_energy))
+
+    if not rows:
+        return None, None
+
+    def _worst_layer_index(field_name: str) -> int | None:
+        candidates = [
+            (row.layer_index, abs(getattr(row, field_name)))
+            for row in rows
+            if getattr(row, field_name) is not None and np.isfinite(getattr(row, field_name))
+        ]
+        if not candidates:
+            return None
+        return int(max(candidates, key=lambda item: item[1])[0])
+
+    backbone = DeepsoilBackboneDiagnostic(
+        row_count=len(rows),
+        tau_peak_kpa_nrmse=_metric_nrmse(
+            np.asarray(sw_tau_values, dtype=np.float64),
+            np.asarray(ref_tau_values, dtype=np.float64),
+        ),
+        secant_g_over_gmax_nrmse=_metric_nrmse(
+            np.asarray(sw_secant_values, dtype=np.float64),
+            np.asarray(ref_secant_values, dtype=np.float64),
+        ),
+        backbone_loop_energy_nrmse=_metric_nrmse(
+            np.asarray(sw_loop_energy_values, dtype=np.float64),
+            np.asarray(ref_loop_energy_values, dtype=np.float64),
+        ),
+        worst_tau_layer_index=_worst_layer_index("sw_backbone_tau_pct_diff"),
+        worst_secant_layer_index=_worst_layer_index("sw_backbone_secant_pct_diff"),
+        rows=rows,
+    )
+
+    reload_diag = None
+    if hysteresis is not None:
+        matching = next((item for item in rows if item.layer_index == hysteresis.layer_index), None)
+        if matching is not None:
+            suspected_driver, rationale, backbone_closer = _classify_reload_driver(
+                backbone_tau_pct_diff=matching.sw_backbone_tau_pct_diff,
+                backbone_secant_pct_diff=matching.sw_backbone_secant_pct_diff,
+                backbone_loop_energy_pct_diff=matching.backbone_masing_loop_energy_pct_diff,
+                sw_loop_energy_pct_diff=hysteresis.loop_energy_pct_diff,
+                stress_path_nrmse=hysteresis.stress_path_nrmse,
+            )
+            reload_diag = DeepsoilReloadDiagnostic(
+                layer_index=hysteresis.layer_index,
+                reload_factor=matching.reload_factor,
+                backbone_tau_pct_diff=matching.sw_backbone_tau_pct_diff,
+                backbone_secant_pct_diff=matching.sw_backbone_secant_pct_diff,
+                backbone_masing_loop_energy_pct_diff=matching.backbone_masing_loop_energy_pct_diff,
+                sw_loop_energy_pct_diff=hysteresis.loop_energy_pct_diff,
+                stress_path_nrmse=hysteresis.stress_path_nrmse,
+                backbone_closer_than_sw=backbone_closer,
+                suspected_driver=suspected_driver,
+                rationale=rationale,
+            )
+
+    return backbone, reload_diag
 
 
 def _load_reference_hysteresis(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -1867,6 +2346,93 @@ def render_deepsoil_comparison_markdown(
                 + " |"
             )
         layer_parity_block.append("")
+    backbone_block: list[str] = []
+    if result.backbone_diagnostic is not None:
+        backbone_block.extend(
+            [
+                "## GQ/H Backbone Diagnostic",
+                f"- Layer rows compared: `{result.backbone_diagnostic.row_count}`",
+                f"- Backbone tau_peak NRMSE: `{result.backbone_diagnostic.tau_peak_kpa_nrmse}`",
+                f"- Backbone secant G/Gmax NRMSE: `{result.backbone_diagnostic.secant_g_over_gmax_nrmse}`",
+                f"- Backbone Masing loop energy NRMSE: `{result.backbone_diagnostic.backbone_loop_energy_nrmse}`",
+                (
+                    f"- Worst backbone tau layer: `L{result.backbone_diagnostic.worst_tau_layer_index + 1}`"
+                    if result.backbone_diagnostic.worst_tau_layer_index is not None
+                    else "- Worst backbone tau layer: `None`"
+                ),
+                (
+                    f"- Worst backbone secant layer: `L{result.backbone_diagnostic.worst_secant_layer_index + 1}`"
+                    if result.backbone_diagnostic.worst_secant_layer_index is not None
+                    else "- Worst backbone secant layer: `None`"
+                ),
+                "",
+                "| Layer | z_mid (m) | reload | ref gamma | backbone tau (kPa) | ref tau (kPa) | tau diff % | backbone secant | ref secant | secant diff % | tangent/Gmax | Masing loop diff % |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in result.backbone_diagnostic.rows:
+            backbone_block.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"L{row.layer_index + 1}",
+                        f"{row.z_mid_m:.3f}",
+                        f"{row.reload_factor:.3f}" if row.reload_factor is not None else "",
+                        f"{row.ref_gamma_max:.6e}" if row.ref_gamma_max is not None else "",
+                        f"{row.sw_backbone_tau_peak_kpa:.6f}" if row.sw_backbone_tau_peak_kpa is not None else "",
+                        f"{row.ref_tau_peak_kpa:.6f}" if row.ref_tau_peak_kpa is not None else "",
+                        f"{row.sw_backbone_tau_pct_diff:.3f}" if row.sw_backbone_tau_pct_diff is not None else "",
+                        f"{row.sw_backbone_secant_g_over_gmax:.6f}" if row.sw_backbone_secant_g_over_gmax is not None else "",
+                        f"{row.ref_secant_g_over_gmax:.6f}" if row.ref_secant_g_over_gmax is not None else "",
+                        f"{row.sw_backbone_secant_pct_diff:.3f}" if row.sw_backbone_secant_pct_diff is not None else "",
+                        f"{row.sw_backbone_tangent_g_over_gmax:.6f}" if row.sw_backbone_tangent_g_over_gmax is not None else "",
+                        f"{row.backbone_masing_loop_energy_pct_diff:.3f}" if row.backbone_masing_loop_energy_pct_diff is not None else "",
+                    ]
+                )
+                + " |"
+            )
+        backbone_block.append("")
+    reload_block: list[str] = []
+    if result.reload_diagnostic is not None:
+        reload_block.extend(
+            [
+                "## Reload Semantics Diagnostic",
+                f"- Layer index: `L{result.reload_diagnostic.layer_index + 1}`",
+                f"- reload_factor: `{result.reload_diagnostic.reload_factor}`",
+                f"- Backbone tau diff %: `{result.reload_diagnostic.backbone_tau_pct_diff}`",
+                f"- Backbone secant diff %: `{result.reload_diagnostic.backbone_secant_pct_diff}`",
+                f"- Backbone Masing loop diff %: `{result.reload_diagnostic.backbone_masing_loop_energy_pct_diff}`",
+                f"- Recorded loop diff %: `{result.reload_diagnostic.sw_loop_energy_pct_diff}`",
+                f"- Stress-path NRMSE: `{result.reload_diagnostic.stress_path_nrmse}`",
+                f"- Backbone loop closer than recorded loop: `{result.reload_diagnostic.backbone_closer_than_sw}`",
+                f"- Recorded envelope tau NRMSE: `{result.reload_diagnostic.recorded_envelope_tau_nrmse}`",
+                f"- Backbone envelope tau NRMSE: `{result.reload_diagnostic.backbone_envelope_tau_nrmse}`",
+                f"- Recorded envelope secant NRMSE: `{result.reload_diagnostic.recorded_envelope_secant_nrmse}`",
+                f"- Backbone envelope secant NRMSE: `{result.reload_diagnostic.backbone_envelope_secant_nrmse}`",
+                f"- Backbone envelope tau closer: `{result.reload_diagnostic.backbone_envelope_tau_closer}`",
+                f"- Backbone envelope secant closer: `{result.reload_diagnostic.backbone_envelope_secant_closer}`",
+                f"- Suspected dominant source: `{result.reload_diagnostic.suspected_driver}`",
+                f"- Rationale: {result.reload_diagnostic.rationale}",
+                "",
+            ]
+        )
+    envelope_block: list[str] = []
+    if result.envelope_diagnostic is not None:
+        envelope_block.extend(
+            [
+                "## Hysteresis Envelope Diagnostic",
+                f"- Layer index: `L{result.envelope_diagnostic.layer_index + 1}`",
+                f"- Points compared: `{result.envelope_diagnostic.point_count}`",
+                f"- Gamma range: `{result.envelope_diagnostic.gamma_min:.6e}` to `{result.envelope_diagnostic.gamma_max:.6e}`",
+                f"- Recorded envelope tau NRMSE: `{result.envelope_diagnostic.recorded_tau_nrmse}`",
+                f"- Backbone envelope tau NRMSE: `{result.envelope_diagnostic.backbone_tau_nrmse}`",
+                f"- Recorded envelope secant NRMSE: `{result.envelope_diagnostic.recorded_secant_nrmse}`",
+                f"- Backbone envelope secant NRMSE: `{result.envelope_diagnostic.backbone_secant_nrmse}`",
+                f"- Backbone tau closer: `{result.envelope_diagnostic.backbone_tau_closer}`",
+                f"- Backbone secant closer: `{result.envelope_diagnostic.backbone_secant_closer}`",
+                "",
+            ]
+        )
     hysteresis_block: list[str] = []
     if result.hysteresis is not None:
         hysteresis_block.extend(
@@ -1940,6 +2506,9 @@ def render_deepsoil_comparison_markdown(
             "",
             *profile_block,
             *layer_parity_block,
+            *backbone_block,
+            *reload_block,
+            *envelope_block,
             *hysteresis_block,
             "## Warnings",
             warnings_block,
@@ -1987,6 +2556,74 @@ def _write_layer_parity_csv(path: Path, layer_parity: DeepsoilLayerParityCompari
                     row.loop_energy_pct_diff,
                 ]
             )
+
+
+def _write_backbone_diagnostic_csv(
+    path: Path,
+    backbone: DeepsoilBackboneDiagnostic,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(
+            [
+                "layer",
+                "z_mid_m",
+                "material",
+                "reload_factor",
+                "ref_gamma_max",
+                "ref_tau_peak_kpa",
+                "ref_secant_g_over_gmax",
+                "sw_backbone_tau_peak_kpa",
+                "sw_backbone_tau_pct_diff",
+                "sw_backbone_secant_g_over_gmax",
+                "sw_backbone_secant_pct_diff",
+                "sw_backbone_tangent_g_over_gmax",
+                "backbone_masing_loop_energy",
+                "backbone_masing_loop_energy_pct_diff",
+            ]
+        )
+        for row in backbone.rows:
+            writer.writerow(
+                [
+                    row.layer_index + 1,
+                    row.z_mid_m,
+                    row.material,
+                    row.reload_factor,
+                    row.ref_gamma_max,
+                    row.ref_tau_peak_kpa,
+                    row.ref_secant_g_over_gmax,
+                    row.sw_backbone_tau_peak_kpa,
+                    row.sw_backbone_tau_pct_diff,
+                    row.sw_backbone_secant_g_over_gmax,
+                    row.sw_backbone_secant_pct_diff,
+                    row.sw_backbone_tangent_g_over_gmax,
+                    row.backbone_masing_loop_energy,
+                    row.backbone_masing_loop_energy_pct_diff,
+                ]
+            )
+
+
+def _write_hysteresis_envelope_csv(
+    path: Path,
+    rows: list[dict[str, float]],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "gamma",
+        "ref_tau_env_kpa",
+        "sw_tau_env_kpa",
+        "backbone_tau_kpa",
+        "ref_secant_g_over_gmax",
+        "sw_secant_g_over_gmax",
+        "backbone_secant_g_over_gmax",
+        "backbone_tangent_g_over_gmax",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
 
 
 def render_deepsoil_comparison_batch_markdown(
@@ -2268,6 +2905,10 @@ def compare_deepsoil_run(
             layer_index=hysteresis_layer,
         )
     layer_parity_result: DeepsoilLayerParityComparison | None = None
+    backbone_diagnostic_result: DeepsoilBackboneDiagnostic | None = None
+    reload_diagnostic_result: DeepsoilReloadDiagnostic | None = None
+    envelope_diagnostic_result: DeepsoilEnvelopeDiagnostic | None = None
+    envelope_diagnostic_rows: list[dict[str, float]] | None = None
     if ref_profile_path is not None:
         layer_parity_result = _build_layer_parity(
             run_path,
@@ -2275,6 +2916,42 @@ def compare_deepsoil_run(
             mobilized_strength_csv=ref_mobilized_path,
             hysteresis=hysteresis_result,
         )
+        (
+            backbone_diagnostic_result,
+            reload_diagnostic_result,
+        ) = _build_backbone_diagnostic(
+            run_path,
+            layer_parity_result,
+            hysteresis=hysteresis_result,
+        )
+    if ref_hysteresis_path is not None:
+        (
+            envelope_diagnostic_result,
+            envelope_diagnostic_rows,
+        ) = _build_hysteresis_envelope_diagnostic(
+            run_path,
+            layer_index=hysteresis_layer,
+            hysteresis_csv=ref_hysteresis_path,
+        )
+        if reload_diagnostic_result is not None and envelope_diagnostic_result is not None:
+            reload_diagnostic_result.recorded_envelope_tau_nrmse = (
+                envelope_diagnostic_result.recorded_tau_nrmse
+            )
+            reload_diagnostic_result.backbone_envelope_tau_nrmse = (
+                envelope_diagnostic_result.backbone_tau_nrmse
+            )
+            reload_diagnostic_result.recorded_envelope_secant_nrmse = (
+                envelope_diagnostic_result.recorded_secant_nrmse
+            )
+            reload_diagnostic_result.backbone_envelope_secant_nrmse = (
+                envelope_diagnostic_result.backbone_secant_nrmse
+            )
+            reload_diagnostic_result.backbone_envelope_tau_closer = (
+                envelope_diagnostic_result.backbone_tau_closer
+            )
+            reload_diagnostic_result.backbone_envelope_secant_closer = (
+                envelope_diagnostic_result.backbone_secant_closer
+            )
     boundary_condition = cfg.boundary_condition.value if cfg is not None else ""
     motion_input_type = cfg.motion.input_type if cfg is not None else ""
     damping_mode = cfg.analysis.damping_mode if cfg is not None else ""
@@ -2340,6 +3017,9 @@ def compare_deepsoil_run(
         profile=profile_result,
         hysteresis=hysteresis_result,
         layer_parity=layer_parity_result,
+        backbone_diagnostic=backbone_diagnostic_result,
+        reload_diagnostic=reload_diagnostic_result,
+        envelope_diagnostic=envelope_diagnostic_result,
         warnings=warnings,
     )
 
@@ -2348,14 +3028,30 @@ def compare_deepsoil_run(
         json_path = output_dir / "deepsoil_compare.json"
         markdown_path = output_dir / "deepsoil_compare.md"
         layer_parity_csv = None
+        backbone_diagnostic_csv = None
+        hysteresis_envelope_csv = None
         if result.layer_parity is not None:
             layer_parity_csv = output_dir / "layer_parity.csv"
             _write_layer_parity_csv(layer_parity_csv, result.layer_parity)
+        if result.backbone_diagnostic is not None:
+            backbone_diagnostic_csv = output_dir / "backbone_diagnostic.csv"
+            _write_backbone_diagnostic_csv(
+                backbone_diagnostic_csv,
+                result.backbone_diagnostic,
+            )
+        if envelope_diagnostic_rows:
+            hysteresis_envelope_csv = output_dir / "hysteresis_envelope.csv"
+            _write_hysteresis_envelope_csv(
+                hysteresis_envelope_csv,
+                envelope_diagnostic_rows,
+            )
         result.artifacts = DeepsoilComparisonArtifacts(
             output_dir=output_dir,
             json_path=json_path,
             markdown_path=markdown_path,
             layer_parity_csv=layer_parity_csv,
+            backbone_diagnostic_csv=backbone_diagnostic_csv,
+            hysteresis_envelope_csv=hysteresis_envelope_csv,
         )
         json_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
         markdown = render_deepsoil_comparison_markdown(

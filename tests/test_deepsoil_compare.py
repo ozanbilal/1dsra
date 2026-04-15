@@ -69,6 +69,7 @@ def _write_workbook_compare_run(run_dir: Path, bundle_dir: Path) -> None:
     input_motion = np.loadtxt(bundle_dir / "input_motion.csv", delimiter=",", skiprows=1)
     profile = np.loadtxt(bundle_dir / "profile.csv", delimiter=",", skiprows=1)
     mobilized = np.loadtxt(bundle_dir / "mobilized_strength.csv", delimiter=",", skiprows=1)
+    hysteresis = np.loadtxt(bundle_dir / "hysteresis_layer1.csv", delimiter=",", skiprows=1)
 
     if profile.ndim == 1:
         profile = profile.reshape(1, -1)
@@ -159,6 +160,19 @@ def _write_workbook_compare_run(run_dir: Path, bundle_dir: Path) -> None:
             )
         )
     (run_dir / "layer_response_summary.csv").write_text("\n".join(summary_lines), encoding="utf-8")
+    if hysteresis.ndim == 1:
+        hysteresis = hysteresis.reshape(1, -1)
+    if hysteresis.shape[1] >= 2:
+        n_h = hysteresis.shape[0]
+        hysteresis_time = np.linspace(0.0, max((n_h - 1) * dt, dt), n_h, dtype=np.float64)
+        np.savetxt(
+            run_dir / "layer_1_strain.out",
+            np.column_stack([hysteresis_time, hysteresis[:, 0]]),
+        )
+        np.savetxt(
+            run_dir / "layer_1_stress.out",
+            np.column_stack([hysteresis_time, hysteresis[:, 1]]),
+        )
 
     config_snapshot = {
         "project_name": "compare-workbook-run",
@@ -499,11 +513,27 @@ def test_compare_deepsoil_run_accepts_real_workbook_bundle(tmp_path: Path) -> No
     assert result.layer_parity.gamma_max_nrmse is not None
     assert result.layer_parity.tau_peak_kpa_nrmse is not None
     assert result.layer_parity.secant_g_over_gmax_nrmse is not None
+    assert result.backbone_diagnostic is not None
+    assert result.backbone_diagnostic.row_count == 5
+    assert result.backbone_diagnostic.tau_peak_kpa_nrmse is not None
+    assert result.backbone_diagnostic.secant_g_over_gmax_nrmse is not None
+    assert result.reload_diagnostic is not None
+    assert result.reload_diagnostic.layer_index == 0
+    assert result.reload_diagnostic.suspected_driver != ""
+    assert result.envelope_diagnostic is not None
+    assert result.envelope_diagnostic.layer_index == 0
+    assert result.envelope_diagnostic.point_count > 10
+    assert result.envelope_diagnostic.recorded_tau_nrmse is not None
+    assert result.envelope_diagnostic.backbone_tau_nrmse is not None
     assert result.artifacts is not None
     assert result.artifacts.json_path.exists()
     assert result.artifacts.markdown_path.exists()
     assert result.artifacts.layer_parity_csv is not None
     assert result.artifacts.layer_parity_csv.exists()
+    assert result.artifacts.backbone_diagnostic_csv is not None
+    assert result.artifacts.backbone_diagnostic_csv.exists()
+    assert result.artifacts.hysteresis_envelope_csv is not None
+    assert result.artifacts.hysteresis_envelope_csv.exists()
 
 
 def test_load_profile_from_run_prefers_calibration_mean_effective_stress(

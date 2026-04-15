@@ -117,6 +117,7 @@ class _ElementConstitutiveState:
     tau_rev: float = 0.0
     has_reversal: bool = False
     gamma_max_seen: float = 0.0
+    follow_backbone_until_reversal: bool = False
 
     def _backbone(self, gamma: float) -> float:
         return _element_backbone_stress(
@@ -146,6 +147,168 @@ class _ElementConstitutiveState:
             )
         return 1.0
 
+    def _reload_reference_blend(self) -> float:
+        raw = self.params.get("reload_reference_blend", 0.0)
+        try:
+            blend = float(raw)
+        except (TypeError, ValueError):
+            blend = 0.0
+        return float(np.clip(blend, 0.0, 1.0))
+
+    def _secant_reference_stress(self, delta_gamma: float, g_over_gmax: float) -> float:
+        """DEEPSOIL-style MRDF reference branch based on secant modulus at γ_k."""
+        gmax = float(self.params.get("gmax", self.gmax_fallback))
+        g_sec = max(gmax * float(np.clip(g_over_gmax, 0.0, 1.0)), 0.0)
+        return self.tau_rev + (g_sec * delta_gamma)
+
+    def _backbone_tangent(self, gamma: float) -> float:
+        gmax = float(self.params.get("gmax", self.gmax_fallback))
+        gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
+        g_red_min = float(self.params.get("g_reduction_min", 0.0))
+        tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
+        ag = abs(gamma)
+        if self.material == MaterialType.GQH:
+            if {"tau_max", "theta1", "theta2", "theta3", "theta4", "theta5"}.issubset(self.params):
+                step = max(ag * 1.0e-4, 1.0e-8)
+                tau_p = float(
+                    gqh_backbone_stress_from_params(
+                        np.array([ag + step], dtype=np.float64),
+                        self.params,
+                        gmax_fallback=self.gmax_fallback,
+                    )[0]
+                )
+                tau_m = float(
+                    gqh_backbone_stress_from_params(
+                        np.array([max(ag - step, 0.0)], dtype=np.float64),
+                        self.params,
+                        gmax_fallback=self.gmax_fallback,
+                    )[0]
+                )
+                tangent = (tau_p - tau_m) / max(2.0 * step, 1.0e-12)
+                return max(float(tangent), tangent_floor)
+            a1 = float(self.params.get("a1", 1.0))
+            a2 = float(self.params.get("a2", 0.0))
+            m = float(self.params.get("m", 1.0))
+            r = ag / max(gamma_ref, 1.0e-15)
+            denom = 1.0 + a1 * r + a2 * (r**m)
+            return max(gmax / (denom * denom), tangent_floor)
+        if self.material == MaterialType.MKZ:
+            ratio = ag / max(gamma_ref, 1.0e-15)
+            denom = 1.0 + ratio
+            return max(gmax / (denom * denom), tangent_floor)
+        return self.gmax_fallback
+
+    def _effective_reload_factor(self) -> float:
+        base = max(self.reload_factor, 1.0e-6)
+        mode_code_raw = self.params.get("adaptive_reload_mode_code", 0.0)
+        try:
+            mode_code = float(mode_code_raw)
+        except (TypeError, ValueError):
+            mode_code = 0.0
+        if abs(mode_code) < 0.5:
+            return base
+        if abs(self.gamma_rev) <= self.eps_gamma or abs(self.tau_rev) <= self.eps_gamma:
+            return base
+        g_sec_rev = abs(self.tau_rev / self.gamma_rev)
+        g_t_rev = self._backbone_tangent(self.gamma_rev)
+        if not np.isfinite(g_sec_rev) or not np.isfinite(g_t_rev) or g_sec_rev <= 0.0 or g_t_rev <= 0.0:
+            return base
+        ratio = float(np.clip(g_sec_rev / g_t_rev, 0.25, 16.0))
+        exponent_raw = self.params.get("adaptive_reload_exponent", 0.5)
+        try:
+            exponent = float(exponent_raw)
+        except (TypeError, ValueError):
+            exponent = 0.5
+        exponent = float(np.clip(exponent, 0.0, 2.0))
+        factor = ratio**exponent
+        if mode_code < 0.0:
+            k_eff = base / max(factor, 1.0e-12)
+        else:
+            k_eff = base * factor
+        return float(np.clip(k_eff, 0.5, 4.0))
+
+    def _adaptive_tangent_floor(
+        self,
+        gamma: float,
+        *,
+        g_t_ref: float,
+        f_mrdf: float,
+        tangent_floor: float,
+    ) -> float:
+        mode_code_raw = self.params.get("adaptive_tangent_mode_code", 0.0)
+        try:
+            mode_code = float(mode_code_raw)
+        except (TypeError, ValueError):
+            mode_code = 0.0
+        if abs(mode_code) < 0.5:
+            return tangent_floor
+        if abs(self.gamma_rev) <= self.eps_gamma or abs(self.tau_rev) <= self.eps_gamma:
+            return tangent_floor
+
+        strength_raw = self.params.get("adaptive_tangent_strength", 0.0)
+        try:
+            strength = float(strength_raw)
+        except (TypeError, ValueError):
+            strength = 0.0
+        strength = float(np.clip(strength, 0.0, 1.0))
+        if strength <= 0.0:
+            return tangent_floor
+
+        exponent_raw = self.params.get("adaptive_tangent_exponent", 1.0)
+        try:
+            exponent = float(exponent_raw)
+        except (TypeError, ValueError):
+            exponent = 1.0
+        exponent = float(np.clip(exponent, 0.0, 3.0))
+
+        g_sec_rev = abs(self.tau_rev / self.gamma_rev)
+        if not np.isfinite(g_sec_rev) or g_sec_rev <= 0.0:
+            return tangent_floor
+
+        gamma_hist = max(
+            self.gamma_max_seen,
+            abs(gamma),
+            abs(self.gamma_prev),
+            abs(self.gamma_rev),
+            self.eps_gamma,
+        )
+        branch_progress = float(np.clip(abs(gamma - self.gamma_rev) / gamma_hist, 0.0, 1.0))
+        mrdf_softening = float(np.clip(1.0 - f_mrdf, 0.0, 1.0))
+
+        if mode_code < 0.0:
+            g_target = max(float(self.params.get("gmax", self.gmax_fallback)) * self._reduction(gamma_hist), tangent_floor)
+        else:
+            g_target = max(g_sec_rev, tangent_floor)
+
+        ratio = float(np.clip(g_target / max(g_t_ref, tangent_floor), 1.0, 8.0))
+        ratio_gain = (ratio - 1.0) / ratio
+        weight = strength * mrdf_softening * (branch_progress**exponent) * ratio_gain
+        return max(g_t_ref + weight * max(g_target - g_t_ref, 0.0), tangent_floor)
+
+    def _signed_backbone(self, gamma: float) -> float:
+        if abs(gamma) <= self.eps_gamma:
+            return 0.0
+        return float(np.sign(gamma) * self._backbone(abs(gamma)))
+
+    def _should_follow_backbone(self, gamma: float, tau_trial: float) -> bool:
+        if abs(gamma) <= self.eps_gamma or self.direction == 0:
+            return False
+        gamma_sign = _strain_direction(gamma, self.eps_gamma)
+        if gamma_sign == 0 or gamma_sign != self.direction:
+            return False
+        tau_backbone = self._signed_backbone(gamma)
+        tau_sign = _strain_direction(tau_trial, self.eps_gamma)
+        backbone_sign = _strain_direction(tau_backbone, self.eps_gamma)
+        if tau_sign == 0 or backbone_sign == 0 or tau_sign != backbone_sign:
+            return False
+        tau_prev_backbone = self._signed_backbone(self.gamma_prev)
+        prev_gap = abs(self.tau_prev) - abs(tau_prev_backbone)
+        curr_gap = abs(tau_trial) - abs(tau_backbone)
+        # DeepSoil-style branch locking should happen only when the reload branch
+        # actually intersects the backbone, not merely when the trial point is
+        # locally close to it. Require a sign change in the branch-vs-backbone gap.
+        return prev_gap < -1.0e-8 and curr_gap >= -1.0e-10
+
     def update_stress(self, gamma: float) -> float:
         if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
             tau = self._backbone(gamma)
@@ -166,6 +329,7 @@ class _ElementConstitutiveState:
             self.gamma_rev = 0.0
             self.tau_rev = 0.0
             self.gamma_max_seen = abs(gamma)
+            self.follow_backbone_until_reversal = False
             self.initialized = True
             return tau
 
@@ -176,6 +340,7 @@ class _ElementConstitutiveState:
             self.tau_rev = self.tau_prev
             self.direction = new_direction
             self.has_reversal = True
+            self.follow_backbone_until_reversal = False
 
         if self.direction == 0:
             self.direction = 1 if gamma >= self.gamma_prev else -1
@@ -183,38 +348,49 @@ class _ElementConstitutiveState:
         if not self.has_reversal:
             tau = self._backbone(gamma)
         else:
-            # Generalized Masing-type branch update.
-            # reload_factor=2.0 -> classical Masing,
-            # reload_factor!=2.0 -> non-Masing approximation.
-            k = max(self.reload_factor, 1.0e-6)
-            delta_gamma = gamma - self.gamma_rev
-            abs_delta_gamma = abs(delta_gamma)
-            branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
-            tau_masing = self.tau_rev + (
-                branch_sign * k * self._backbone(abs_delta_gamma / k)
-            )
-
-            if self.mrdf_coeffs is not None:
-                # Phillips-Hashash / DeepSoil-style MRDF correction.
-                # Keep the translated local reference branch as the anchor and
-                # evaluate the MRDF factor at the maximum strain experienced up
-                # to the current point (DEEPSOIL manual Eq. 4.6-4.7).
-                gamma_hist = max(
-                    self.gamma_max_seen,
-                    abs(self.gamma_prev),
-                    abs(gamma),
-                    abs(self.gamma_rev),
-                )
-                g_over_gmax = self._reduction(gamma_hist)
-                f_mrdf = evaluate_mrdf_factor(
-                    self.mrdf_coeffs,
-                    gamma_hist,
-                    g_over_gmax=g_over_gmax,
-                )
-                tau_ref = self.tau_rev + (branch_sign * self._backbone(abs_delta_gamma))
-                tau = tau_ref + f_mrdf * (tau_masing - tau_ref)
+            if self.follow_backbone_until_reversal:
+                tau = self._signed_backbone(gamma)
             else:
-                tau = tau_masing
+                # Generalized Masing-type branch update.
+                # reload_factor=2.0 -> classical Masing,
+                # reload_factor!=2.0 -> non-Masing approximation.
+                # Optional adaptive mode re-scales k using reversal secant/tangent ratio.
+                k = self._effective_reload_factor()
+                delta_gamma = gamma - self.gamma_rev
+                abs_delta_gamma = abs(delta_gamma)
+                branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
+                tau_masing = self.tau_rev + (
+                    branch_sign * k * self._backbone(abs_delta_gamma / k)
+                )
+
+                if self.mrdf_coeffs is not None:
+                    # Phillips-Hashash / DeepSoil-style MRDF correction.
+                    # Keep the translated local reference branch as the anchor and
+                    # evaluate the MRDF factor at the maximum strain experienced up
+                    # to the current point (DEEPSOIL manual Eq. 4.6-4.7).
+                    gamma_hist = max(
+                        self.gamma_max_seen,
+                        abs(self.gamma_prev),
+                        abs(gamma),
+                        abs(self.gamma_rev),
+                    )
+                    g_over_gmax = self._reduction(gamma_hist)
+                    f_mrdf = evaluate_mrdf_factor(
+                        self.mrdf_coeffs,
+                        gamma_hist,
+                        g_over_gmax=g_over_gmax,
+                    )
+                    tau_ref_local = self.tau_rev + (branch_sign * self._backbone(abs_delta_gamma))
+                    tau_ref_secant = self._secant_reference_stress(delta_gamma, g_over_gmax)
+                    blend = self._reload_reference_blend()
+                    tau_ref = ((1.0 - blend) * tau_ref_local) + (blend * tau_ref_secant)
+                    tau = tau_ref + f_mrdf * (tau_masing - tau_ref)
+                else:
+                    tau = tau_masing
+
+                if self._should_follow_backbone(gamma, tau):
+                    self.follow_backbone_until_reversal = True
+                    tau = self._signed_backbone(gamma)
 
         self.gamma_prev = gamma
         self.tau_prev = tau
@@ -226,53 +402,15 @@ class _ElementConstitutiveState:
         if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
             return self.gmax_fallback
 
-        gmax = float(self.params.get("gmax", self.gmax_fallback))
-        gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
-        g_red_min = float(self.params.get("g_reduction_min", 0.0))
-        # Tangent floor from G/Gmax floor: ensures tangent >= gmax * g_reduction_min
-        tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
-
-        def _backbone_tangent(g: float) -> float:
-            ag = abs(g)
-            if self.material == MaterialType.GQH:
-                if {"tau_max", "theta1", "theta2", "theta3", "theta4", "theta5"}.issubset(
-                    self.params
-                ):
-                    step = max(ag * 1.0e-4, 1.0e-8)
-                    tau_p = float(
-                        gqh_backbone_stress_from_params(
-                            np.array([ag + step], dtype=np.float64),
-                            self.params,
-                            gmax_fallback=self.gmax_fallback,
-                        )[0]
-                    )
-                    tau_m = float(
-                        gqh_backbone_stress_from_params(
-                            np.array([max(ag - step, 0.0)], dtype=np.float64),
-                            self.params,
-                            gmax_fallback=self.gmax_fallback,
-                        )[0]
-                    )
-                    tangent = (tau_p - tau_m) / max(2.0 * step, 1.0e-12)
-                    return max(float(tangent), tangent_floor)
-                a1 = float(self.params.get("a1", 1.0))
-                a2 = float(self.params.get("a2", 0.0))
-                m = float(self.params.get("m", 1.0))
-                r = ag / max(gamma_ref, 1.0e-15)
-                denom = 1.0 + a1 * r + a2 * (r ** m)
-                return max(gmax / (denom * denom), tangent_floor)
-            # MKZ: G_t = gmax / (1 + |gamma|/gamma_ref)^2
-            ratio = ag / max(gamma_ref, 1.0e-15)
-            denom = 1.0 + ratio
-            return max(gmax / (denom * denom), tangent_floor)
-
         if not self.has_reversal:
-            return _backbone_tangent(gamma)
+            return self._backbone_tangent(gamma)
+        if self.follow_backbone_until_reversal:
+            return self._backbone_tangent(gamma)
         # Masing branch: tangent at shifted strain
-        k = max(self.reload_factor, 1.0e-6)
+        k = self._effective_reload_factor()
         abs_delta_gamma = abs(gamma - self.gamma_rev)
         shifted = abs_delta_gamma / k
-        g_t_masing = _backbone_tangent(shifted)
+        g_t_masing = self._backbone_tangent(shifted)
         if self.mrdf_coeffs is not None:
             gamma_hist = max(
                 self.gamma_max_seen,
@@ -285,8 +423,22 @@ class _ElementConstitutiveState:
                 gamma_hist,
                 g_over_gmax=g_over_gmax,
             )
-            g_t_ref = _backbone_tangent(abs_delta_gamma)
-            return max(g_t_ref + f_mrdf * (g_t_masing - g_t_ref), tangent_floor)
+            blend = self._reload_reference_blend()
+            gmax = float(self.params.get("gmax", self.gmax_fallback))
+            gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
+            g_red_min = float(self.params.get("g_reduction_min", 0.0))
+            tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
+            g_t_ref_local = self._backbone_tangent(abs_delta_gamma)
+            g_t_ref_secant = max(gmax * g_over_gmax, tangent_floor)
+            g_t_ref = ((1.0 - blend) * g_t_ref_local) + (blend * g_t_ref_secant)
+            g_t_branch = max(g_t_ref + f_mrdf * (g_t_masing - g_t_ref), tangent_floor)
+            g_t_floor_adaptive = self._adaptive_tangent_floor(
+                gamma,
+                g_t_ref=g_t_ref,
+                f_mrdf=f_mrdf,
+                tangent_floor=tangent_floor,
+            )
+            return max(g_t_branch, g_t_floor_adaptive)
         return g_t_masing
 
 

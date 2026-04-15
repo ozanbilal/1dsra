@@ -281,6 +281,13 @@ class MotionUploadResponse(BaseModel):
     status: str
 
 
+class MotionGeneratedClearResponse(BaseModel):
+    status: str
+    directory: str
+    removed_files: int
+    freed_bytes: int
+
+
 class MotionUploadCsvRequest(BaseModel):
     file_name: str
     content_base64: str
@@ -667,6 +674,30 @@ def _safe_upload_stem(raw: str, fallback: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in base)
 
 
+def _clear_generated_motion_dir() -> MotionGeneratedClearResponse:
+    out_dir = _safe_motion_output_dir("")
+    removed_files = 0
+    freed_bytes = 0
+    if out_dir.exists() and out_dir.is_dir():
+        for entry in out_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.suffix.lower() not in {".csv", ".txt", ".at2"}:
+                continue
+            try:
+                freed_bytes += int(entry.stat().st_size)
+            except OSError:
+                pass
+            entry.unlink(missing_ok=True)
+            removed_files += 1
+    return MotionGeneratedClearResponse(
+        status="ok",
+        directory=str(out_dir),
+        removed_files=removed_files,
+        freed_bytes=freed_bytes,
+    )
+
+
 def _resolve_input_path(path_value: str, *, label: str) -> Path:
     text = path_value.strip()
     if not text:
@@ -930,7 +961,7 @@ def _scan_motion_library(lib_dirs: list[Path]) -> list[dict[str, str]]:
     for lib_dir in lib_dirs:
         if not lib_dir.is_dir():
             continue
-        for f in sorted(lib_dir.rglob("*")):
+        for f in sorted(lib_dir.iterdir()):
             if not f.is_file() or f.suffix.lower() not in {".csv", ".at2", ".txt"}:
                 continue
             if _is_generated_motion_artifact(f, lib_dir):
@@ -954,20 +985,9 @@ def _scan_motion_library(lib_dirs: list[Path]) -> list[dict[str, str]]:
     return results
 
 
-def _resolve_motion_library_dirs(default_dirs: list[Path], extra_dirs: list[str] | None) -> list[Path]:
+def _resolve_motion_library_dirs(extra_dirs: list[str] | None) -> list[Path]:
     resolved_dirs: list[Path] = []
     seen: set[str] = set()
-    for directory in default_dirs:
-        try:
-            resolved = directory.resolve()
-        except OSError:
-            continue
-        key = str(resolved)
-        if key in seen:
-            continue
-        seen.add(key)
-        resolved_dirs.append(resolved)
-
     for raw_dir in extra_dirs or []:
         text = (raw_dir or "").strip()
         if not text:
@@ -4563,17 +4583,15 @@ def create_app() -> FastAPI:
 
     # ── Motion Library (scan directories for earthquake records) ──
 
-    MOTION_LIBRARY_DIRS: list[Path] = [
-        Path(r"C:\Users\PC\Documents\DEEPSOIL 7\Input Motions"),
-        Path(r"C:\Users\PC\OneDrive\Documents\DEEPSOIL 7\Input Motions"),
-        Path(__file__).resolve().parent.parent.parent.parent / "examples" / "motions",
-        Path("out/ui/motions"),
-    ]
-
     @app.get("/api/motions/library")
     def list_motion_library(extra_dir: list[str] | None = Query(default=None)) -> list[dict[str, str]]:
-        """Scan configured directories for earthquake motion files."""
-        return _scan_motion_library(_resolve_motion_library_dirs(MOTION_LIBRARY_DIRS, extra_dir or []))
+        """Scan only the explicitly provided directories for earthquake motion files."""
+        return _scan_motion_library(_resolve_motion_library_dirs(extra_dir or []))
+
+    @app.post("/api/motions/generated/clear", response_model=MotionGeneratedClearResponse)
+    def clear_generated_motion_outputs() -> MotionGeneratedClearResponse:
+        """Delete uploaded/converted/generated motion files kept under the default UI motion cache."""
+        return _clear_generated_motion_dir()
 
     @app.get("/api/motion/preview")
     def motion_preview(

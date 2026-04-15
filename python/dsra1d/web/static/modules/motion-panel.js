@@ -61,6 +61,7 @@ export function MotionPanel({ wizard, update, plan }) {
   const [batchMode, setBatchMode] = useState(Boolean(wizard.batch_motions && wizard.batch_motions.length > 0));
   const [filterText, setFilterText] = useState("");
   const [libLoading, setLibLoading] = useState(false);
+  const [clearGeneratedBusy, setClearGeneratedBusy] = useState(false);
   const [toolError, setToolError] = useState(null);
   const [toolAuditTrail, setToolAuditTrail] = useState([]);
   const [reduceTargetDt, setReduceTargetDt] = useState("");
@@ -85,7 +86,7 @@ export function MotionPanel({ wizard, update, plan }) {
     parseSettings.delimiter === "auto" ? "delim auto" : `delim ${parseSettings.delimiter}`,
     parseSettings.has_time ? `cols t${parseSettings.time_col}/a${parseSettings.acc_col}` : `acc col ${parseSettings.acc_col}`,
     wizard.motion_dt_override ? `dt ${fmt(wizard.motion_dt_override, 4)} s` : "dt auto",
-    extraDirectoryCount > 0 ? `${extraDirectoryCount} extra dir${extraDirectoryCount > 1 ? "s" : ""}` : "built-in libs",
+    extraDirectoryCount > 0 ? `${extraDirectoryCount} folder${extraDirectoryCount > 1 ? "s" : ""}` : "no folders",
   ];
 
   function appendAuditStep(action, details) {
@@ -94,11 +95,49 @@ export function MotionPanel({ wizard, update, plan }) {
   }
 
   function refreshLibrary() {
+    const dirs = wizard.motion_library_dirs || [];
+    if (!dirs.length) {
+      setLibrary([]);
+      setLibLoading(false);
+      return;
+    }
     setLibLoading(true);
-    api.fetchMotionLibrary(wizard.motion_library_dirs || [])
+    api.fetchMotionLibrary(dirs)
       .then(data => setLibrary(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .catch(() => setLibrary([]))
       .finally(() => setLibLoading(false));
+  }
+
+  function clearLibraryFolders() {
+    update("motion_library_dirs", []);
+    setFilterText("");
+    setLibrary([]);
+  }
+
+  async function clearGeneratedMotions() {
+    setClearGeneratedBusy(true);
+    setError(null);
+    try {
+      const result = await api.clearGeneratedMotions();
+      appendAuditStep(
+        "Generated motions cleared",
+        `${result.removed_files || 0} file(s) removed from ${result.directory || "out/ui/motions"}`,
+      );
+      const currentPath = String(wizard.motion_path || "").replaceAll("/", "\\");
+      if (currentPath.includes("out\\ui\\motions")) {
+        update("motion_path", "");
+        setPreview(null);
+      }
+    } catch (ex) {
+      const message = ex.message || "";
+      if (message.includes("404")) {
+        setError("Clear Generated endpoint is not active in the running server yet. Restart the web server and try again.");
+      } else {
+        setError(message || "Generated motions could not be cleared.");
+      }
+    } finally {
+      setClearGeneratedBusy(false);
+    }
   }
 
   // Load motion library on mount
@@ -293,7 +332,7 @@ export function MotionPanel({ wizard, update, plan }) {
       <section className="motion-section">
         <div className="section-head">
           <h4>Source & Parse</h4>
-          <p>Keep only the essentials visible. Extra folders and parse controls stay one click away.</p>
+          <p>Keep only the essentials visible. Library folders and parse controls stay one click away.</p>
         </div>
         <div className="motion-toolbar">
           <button type="button" className="btn" onClick=${() => csvRef.current?.click()} disabled=${uploading}>
@@ -304,6 +343,9 @@ export function MotionPanel({ wizard, update, plan }) {
           </button>
           <button type="button" className="btn btn-sm" onClick=${refreshLibrary} disabled=${libLoading}>
             ${libLoading ? "Refreshing..." : "Refresh Library"}
+          </button>
+          <button type="button" className="btn btn-sm" onClick=${clearGeneratedMotions} disabled=${clearGeneratedBusy}>
+            ${clearGeneratedBusy ? "Clearing..." : "Clear Generated"}
           </button>
           ${uploading ? html`<span className="muted">Uploading...</span>` : null}
         </div>
@@ -325,11 +367,16 @@ export function MotionPanel({ wizard, update, plan }) {
               ${parseSummary.map(item => html`<span className="motion-pill">${item}</span>`)}
             </div>
           </div>
+          <div className="motion-toolbar" style=${{ marginTop: "0.35rem" }}>
+            <button type="button" className="btn btn-sm" onClick=${clearLibraryFolders} disabled=${extraDirectoryCount === 0}>
+              Clear Folders
+            </button>
+          </div>
           <details className="motion-parse-details">
             <summary>Library folders & parse options</summary>
             <div className="motion-parse-details-grid">
               <div className="field motion-span-2">
-                <label htmlFor="motion-library-dirs">Extra Library Directories<${HelpTip} id="motion_library_dirs" /></label>
+                <label htmlFor="motion-library-dirs">Motion Library Folders<${HelpTip} id="motion_library_dirs" /></label>
                 <textarea
                   id="motion-library-dirs"
                   rows="2"
@@ -337,7 +384,7 @@ export function MotionPanel({ wizard, update, plan }) {
                   placeholder="One folder path per line"
                   onInput=${e => update("motion_library_dirs", parseDirectoryList(e.target.value))}
                 />
-                <p className="muted section-footnote">Built-in roots stay active. These paths are added on top for scanning.</p>
+                <p className="muted section-footnote">Only these folders are scanned, and only their direct motion files are listed.</p>
               </div>
               <div className="field">
                 <label htmlFor="motion-delimiter">Delimiter<${HelpTip} id="motion_delimiter" /></label>
@@ -379,7 +426,7 @@ export function MotionPanel({ wizard, update, plan }) {
       <section className="motion-section">
         <div className="section-head">
           <h4>Motion Library</h4>
-          <p>Search across built-in folders and any extra directories you listed above.</p>
+          <p>Search across the folders you listed above. Subfolders are not scanned automatically.</p>
         </div>
         <div className="motion-field-grid">
           <div className="field motion-span-2">
@@ -468,7 +515,7 @@ export function MotionPanel({ wizard, update, plan }) {
         <section className="motion-section">
           <div className="section-head">
             <h4>Selected Motion</h4>
-            <p>The current record path is stored raw, then normalized into a run-ready CSV before analysis starts.</p>
+            <p>Uploaded or converted motions are written under <code>out/ui/motions</code> so preview and reruns use the same file. That generated folder is no longer part of the motion library scan.</p>
           </div>
           <div className="field">
             <label htmlFor="selected-motion-path">Selected Motion</label>

@@ -1138,22 +1138,51 @@ def test_web_motion_library_accepts_extra_directories(tmp_path) -> None:
     from fastapi.testclient import TestClient
 
     motion_root = tmp_path / "Input Motions"
-    event_dir = motion_root / "Event_A"
-    event_dir.mkdir(parents=True)
-    (event_dir / "record_01.csv").write_text("0.0,0.1\n0.01,-0.1\n", encoding="utf-8")
-
-    generated_dir = motion_root / "Outputs_GUI"
-    generated_dir.mkdir(parents=True)
-    (generated_dir / "derived.csv").write_text("0.0,0.0\n0.01,0.0\n", encoding="utf-8")
+    motion_root.mkdir(parents=True)
+    record = motion_root / "record_01.csv"
+    record.write_text("0.0,0.1\n0.01,-0.1\n", encoding="utf-8")
 
     client = TestClient(create_app())
     resp = client.get("/api/motions/library", params=[("extra_dir", str(motion_root))])
     assert resp.status_code == 200
     payload = resp.json()
-    matching = [row for row in payload if row["path"] == str((event_dir / "record_01.csv").resolve())]
+    matching = [row for row in payload if row["path"] == str(record.resolve())]
     assert len(matching) == 1
-    assert all("derived.csv" not in row["path"] for row in payload)
-    assert matching[0]["source_group_label"].endswith("Event_A")
+    assert matching[0]["source_group_label"] == matching[0]["source_label"]
+
+
+def test_web_motion_library_is_empty_without_explicit_directories() -> None:
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+    resp = client.get("/api/motions/library")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_web_can_clear_generated_motion_cache(tmp_path, monkeypatch) -> None:
+    import dsra1d.web.app as web_app
+    from dsra1d.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    cache_dir = tmp_path / "out" / "ui" / "motions"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "a.csv").write_text("time_s,acc_m_s2\n0,0\n", encoding="utf-8")
+    (cache_dir / "b.at2").write_text("header\n", encoding="utf-8")
+    (cache_dir / "keep.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(web_app, "_safe_motion_output_dir", lambda raw: cache_dir)
+
+    client = TestClient(create_app())
+    resp = client.post("/api/motions/generated/clear")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["removed_files"] == 2
+    assert (cache_dir / "keep.json").exists()
+    assert not (cache_dir / "a.csv").exists()
+    assert not (cache_dir / "b.at2").exists()
 
 
 def test_web_motion_timestep_reduction_endpoint(tmp_path) -> None:
@@ -1271,24 +1300,25 @@ def test_web_run_batch_endpoint_success_with_duplicate_motions(tmp_path) -> None
     assert (out_root / payload["results"][0]["run_id"]).exists()
 
 
-def test_web_scan_motion_library_recurses_sources(tmp_path) -> None:
+def test_web_scan_motion_library_only_reads_direct_children(tmp_path) -> None:
     from dsra1d.web.app import _scan_motion_library
 
     lib_a = tmp_path / "DEEPSOIL 7" / "Input Motions"
     lib_b = tmp_path / "CampaignA" / "Input Motions"
     (lib_a / "nested").mkdir(parents=True)
     lib_b.mkdir(parents=True)
+    (lib_a / "motion_root.csv").write_text("0.0,0.0\n0.01,0.1\n", encoding="utf-8")
     (lib_a / "nested" / "motion_a.csv").write_text("0.0,0.0\n0.01,0.1\n", encoding="utf-8")
     (lib_b / "motion_b.at2").write_text("header\n", encoding="utf-8")
 
     rows = _scan_motion_library([lib_a, lib_b])
     names = {row["file_name"] for row in rows}
-    assert names == {"motion_a.csv", "motion_b.at2"}
+    assert names == {"motion_root.csv", "motion_b.at2"}
     source_labels = {row["source_label"] for row in rows}
     assert "DEEPSOIL 7 / Input Motions" in source_labels
     assert "CampaignA / Input Motions" in source_labels
     source_group_labels = {row["source_group_label"] for row in rows}
-    assert "DEEPSOIL 7 / nested" in source_group_labels
+    assert "DEEPSOIL 7 / nested" not in source_group_labels
     assert "CampaignA / Input Motions" in source_group_labels
 
 
@@ -1298,15 +1328,15 @@ def test_web_scan_motion_library_skips_generated_output_dirs(tmp_path) -> None:
     lib_dir = tmp_path / "DEEPSOIL 7" / "Input Motions"
     (lib_dir / "Outputs_GUI").mkdir(parents=True)
     (lib_dir / "testDSOUT").mkdir(parents=True)
-    (lib_dir / "Velux_Konvoy").mkdir(parents=True)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    (lib_dir / "record.txt").write_text("0.0\n", encoding="utf-8")
     (lib_dir / "Outputs_GUI" / "derived.txt").write_text("0.0\n", encoding="utf-8")
     (lib_dir / "testDSOUT" / "derived.csv").write_text("0.0,0.0\n", encoding="utf-8")
-    (lib_dir / "Velux_Konvoy" / "record.txt").write_text("0.0\n", encoding="utf-8")
 
     rows = _scan_motion_library([lib_dir])
 
     assert [row["file_name"] for row in rows] == ["record.txt"]
-    assert rows[0]["source_group_label"] == "DEEPSOIL 7 / Velux_Konvoy"
+    assert rows[0]["source_group_label"] == "DEEPSOIL 7 / Input Motions"
 
 
 def test_web_load_example_returns_calibration_details() -> None:

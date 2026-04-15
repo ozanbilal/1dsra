@@ -295,11 +295,11 @@ const COLORS = [
 
 const PAD = { top: 20, right: 20, bottom: 36, left: 52 };
 
-function VerticalLines({ lines, scaleX, pad, plotH }) {
+function VerticalLines({ lines, scaleX, pad, plotH, plotW }) {
   if (!lines || !lines.length) return null;
   return lines.map((vl, i) => {
     const vx = scaleX(vl.x);
-    if (vx < pad.left || vx > pad.left + (plotH * 3)) return null;
+    if (vx < pad.left || vx > pad.left + plotW) return null;
     return html`
       <g key=${"vl" + i}>
         <line x1=${vx} y1=${pad.top} x2=${vx} y2=${pad.top + plotH}
@@ -312,9 +312,10 @@ function VerticalLines({ lines, scaleX, pad, plotH }) {
   });
 }
 
-export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 840, h = 240, vLines }) {
+export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 760, h = 220, vLines }) {
   const geo = buildGeometry(x, y, w, h, PAD, { logX, logY, xMin, xMax, yMin, yMax });
   const svgRef = useRef(null);
+  const clipIdRef = useRef(`chart-clip-${Math.random().toString(36).slice(2)}`);
   if (!geo) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   const seriesData = [{ x, y, label: title, color: color || COLORS[0] }];
@@ -325,8 +326,15 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
       <${ExportButton} svgRef=${svgRef} title=${title} />
       <svg ref=${svgRef} viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geo} w=${w} h=${h} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} logY=${logY} />
-        <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
-        <${VerticalLines} lines=${vLines} scaleX=${geo.scaleX} pad=${PAD} plotH=${geo.plotH} />
+        <defs>
+          <clipPath id=${clipIdRef.current}>
+            <rect x=${PAD.left} y=${PAD.top} width=${geo.plotW} height=${geo.plotH} />
+          </clipPath>
+        </defs>
+        <g clip-path=${`url(#${clipIdRef.current})`}>
+          <polyline points=${geo.points} fill="none" stroke=${color || COLORS[0]} stroke-width="1.5" />
+          <${VerticalLines} lines=${vLines} scaleX=${geo.scaleX} pad=${PAD} plotH=${geo.plotH} plotW=${geo.plotW} />
+        </g>
         <${HoverOverlay} pad=${PAD} plotW=${geo.plotW} plotH=${geo.plotH}
           w=${w} h=${h} seriesData=${seriesData}
           scaleX=${geo.scaleX} scaleY=${geo.scaleY} invertX=${geo.invertX} xLabel=${xLabel} />
@@ -335,8 +343,9 @@ export function ChartCard({ title, subtitle, x, y, color, xLabel, yLabel, logX, 
   `;
 }
 
-export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 960, h = 260, vLines }) {
+export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX, logY, xMin, xMax, yMin, yMax, w = 820, h = 240, vLines }) {
   const svgRef = useRef(null);
+  const clipIdRef = useRef(`chart-clip-${Math.random().toString(36).slice(2)}`);
   if (!series || !series.length) return html`<div className="chart-card"><h4>${title}</h4><p className="muted">No data</p></div>`;
 
   // Compute global bounds
@@ -379,11 +388,18 @@ export function MultiSeriesChart({ title, subtitle, series, xLabel, yLabel, logX
       <${ExportButton} svgRef=${svgRef} title=${title} />
       <svg ref=${svgRef} viewBox="0 0 ${w} ${totalH}" width="100%" preserveAspectRatio="xMidYMid meet">
         <${Axes} geo=${geos[0]} w=${w} h=${totalH} xLabel=${xLabel} yLabel=${yLabel} logX=${logX} logY=${logY} />
-        ${geos.map((geo, i) => geo ? html`
-          <polyline key=${i} points=${geo.points} fill="none"
-            stroke=${series[i].color || COLORS[i % COLORS.length]} stroke-width="1.5" />
-        ` : null)}
-        <${VerticalLines} lines=${vLines} scaleX=${geos[0]?.scaleX} pad=${padLegend} plotH=${geos[0]?.plotH || 0} />
+        <defs>
+          <clipPath id=${clipIdRef.current}>
+            <rect x=${padLegend.left} y=${padLegend.top} width=${geos[0]?.plotW || 0} height=${geos[0]?.plotH || 0} />
+          </clipPath>
+        </defs>
+        <g clip-path=${`url(#${clipIdRef.current})`}>
+          ${geos.map((geo, i) => geo ? html`
+            <polyline key=${i} points=${geo.points} fill="none"
+              stroke=${series[i].color || COLORS[i % COLORS.length]} stroke-width="1.5" />
+          ` : null)}
+          <${VerticalLines} lines=${vLines} scaleX=${geos[0]?.scaleX} pad=${padLegend} plotH=${geos[0]?.plotH || 0} plotW=${geos[0]?.plotW || 0} />
+        </g>
         <${HoverOverlay} pad=${padLegend} plotW=${geos[0]?.plotW || 0} plotH=${geos[0]?.plotH || 0}
           w=${w} h=${totalH} seriesData=${seriesData}
           scaleX=${geos[0]?.scaleX} scaleY=${geos[0]?.scaleY} invertX=${geos[0]?.invertX} xLabel=${xLabel} />

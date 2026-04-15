@@ -1219,6 +1219,21 @@ a:focus-visible {
 
 .chart-card svg { display: block; }
 
+.results-chart-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.results-chart-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.results-chart-grid .chart-card {
+  margin-bottom: 0;
+}
+
 .profile-charts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1782,6 +1797,7 @@ a:focus-visible {
   .profile-charts-grid { grid-template-columns: 1fr; }
   .calib-charts { grid-template-columns: 1fr; }
   .saved-material-row { grid-template-columns: 1fr; }
+  .results-chart-grid-2 { grid-template-columns: 1fr; }
   .results-header { flex-direction: column; gap: 0.5rem; }
   .results-actions { flex-wrap: wrap; justify-content: flex-start; }
   .metric-row { flex-wrap: wrap; }

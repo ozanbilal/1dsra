@@ -546,7 +546,7 @@ export const PARAM_HELP = {
   bedrock_vs: "Explicit halfspace Vs used only for Elastic Halfspace runs. Leave unset to reuse the last soil layer as the halfspace seed.",
   bedrock_unit_weight: "Explicit halfspace unit weight used only for Elastic Halfspace runs. Leave unset to reuse the last soil layer values.",
   motion_units: "Declared acceleration unit for the selected raw motion files. Preview, import tools and run-ready normalization use this assumption.",
-  motion_library_dirs: "One folder per line. GeoWave scans these extra directories in addition to the built-in motion library roots.",
+  motion_library_dirs: "One folder per line. GeoWave scans only these folders, and only the motion files directly inside each folder.",
   motion_format_hint: "Auto Detect uses lightweight heuristics. Use Time + Acc Columns, Single Column or Numeric Stream when the file structure is known.",
   motion_delimiter: "Column separator for generic text motions. Auto Detect checks comma, semicolon, tab and whitespace.",
   motion_skip_rows: "Header rows to skip before parsing numeric motion data.",

@@ -374,21 +374,6 @@ function interpolateAtPeriods(periods, values, targetPeriods) {
   });
 }
 
-function filterSeriesToRange(x = [], y = [], min = null, max = null) {
-  const xs = [];
-  const ys = [];
-  for (let i = 0; i < Math.min(x.length, y.length); i++) {
-    const xi = Number(x[i]);
-    const yi = Number(y[i]);
-    if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue;
-    if (min != null && xi < min) continue;
-    if (max != null && xi > max) continue;
-    xs.push(xi);
-    ys.push(yi);
-  }
-  return { x: xs, y: ys };
-}
-
 function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, transferFreq, transferAbs, fasFreq, fasAmp, compareSignals, compareRunId, plan, signals, accelUnit }) {
   const [xScale, setXScale] = useState("log");
   const [yScale, setYScale] = useState("linear");
@@ -425,9 +410,9 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
     ? convertAccelerationSeries(compareSignals.psa_m_s2, accelUnit)
     : null;
   const series = [
-    { ...filterSeriesToRange(psaPeriods, surfacePsaDisplay, periodMin, periodMax), label: "Surface PSA", color: "#D35400" },
-    ...(hasInputPsa ? [{ ...filterSeriesToRange(inputPsaPeriods, inputPsaDisplay, periodMin, periodMax), label: "Input PSA", color: "#2980B9" }] : []),
-    ...(hasCompare ? [{ ...filterSeriesToRange(compareSignals.period_s, comparePsaDisplay, periodMin, periodMax), label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
+    { x: psaPeriods, y: surfacePsaDisplay, label: "Surface PSA", color: "#D35400" },
+    ...(hasInputPsa ? [{ x: inputPsaPeriods, y: inputPsaDisplay, label: "Input PSA", color: "#2980B9" }] : []),
+    ...(hasCompare ? [{ x: compareSignals.period_s, y: comparePsaDisplay, label: `Compare (${(compareRunId || "").slice(4, 12)})`, color: "#8E44AD" }] : []),
   ];
 
   const hasTF = transferFreq && transferAbs;
@@ -447,9 +432,7 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
       }
     }
   }
-  const filteredAmpRatio = hasAmpRatio
-    ? filterSeriesToRange(ampRatioPeriods, ampRatioValues, periodMin, periodMax)
-    : { x: [], y: [] };
+  const hasAmpRatioSeries = hasAmpRatio && ampRatioPeriods.length > 2;
 
   // PSA Summary Table at standard periods
   const surfAtStd = interpolateAtPeriods(psaPeriods, psaValues, STANDARD_PERIODS);
@@ -518,64 +501,67 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
           </button>
         </div>
       </div>
-      <${MultiSeriesChart}
-        title="Response Spectra (5% damping)"
-        series=${series}
-        xLabel="Period (s)" yLabel=${`PSA (${accelLabel})`}
-        logX=${xScale === "log"}
-        logY=${yScale === "log"}
-        xMin=${periodMin}
-        xMax=${periodMax}
-        vLines=${t0Lines}
-      />
-      ${hasAmpRatio && filteredAmpRatio.x.length > 2 ? html`
-        <${ChartCard}
-          title="Spectral Amplification Ratio (Surface / Input)"
-          x=${filteredAmpRatio.x} y=${filteredAmpRatio.y}
-          xLabel="Period (s)" yLabel="Amplification"
-          color="#E74C3C" logX=${xScale === "log"}
+      <div className="results-chart-grid results-chart-grid-2">
+        <${MultiSeriesChart}
+          title="Response Spectra (5% damping)"
+          series=${series}
+          xLabel="Period (s)" yLabel=${`PSA (${accelLabel})`}
+          logX=${xScale === "log"}
+          logY=${yScale === "log"}
           xMin=${periodMin}
           xMax=${periodMax}
+          yMin=${yScale === "log" ? undefined : 0}
+          vLines=${t0Lines}
         />
-      ` : null}
-      ${hasTF ? html`
-        <${ChartCard}
-          title="Transfer Function |H(f)|"
-          x=${transferFreq} y=${transferAbs}
-          xLabel="Frequency (Hz)" yLabel="|H(f)|"
-          color="#2980B9" logX=${true}
-        />
-      ` : null}
-      ${fasFreq && fasAmp && fasFreq.length > 2 ? (() => {
-        const kappaFitFreq = signals?.kappa_fit_freq;
-        const kappaFitAmp = signals?.kappa_fit_amp;
-        const hasKappaFit = kappaFitFreq && kappaFitAmp && kappaFitFreq.length === 2;
-        const fasTitle = signals?.kappa != null ? `Fourier Amplitude Spectrum (κ = ${fmt(signals.kappa, 4)})` : "Fourier Amplitude Spectrum";
-        if (hasKappaFit) {
+        ${hasAmpRatioSeries ? html`
+          <${ChartCard}
+            title="Spectral Amplification Ratio (Surface / Input)"
+            x=${ampRatioPeriods} y=${ampRatioValues}
+            xLabel="Period (s)" yLabel="Amplification"
+            color="#E74C3C" logX=${xScale === "log"}
+            xMin=${periodMin}
+            xMax=${periodMax}
+            yMin=${0}
+          />
+        ` : null}
+        ${hasTF ? html`
+          <${ChartCard}
+            title="Transfer Function |H(f)|"
+            x=${transferFreq} y=${transferAbs}
+            xLabel="Frequency (Hz)" yLabel="|H(f)|"
+            color="#2980B9" logX=${true}
+          />
+        ` : null}
+        ${fasFreq && fasAmp && fasFreq.length > 2 ? (() => {
+          const kappaFitFreq = signals?.kappa_fit_freq;
+          const kappaFitAmp = signals?.kappa_fit_amp;
+          const hasKappaFit = kappaFitFreq && kappaFitAmp && kappaFitFreq.length === 2;
+          const fasTitle = signals?.kappa != null ? `Fourier Amplitude Spectrum (κ = ${fmt(signals.kappa, 4)})` : "Fourier Amplitude Spectrum";
+          if (hasKappaFit) {
+            return html`
+              <${MultiSeriesChart}
+                title=${fasTitle}
+                series=${[
+                  { x: fasFreq, y: fasAmp, label: "FAS", color: "#16A085" },
+                  { x: kappaFitFreq, y: kappaFitAmp, label: "κ fit (10-40 Hz)", color: "#E74C3C" },
+                ]}
+                xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
+                logX=${true}
+              />
+            `;
+          }
           return html`
-            <${MultiSeriesChart}
+            <${ChartCard}
               title=${fasTitle}
-              series=${[
-                { x: fasFreq, y: fasAmp, label: "FAS", color: "#16A085" },
-                { x: kappaFitFreq, y: kappaFitAmp, label: "κ fit (10-40 Hz)", color: "#E74C3C" },
-              ]}
+              x=${fasFreq} y=${fasAmp}
               xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
-              logX=${true}
+              color="#16A085" logX=${true}
             />
           `;
-        }
-        return html`
-          <${ChartCard}
-            title=${fasTitle}
-            x=${fasFreq} y=${fasAmp}
-            xLabel="Frequency (Hz)" yLabel="Fourier Amplitude (m/s)"
-            color="#16A085" logX=${true}
-          />
-        `;
-      })() : null}
+        })() : null}
 
-      <!-- Pro Features -->
-      ${(() => {
+        <!-- Pro Features -->
+        ${(() => {
         const psv = signals?.psv_m_s;
         const psd = signals?.psd_m;
         const kappa = signals?.kappa;
@@ -593,6 +579,8 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
                 x=${psaPeriods} y=${psv}
                 xLabel="Period (s)" yLabel="PSV (m/s)"
                 color="#E67E22" logX=${true}
+                xMin=${periodMin}
+                xMax=${periodMax}
                 vLines=${t0Lines}
               />
             ` : null}
@@ -602,6 +590,8 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
                 x=${psaPeriods} y=${psd}
                 xLabel="Period (s)" yLabel="PSD (m)"
                 color="#9B59B6" logX=${true}
+                xMin=${periodMin}
+                xMax=${periodMax}
                 vLines=${t0Lines}
               />
             ` : null}
@@ -632,7 +622,8 @@ function SpectralTab({ psaPeriods, psaValues, inputPsaPeriods, inputPsaValues, t
             <//>
           ` : null}
         `;
-      })()}
+        })()}
+      </div>
 
       <div style=${{ marginTop: "0.75rem" }}>
         <h4 style=${{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>PSA Summary at Standard Periods</h4>
@@ -696,11 +687,11 @@ function SpectraSummaryTab({ data, loading, error, accelUnit }) {
   const visibleRows = maxPeriod != null
     ? rows.filter(row => (Number(row.period_s) || 0) <= maxPeriod)
     : rows;
-  const periods = visibleRows.map(r => r.period_s);
-  const surfacePsa = visibleRows.map(r => r.surface_psa_m_s2 ?? null).filter(v => v != null);
+  const summaryRows = visibleRows.filter(r => Number.isFinite(Number(r.period_s)) && r.surface_psa_m_s2 != null);
+  const periods = summaryRows.map(r => Number(r.period_s));
   const ampSeries = visibleRows
     .filter(r => r.amplification_ratio != null)
-    .map(r => ({ x: r.period_s, y: r.amplification_ratio }));
+    .map(r => ({ x: Number(r.period_s), y: Number(r.amplification_ratio) }));
   const ampPeriods = ampSeries.map(p => p.x);
   const ampValues = ampSeries.map(p => p.y);
   const visibleMaxSurfacePsa = visibleRows.length
@@ -709,7 +700,7 @@ function SpectraSummaryTab({ data, loading, error, accelUnit }) {
   const visibleMaxAmplification = visibleRows.length
     ? Math.max(...visibleRows.map(r => Number(r.amplification_ratio) || 0))
     : null;
-  const summarySurfaceSeries = visibleRows.map(r =>
+  const summarySurfaceSeries = summaryRows.map(r =>
     convertAccelerationValue(Number(r.surface_psa_m_s2) || 0, accelUnit)
   );
 
@@ -738,28 +729,34 @@ function SpectraSummaryTab({ data, loading, error, accelUnit }) {
         <div className="metric-card"><span>${`Max Surface PSA (${accelLabel})`}</span><b>${fmt(convertAccelerationValue(visibleMaxSurfacePsa ?? data?.max_surface_psa_m_s2, accelUnit), 4)}</b></div>
         <div className="metric-card"><span>Max Amplification</span><b>${fmt(visibleMaxAmplification ?? data?.max_amplification_ratio, 3)}</b></div>
       </div>
-      ${periods.length > 2 && surfacePsa.length > 2 ? html`
-        <${ChartCard}
-          title="Surface PSA Summary"
-          x=${periods}
-          y=${summarySurfaceSeries}
-          xLabel="Period (s)"
-          yLabel=${`Surface PSA (${accelLabel})`}
-          color="#D35400"
-          logX=${true}
-        />
-      ` : null}
-      ${ampPeriods.length > 2 ? html`
-        <${ChartCard}
-          title="Amplification Ratio Summary"
-          x=${ampPeriods}
-          y=${ampValues}
-          xLabel="Period (s)"
-          yLabel="Surface/Input"
-          color="#8E44AD"
-          logX=${true}
-        />
-      ` : null}
+      <div className="results-chart-grid results-chart-grid-2">
+        ${periods.length > 2 && summarySurfaceSeries.length > 2 ? html`
+          <${ChartCard}
+            title="Surface PSA Summary"
+            x=${periods}
+            y=${summarySurfaceSeries}
+            xLabel="Period (s)"
+            yLabel=${`Surface PSA (${accelLabel})`}
+            color="#D35400"
+            logX=${true}
+            xMax=${maxPeriod ?? undefined}
+            yMin=${0}
+          />
+        ` : null}
+        ${ampPeriods.length > 2 ? html`
+          <${ChartCard}
+            title="Amplification Ratio Summary"
+            x=${ampPeriods}
+            y=${ampValues}
+            xLabel="Period (s)"
+            yLabel="Surface/Input"
+            color="#8E44AD"
+            logX=${true}
+            xMax=${maxPeriod ?? undefined}
+            yMin=${0}
+          />
+        ` : null}
+      </div>
       <table className="tbl">
         <thead>
           <tr>

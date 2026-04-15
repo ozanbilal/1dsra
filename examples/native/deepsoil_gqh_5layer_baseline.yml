@@ -2,6 +2,9 @@
 # This is the primary acceptance case for the HM GQH nonlinear rigid/outcrop
 # baseline. It preserves the DeepSoil-style theta set directly because that
 # currently matches the workbook response better than the Darendeli-refit path.
+# The reload factor is tuned together with the current reload/reversal
+# semantics to the best overall baseline parity candidate. The adaptive
+# branch-stiffness rule uses the reversal secant/tangent ratio.
 
 project_name: deepsoil-gqh-5layer-baseline
 
@@ -21,7 +24,9 @@ profile:
         theta4: 1.0
         theta5: 0.99
         damping_min: 0.0138748644731001
-        reload_factor: 1.6
+        reload_factor: 1.1
+        adaptive_reload_mode_code: 1.0
+        adaptive_reload_exponent: 0.5
         mrdf_p1: 0.82
         mrdf_p2: 0.55
         mrdf_p3: 20.0
@@ -40,7 +45,9 @@ profile:
         theta4: 1.0
         theta5: 0.99
         damping_min: 0.0104352566254
-        reload_factor: 1.6
+        reload_factor: 1.1
+        adaptive_reload_mode_code: 1.0
+        adaptive_reload_exponent: 0.5
         mrdf_p1: 0.73
         mrdf_p2: 0.45
         mrdf_p3: 22.5
@@ -59,7 +66,9 @@ profile:
         theta4: 1.0
         theta5: 0.99
         damping_min: 0.0090127217905
-        reload_factor: 1.6
+        reload_factor: 1.1
+        adaptive_reload_mode_code: 1.0
+        adaptive_reload_exponent: 0.5
         mrdf_p1: 0.685
         mrdf_p2: 0.4
         mrdf_p3: 25.0
@@ -78,7 +87,9 @@ profile:
         theta4: 1.0
         theta5: 0.99
         damping_min: 0.0081630304317
-        reload_factor: 1.6
+        reload_factor: 1.1
+        adaptive_reload_mode_code: 1.0
+        adaptive_reload_exponent: 0.5
         mrdf_p1: 0.685
         mrdf_p2: 0.4
         mrdf_p3: 23.5
@@ -97,7 +108,9 @@ profile:
         theta4: 1.0
         theta5: 0.99
         damping_min: 0.007587423921
-        reload_factor: 1.6
+        reload_factor: 1.1
+        adaptive_reload_mode_code: 1.0
+        adaptive_reload_exponent: 0.5
         mrdf_p1: 0.685
         mrdf_p2: 0.4
         mrdf_p3: 22.5

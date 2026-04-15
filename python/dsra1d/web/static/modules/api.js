@@ -182,6 +182,10 @@ export function fetchMotionLibrary(extraDirs = []) {
   return request("GET", `/api/motions/library${qs.toString() ? `?${qs.toString()}` : ""}`);
 }
 
+export function clearGeneratedMotions() {
+  return request("POST", "/api/motions/generated/clear");
+}
+
 export function fetchMotionPreview(motionPath, options = {}) {
   const qs = new URLSearchParams({ path: motionPath });
   Object.entries(options || {}).forEach(([key, value]) => {

@@ -186,6 +186,7 @@ def test_web_signals_endpoint_includes_extended_fields(tmp_path) -> None:
     assert required_keys.issubset(payload.keys())
     assert len(payload["time_s"]) > 1
     assert len(payload["period_s"]) > 1
+    assert max(payload["period_s"]) == pytest.approx(10.0, rel=1.0e-6)
 
 
 def test_web_signals_endpoint_uses_input_motion_dt_for_input_series_and_psa(tmp_path) -> None:
@@ -346,6 +347,7 @@ def test_web_config_from_wizard_wires_explicit_bedrock(tmp_path) -> None:
                     "name": "Rock",
                     "vs_m_s": 760.0,
                     "unit_weight_kN_m3": 25.0,
+                    "damping_ratio": 0.02,
                 },
                 "layers": [
                     {
@@ -385,6 +387,7 @@ def test_web_config_from_wizard_wires_explicit_bedrock(tmp_path) -> None:
     assert cfg.profile.bedrock is not None
     assert cfg.profile.bedrock.vs_m_s == pytest.approx(760.0)
     assert cfg.profile.bedrock.unit_weight_kn_m3 == pytest.approx(25.0)
+    assert cfg.profile.bedrock.damping_ratio == pytest.approx(0.02)
 
 
 def test_web_config_from_wizard_preserves_darendeli_calibration(tmp_path) -> None:
@@ -1715,6 +1718,7 @@ def test_web_results_response_spectra_summary_endpoint(tmp_path) -> None:
     assert "period_s" in row0
     assert "surface_psa_m_s2" in row0
     assert "amplification_ratio" in row0
+    assert any(row["period_s"] == pytest.approx(10.0, rel=1.0e-6) for row in payload["rows"])
 
 
 def test_web_download_profile_summary_csv_endpoint(tmp_path) -> None:

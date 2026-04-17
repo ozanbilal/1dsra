@@ -310,6 +310,7 @@ class Layer(BaseModel):
                 "damping_min",
                 "damping_max",
                 "reload_factor",
+                "mrdf_reference_mode_code",
                 "adaptive_reload_mode_code",
                 "adaptive_reload_exponent",
                 "adaptive_tangent_mode_code",
@@ -359,6 +360,7 @@ class Layer(BaseModel):
                 "damping_min",
                 "damping_max",
                 "reload_factor",
+                "mrdf_reference_mode_code",
                 "adaptive_reload_mode_code",
                 "adaptive_reload_exponent",
                 "adaptive_tangent_mode_code",
@@ -450,6 +452,7 @@ class BedrockProperties(BaseModel):
     name: str = "Bedrock"
     vs_m_s: float = Field(gt=0.0)
     unit_weight_kn_m3: float = Field(gt=0.0, alias="unit_weight_kN_m3")
+    damping_ratio: float = Field(default=0.0, ge=0.0, le=0.5)
 
 
 class SoilProfile(BaseModel):
@@ -488,6 +491,7 @@ class ProjectConfig(BaseModel):
             name=f"{last_layer.name} halfspace",
             vs_m_s=float(last_layer.vs_m_s),
             unit_weight_kn_m3=float(last_layer.unit_weight_kn_m3),
+            damping_ratio=0.0,
         )
 
     @model_validator(mode="after")

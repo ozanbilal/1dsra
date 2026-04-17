@@ -170,6 +170,25 @@ def evaluate_mrdf_factor(
     return float(np.clip(f, 0.0, F_MAX))
 
 
+def evolve_mrdf_factor_with_branch_progress(
+    target_factor: float,
+    branch_progress: float,
+    *,
+    exponent: float = 2.0,
+) -> float:
+    """Evolve an MRDF factor from 1.0 at reversal toward a target factor over branch progress.
+
+    This is an experimental helper for parity studies. ``branch_progress`` is expected
+    in ``[0, 1]`` where 0 is the reversal point and 1 is a full excursion relative to
+    the current governing strain-history scale.
+    """
+    progress = float(np.clip(branch_progress, 0.0, 1.0))
+    effective_exponent = max(float(exponent), 1.0e-6)
+    weight = progress**effective_exponent
+    evolved = 1.0 + (float(target_factor) - 1.0) * weight
+    return float(np.clip(evolved, 0.0, F_MAX))
+
+
 # ---------------------------------------------------------------------------
 # Convenience: build MRDFCoefficients from material_params dict
 # ---------------------------------------------------------------------------

@@ -564,7 +564,22 @@ SPECTRA_STANDARD_PERIODS: tuple[float, ...] = (
     3.0,
     4.0,
     5.0,
+    7.5,
+    10.0,
 )
+
+WEB_SPECTRA_MIN_PERIOD_S = 0.05
+WEB_SPECTRA_MAX_PERIOD_S = 10.0
+WEB_SPECTRA_POINT_COUNT = 120
+
+
+def _web_spectra_periods() -> np.ndarray:
+    return np.logspace(
+        np.log10(WEB_SPECTRA_MIN_PERIOD_S),
+        np.log10(WEB_SPECTRA_MAX_PERIOD_S),
+        WEB_SPECTRA_POINT_COUNT,
+        dtype=np.float64,
+    )
 
 
 def _profile_summary_csv_text(summary: ResultProfileSummaryResponse) -> str:
@@ -2516,11 +2531,15 @@ def _wizard_defaults_from_project_payload(payload: dict[str, object]) -> dict[st
     if isinstance(bedrock_in, dict):
         bedrock_vs = _as_positive_float_or_none(bedrock_in.get("vs_m_s"))
         bedrock_uw = _as_positive_float_or_none(bedrock_in.get("unit_weight_kN_m3"))
+        bedrock_damping = _as_non_negative_float_or_none(bedrock_in.get("damping_ratio"))
         if bedrock_vs is not None and bedrock_uw is not None:
             bedrock_payload = {
                 "name": str(bedrock_in.get("name", "Bedrock")),
                 "vs_m_s": bedrock_vs,
                 "unit_weight_kN_m3": bedrock_uw,
+                "damping_ratio": (
+                    min(float(bedrock_damping), 0.5) if bedrock_damping is not None else 0.0
+                ),
             }
 
     layers_raw = profile_dict.get("layers")
@@ -3061,15 +3080,29 @@ def _build_response_spectra_summary_response(
     run_id: str,
     result_store: ResultStore,
 ) -> ResponseSpectraSummaryResponse:
-    surface_periods = np.asarray(result_store.spectra_periods, dtype=np.float64)
-    surface_psa = np.asarray(result_store.spectra_psa, dtype=np.float64)
+    summary_periods = _web_spectra_periods()
+    surface_dt_s = float(result_store.dt_s)
+    input_dt_s = (
+        float(result_store.input_dt_s)
+        if np.isfinite(result_store.input_dt_s) and result_store.input_dt_s > 0.0
+        else surface_dt_s
+    )
+    surface_spectra = compute_spectra(
+        np.asarray(result_store.acc_surface, dtype=np.float64),
+        dt=surface_dt_s,
+        damping=0.05,
+        periods=summary_periods,
+    )
+    surface_periods = np.asarray(surface_spectra.periods, dtype=np.float64)
+    surface_psa = np.asarray(surface_spectra.psa, dtype=np.float64)
     input_psa: np.ndarray | None = None
     if result_store.acc_input.size > 1:
         try:
             spectra_input = compute_spectra(
                 np.asarray(result_store.acc_input, dtype=np.float64),
-                dt=float(result_store.dt_s),
+                dt=input_dt_s,
                 damping=0.05,
+                periods=summary_periods,
             )
             input_psa = np.asarray(spectra_input.psa, dtype=np.float64)
         except Exception:
@@ -3895,10 +3928,12 @@ def create_app() -> FastAPI:
 
         dt_s = _estimate_dt(rs.time)
         input_dt_s = float(rs.input_dt_s) if np.isfinite(rs.input_dt_s) and rs.input_dt_s > 0.0 else float(dt_s)
+        viewer_periods = _web_spectra_periods()
         spectra_live = compute_spectra(
             np.asarray(rs.acc_surface, dtype=np.float64),
             dt=dt_s,
             damping=0.05,
+            periods=viewer_periods,
         )
         period_list = [float(v) for v in spectra_live.periods]
         psa_list = [float(v) for v in spectra_live.psa]
@@ -3974,6 +4009,7 @@ def create_app() -> FastAPI:
                 np.asarray(rs.acc_input, dtype=np.float64),
                 dt=input_dt_s,
                 damping=0.05,
+                periods=viewer_periods,
             )
             input_period_list = [float(v) for v in spectra_input.periods]
             input_psa_list = [float(v) for v in spectra_input.psa]
@@ -4000,6 +4036,7 @@ def create_app() -> FastAPI:
                 applied_input,
                 dt=input_dt_s,
                 damping=0.05,
+                periods=viewer_periods,
             )
             applied_input_period_list = [float(v) for v in spectra_applied_input.periods]
             applied_input_psa_list = [float(v) for v in spectra_applied_input.psa]

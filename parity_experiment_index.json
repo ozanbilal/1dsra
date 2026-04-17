@@ -1,0 +1,364 @@
+[
+  {
+    "id": "exp_scalar_reload_sweeps",
+    "date": "2026-04-17",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "scalar reload-only tuning",
+    "hypothesis": "A scalar reload_factor sweep might close the remaining baseline parity gap.",
+    "change_summary": "Swept reload-only tuning ideas without changing the deeper branch-evolution semantics.",
+    "artifacts": [
+      "output/baseline_iter/reload_*",
+      "output/baseline_iter/adaptive_reload_*"
+    ],
+    "metrics": {
+      "summary": "No durable closure path emerged from scalar reload-only tuning."
+    },
+    "verdict": "falsified",
+    "do_not_repeat": "Do not reopen reload-only scalar sweeps as the main parity strategy.",
+    "next_if_any": "Move to branch-evolution experiments instead of more scalar scans."
+  },
+  {
+    "id": "exp_mode3_reversal_tangent_preserving",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "reversal-tangent-preserving MRDF branch",
+    "hypothesis": "Preserving reversal tangent near G0 would reduce period drift while keeping MRDF damping reduction behavior.",
+    "change_summary": "Added experimental mode 3 branch law with reversal-tangent-preserving formulation and exact tangent handshake.",
+    "artifacts": [
+      "output/baseline_iter/mode3_current",
+      "output/baseline_iter/mode3_experimental",
+      "output/baseline_iter/single_element_mode3",
+      "output/baseline_iter/tangent_audit_mode3"
+    ],
+    "metrics": {
+      "surface_nrmse": 0.1428,
+      "psa_nrmse": 0.1576,
+      "surface_psa_peak_period_diff_pct": 11.732494130275942,
+      "secant_g_over_gmax_nrmse": 0.179,
+      "stress_path_nrmse": 0.4295
+    },
+    "verdict": "falsified",
+    "do_not_repeat": "Do not rerun unchanged mode 3 as a candidate closure path.",
+    "next_if_any": "Only revisit if a new F_mrdf or curvature rule materially changes the branch law."
+  },
+  {
+    "id": "exp_mode4_translated_local_tangent_restore",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "translated-local tangent-restore bridge",
+    "hypothesis": "Raising translated-branch tangent reference without changing tau anchoring could improve parity without destabilizing the branch.",
+    "change_summary": "Added experimental mode 4 that keeps translated-local tau anchoring but partially restores tangent reference toward G0.",
+    "artifacts": [
+      "output/baseline_iter/mode4_experimental",
+      "output/baseline_iter/single_element_mode4_with_direct_debug",
+      "output/baseline_iter/tangent_audit_mode4_with_direct_debug"
+    ],
+    "metrics": {
+      "surface_nrmse": 0.09784566426405236,
+      "psa_nrmse": 0.07056179329734742,
+      "surface_psa_peak_period_diff_pct": 11.732494130275942,
+      "gamma_max_nrmse": 0.1403686017946717,
+      "secant_g_over_gmax_nrmse": 0.1660441579439227,
+      "stress_path_nrmse": 0.2882942693825603,
+      "loop_energy_pct_diff": 136.20347327498024
+    },
+    "verdict": "improved_non_accepting",
+    "do_not_repeat": "Do not treat unchanged mode 4 as the acceptance solution.",
+    "next_if_any": "Use it as the current best non-accepting system-level baseline."
+  },
+  {
+    "id": "exp_mode4_selective_bottom_layers",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "selective deep-layer mode 4 restore",
+    "hypothesis": "If lower layers dominate compliance, restricting tangent restore to bottom layers might move the system-period signature.",
+    "change_summary": "Ran selective mode 4 variants on bottom 3 and bottom 2 layers only.",
+    "artifacts": [
+      "output/baseline_iter/mode4_bottom3",
+      "output/baseline_iter/mode4_bottom2"
+    ],
+    "metrics": {
+      "mode4_bottom3": {
+        "psa_nrmse": 0.07055797188830613,
+        "surface_psa_peak_period_diff_pct": 11.732494130275942,
+        "gamma_max_nrmse": 0.14050409631460267,
+        "secant_g_over_gmax_nrmse": 0.16636556352193044
+      },
+      "mode4_bottom2": {
+        "psa_nrmse": 0.0706770376634913,
+        "surface_psa_peak_period_diff_pct": 11.732494130275942,
+        "gamma_max_nrmse": 0.14124283476996144,
+        "secant_g_over_gmax_nrmse": 0.16697064780298493
+      }
+    },
+    "verdict": "falsified",
+    "do_not_repeat": "Do not rerun bottom-layer-only mode 4 variants without a new constitutive idea behind them.",
+    "next_if_any": "Focus on branch-evolution semantics instead of layer selection."
+  },
+  {
+    "id": "exp_single_element_direct_debug",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "single-element direct replay and branch tracing",
+    "hypothesis": "Local replay against workbook-derived hysteresis can isolate whether the residual is path-level or system-assembly-level.",
+    "change_summary": "Added constitutive replay utilities and compared local path behavior against Layer 1 workbook hysteresis.",
+    "artifacts": [
+      "output/baseline_iter/single_element_current_with_direct_debug",
+      "output/baseline_iter/single_element_mode3",
+      "output/baseline_iter/single_element_mode4_with_direct_debug",
+      "output/baseline_iter/single_element_mode5",
+      "output/baseline_iter/single_element_mode6",
+      "output/baseline_iter/single_element_mode7"
+    ],
+    "metrics": {
+      "current_stress_path_nrmse": 0.015184199057194654,
+      "mode5_stress_path_nrmse": 0.015088039604454448,
+      "mode6_stress_path_nrmse": 0.014380843963461912,
+      "mode7_stress_path_nrmse": 0.014380843963461912
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Use this family for diagnosis only; it is not itself a closure strategy.",
+    "next_if_any": "Pair it with all-layer diagnostics before trusting a local replay improvement."
+  },
+  {
+    "id": "exp_layer_sweep_current_vs_mode4",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "all-layer tangent and compliance audit",
+    "hypothesis": "Layer-by-layer tangent audit may show a dominant stiffness carrier that explains the unchanged period signature.",
+    "change_summary": "Added all-layer sweep audit and compared current vs mode 4 compliance distributions and equivalent stiffness minima.",
+    "artifacts": [
+      "output/baseline_iter/layer_sweep_current",
+      "output/baseline_iter/layer_sweep_mode4",
+      "output/baseline_iter/layer_sweep_mode6"
+    ],
+    "metrics": {
+      "current_dominant_layer_by_mean_compliance": 5,
+      "current_dominant_layer_mean_compliance": 0.20733761653761226,
+      "mode4_dominant_layer_by_mean_compliance": 5,
+      "mode4_dominant_layer_mean_compliance": 0.20587104941325168,
+      "mode6_dominant_layer_by_mean_compliance": 5,
+      "mode6_dominant_layer_mean_compliance": 0.20616885574435487,
+      "lower_layer_compliance_share_current": 0.6128809573684435,
+      "equivalent_stiffness_min_current": 8558.666197495662,
+      "equivalent_stiffness_min_mode4": 10361.731182540727,
+      "equivalent_stiffness_min_mode6": 8296.289411741445
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Do not treat layer dominance alone as the closure hypothesis.",
+    "next_if_any": "Use all-layer sweep to support multi-layer path targeting, not isolated branch-law tuning."
+  },
+  {
+    "id": "exp_fmrdf_evolution_progress_rule",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "branch-progress or reversal-state aware F_mrdf evolution",
+    "hypothesis": "The remaining residual may come from overly static F_mrdf usage; branch-progress or reversal-state aware evolution could move the governing tangent history.",
+    "change_summary": "Implemented experimental mode 5 that evolves F_mrdf from 1.0 at reversal toward the history-target factor over branch progress.",
+    "artifacts": [
+      "output/baseline_iter/single_element_mode5",
+      "output/baseline_iter/tangent_audit_mode5",
+      "output/baseline_iter/mode5_experimental"
+    ],
+    "metrics": {
+      "single_element_stress_path_nrmse": 0.015088039604454448,
+      "single_element_secant_path_nrmse": 0.011210464172541816,
+      "single_element_loop_energy_pct_diff": 48.93282270680512,
+      "surface_nrmse": 0.10650708966370438,
+      "psa_nrmse": 0.08096349146053539,
+      "surface_psa_peak_period_diff_pct": 11.732494130275942,
+      "gamma_max_nrmse": 0.1659109966823451,
+      "secant_g_over_gmax_nrmse": 0.14502475357300681,
+      "stress_path_nrmse": 0.300855359393076,
+      "loop_energy_pct_diff": 212.55845555241683
+    },
+    "verdict": "regressed",
+    "do_not_repeat": "Do not rerun unchanged standalone mode 5 progression as a primary closure path.",
+    "next_if_any": "Any future F_mrdf evolution work should be coupled to a multi-layer target, not retried standalone."
+  },
+  {
+    "id": "exp_translated_branch_curvature_rule",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "translated branch curvature, including hybrid curvature+tangent-restore",
+    "hypothesis": "The remaining residual may be driven by translated-branch curvature rather than by standalone F_mrdf progression.",
+    "change_summary": "Implemented experimental mode 6 translated curvature progression and experimental mode 7 translated curvature plus tangent restore.",
+    "artifacts": [
+      "output/baseline_iter/single_element_mode6",
+      "output/baseline_iter/tangent_audit_mode6",
+      "output/baseline_iter/mode6_experimental",
+      "output/baseline_iter/single_element_mode7",
+      "output/baseline_iter/tangent_audit_mode7",
+      "output/baseline_iter/mode7_experimental"
+    ],
+    "metrics": {
+      "mode6_surface_nrmse": 0.11831004510158506,
+      "mode6_psa_nrmse": 0.09562715448573829,
+      "mode6_surface_psa_peak_period_diff_pct": 11.732494130275942,
+      "mode6_gamma_max_nrmse": 0.18863643874997899,
+      "mode6_secant_g_over_gmax_nrmse": 0.14709538344433926,
+      "mode7_surface_nrmse": 0.11771469066700418,
+      "mode7_psa_nrmse": 0.09489100396522135,
+      "mode7_surface_psa_peak_period_diff_pct": 11.732494130275942,
+      "mode7_gamma_max_nrmse": 0.18472123811880561,
+      "mode7_secant_g_over_gmax_nrmse": 0.1461020512759384
+    },
+    "verdict": "regressed",
+    "do_not_repeat": "Do not rerun unchanged mode 6 or mode 7 as primary closure paths.",
+    "next_if_any": "Use this family only if tied to a stronger multi-layer target than Layer 1 replay quality."
+  },
+  {
+    "id": "exp_elastic_halfspace_bedrock_damping_review",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "elastic-halfspace bedrock damping review",
+    "hypothesis": "The remaining elastic-halfspace gap might be explained by an explicit bedrock damping ratio such as 2 percent.",
+    "change_summary": "Reviewed DeepSoil v7.1 halfspace documentation, added bedrock damping_ratio to config and web payloads for parity/reference, and verified GeoWave time-domain elastic-halfspace solvers remain impedance-only in behavior.",
+    "artifacts": [
+      "DEEPSOIL_User_Manual_v7.pdf",
+      "tests/test_linear_solver.py",
+      "tests/test_nonlinear_solver.py"
+    ],
+    "metrics": {
+      "deepsoil_manual_note": "Bedrock damping ratio has no effect in time domain analyses.",
+      "time_domain_solver_response_changes_with_bedrock_damping_ratio": false
+    },
+    "verdict": "falsified",
+    "do_not_repeat": "Do not treat standalone bedrock percent damping tuning as a primary closure path for time-domain elastic-halfspace parity.",
+    "next_if_any": "If elastic-halfspace parity remains important, focus on impedance and input semantics rather than bedrock damping ratio."
+  },
+  {
+    "id": "exp_boundary_semantics_audit",
+    "date": "2026-04-16",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "rigid vs elastic-halfspace boundary semantics audit",
+    "hypothesis": "The observed rigid-versus-elastic gap may come from a real boundary-condition effect, but the input application semantics must be separated first.",
+    "change_summary": "Ran a targeted nonlinear Newmark audit on the 5-layer baseline geometry with explicit bedrock Vs=760 m/s, unit weight=25 kN/m3, damping_ratio=0.02 for three cases: rigid+outcrop, rigid+within, and elastic_halfspace+outcrop.",
+    "artifacts": [
+      "output/baseline_iter/boundary_audit_vs500_760/boundary_audit_summary.json",
+      "output/baseline_iter/boundary_audit_vs500_760/boundary_audit_summary.md",
+      "output/baseline_iter/boundary_audit_kocaeli_vs500_760/boundary_audit_summary.json",
+      "output/baseline_iter/boundary_audit_kocaeli_vs500_760/boundary_audit_summary.md"
+    ],
+    "metrics": {
+      "sample_motion_audit": {
+        "elastic_vs_rigid_outcrop_surface_pga_ratio": 2.275243876788755,
+        "elastic_vs_rigid_outcrop_max_surface_psa_ratio": 2.2123410786674533,
+        "elastic_vs_rigid_outcrop_applied_input_pga_ratio": 2.0,
+        "elastic_outcrop_vs_rigid_within_surface_pga_ratio": 1.1569577258326473,
+        "elastic_outcrop_vs_rigid_within_max_surface_psa_ratio": 1.107232234230649,
+        "elastic_outcrop_vs_rigid_within_applied_input_pga_ratio": 1.0
+      },
+      "kocaeli_audit": {
+        "elastic_vs_rigid_outcrop_surface_pga_ratio": 1.7911115228156513,
+        "elastic_vs_rigid_outcrop_max_surface_psa_ratio": 1.3083799454973615,
+        "elastic_vs_rigid_outcrop_applied_input_pga_ratio": 2.0,
+        "elastic_vs_rigid_outcrop_surface_peak_period_diff_pct": 5.703592242778525,
+        "elastic_outcrop_vs_rigid_within_surface_pga_ratio": 1.2560921809213386,
+        "elastic_outcrop_vs_rigid_within_max_surface_psa_ratio": 0.9809819755764483,
+        "elastic_outcrop_vs_rigid_within_applied_input_pga_ratio": 1.0,
+        "elastic_outcrop_vs_rigid_within_surface_peak_period_diff_pct": 5.703592242778525
+      }
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Do not interpret the full rigid+outcrop vs elastic_halfspace+outcrop gap as a pure boundary-only effect without separating input semantics first.",
+    "next_if_any": "For elastic-halfspace parity work, compare impedance/boundary effects only after aligning within-vs-outcrop semantics."
+  },
+  {
+    "id": "exp_elastic_halfspace_force_balance_audit",
+    "date": "2026-04-17",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "elastic-halfspace force-balance audit",
+    "hypothesis": "The remaining elastic-halfspace effect may be explainable by how the incident base force and dashpot reaction combine through the impedance boundary.",
+    "change_summary": "Added boundary-force audit output to the implicit Newmark solver and ran a Kocaeli-based elastic-halfspace audit to measure incident force, dashpot force, and net boundary traction directly.",
+    "artifacts": [
+      "output/baseline_iter/elastic_halfspace_force_audit_kocaeli/elastic_boundary_force_audit.csv",
+      "output/baseline_iter/elastic_halfspace_force_audit_kocaeli/elastic_boundary_force_audit_summary.json",
+      "output/baseline_iter/elastic_halfspace_force_audit_kocaeli/elastic_boundary_force_audit_summary.md"
+    ],
+    "metrics": {
+      "incident_force_abs_max": 685.41614568,
+      "dashpot_force_abs_max": 689.82712851,
+      "net_boundary_force_abs_max": 118.99361183,
+      "incident_force_rms": 156.20425415202888,
+      "dashpot_force_rms": 154.50019300009896,
+      "net_boundary_force_rms": 16.94615500949377,
+      "dashpot_to_incident_rms_ratio": 0.9890908147080847,
+      "net_to_incident_rms_ratio": 0.10848715421668725,
+      "dashpot_incident_corr": 0.9941105244846584
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Do not treat elastic-halfspace parity as a raw-force-amplification problem without first checking incident-force and dashpot cancellation.",
+    "next_if_any": "If elastic-halfspace parity remains important, inspect frequency content and phase of the residual net boundary traction rather than bedrock damping or gross force magnitude."
+  },
+  {
+    "id": "exp_elastic_halfspace_frequency_audit",
+    "date": "2026-04-17",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "elastic-halfspace residual traction frequency audit",
+    "hypothesis": "The remaining elastic-halfspace effect should appear as a frequency-selective residual boundary traction rather than as a gross force-magnitude increase.",
+    "change_summary": "Added FFT-based post-analysis for elastic halfspace boundary-force audits and evaluated the Kocaeli residual traction against the elastic-halfspace surface response.",
+    "artifacts": [
+      "output/baseline_iter/elastic_halfspace_frequency_audit_kocaeli/elastic_boundary_frequency_audit_summary.json",
+      "output/baseline_iter/elastic_halfspace_frequency_audit_kocaeli/elastic_boundary_frequency_audit_summary.md"
+    ],
+    "metrics": {
+      "dominant_surface_frequency_hz": 5.366666666666781,
+      "dominant_surface_period_s": 0.18633540372670412,
+      "dominant_net_force_frequency_hz": 5.366666666666781,
+      "dominant_net_force_period_s": 0.18633540372670412,
+      "net_to_incident_amplitude_ratio_at_surface_peak": 0.5885603351606552,
+      "net_surface_phase_diff_deg_at_surface_peak": 5.666631858655279,
+      "incident_surface_phase_diff_deg_at_surface_peak": 17.070885736726552,
+      "net_incident_phase_diff_deg_at_surface_peak": -11.404253878071273
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Do not read elastic-halfspace behavior only from total-force RMS; keep the frequency-local residual traction picture in view.",
+    "next_if_any": "If halfspace parity must be closed further, compare the residual traction frequency content against the rigid-within reference and then decide whether the remaining work belongs in boundary implementation or constitutive parity."
+  },
+  {
+    "id": "exp_multilayer_path_targeting_rule",
+    "date": "2026-04-16",
+    "status": "planned",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "multi-layer response-path targeting",
+    "hypothesis": "The remaining residual is more likely driven by how constitutive evolution distributes across layers than by any isolated Layer 1 branch-shape improvement.",
+    "change_summary": "Planned next experiment family. No implementation yet.",
+    "artifacts": [
+      "output/baseline_iter/"
+    ],
+    "metrics": {
+      "target_surface_psa_peak_period_diff_pct_lt": 11.732494130275942,
+      "guard_no_material_regression_in_surface_nrmse": true,
+      "guard_no_material_regression_in_psa_nrmse": true
+    },
+    "verdict": "diagnostic_only",
+    "do_not_repeat": "Do not skip straight back to new branch-law families before this multi-layer target is defined.",
+    "next_if_any": "Implement per-layer gamma/secant/stress-path targeting, then revisit the best system-level baseline."
+  }
+]

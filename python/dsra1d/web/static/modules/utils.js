@@ -41,7 +41,7 @@ export function computeGmax(vs, unitWeight) {
 /** Standard engineering periods for PSA tables. */
 export const STANDARD_PERIODS = [
   0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3,
-  0.4, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0,
+  0.4, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.5, 10.0,
 ];
 
 /** Material type options. */
@@ -499,11 +499,15 @@ export function validateWizard(w) {
   if (w.bedrock != null) {
     const bedrockVs = Number(w.bedrock.vs_m_s);
     const bedrockUw = Number(w.bedrock.unit_weight_kN_m3);
+    const bedrockDamping = Number(w.bedrock.damping_ratio ?? 0);
     if (!Number.isFinite(bedrockVs) || bedrockVs <= 0) {
       errors.push("Bedrock Vs must be > 0 when explicit halfspace properties are set.");
     }
     if (!Number.isFinite(bedrockUw) || bedrockUw <= 0) {
       errors.push("Bedrock unit weight must be > 0 when explicit halfspace properties are set.");
+    }
+    if (!Number.isFinite(bedrockDamping) || bedrockDamping < 0 || bedrockDamping > 0.5) {
+      errors.push("Bedrock damping ratio must be in [0, 0.5] when explicit halfspace properties are set.");
     }
   }
 
@@ -545,6 +549,7 @@ export const PARAM_HELP = {
   boundary_condition: "Rigid: fixed base (no radiation damping). Elastic Halfspace: allows energy radiation into underlying rock.",
   bedrock_vs: "Explicit halfspace Vs used only for Elastic Halfspace runs. Leave unset to reuse the last soil layer as the halfspace seed.",
   bedrock_unit_weight: "Explicit halfspace unit weight used only for Elastic Halfspace runs. Leave unset to reuse the last soil layer values.",
+  bedrock_damping: "DeepSoil v7.1 notes bedrock damping ratio has no effect in time-domain analyses. GeoWave stores it for parity/reference, but current time-domain solvers use only Vs and unit weight for the halfspace impedance boundary.",
   motion_units: "Declared acceleration unit for the selected raw motion files. Preview, import tools and run-ready normalization use this assumption.",
   motion_library_dirs: "One folder per line. GeoWave scans only these folders, and only the motion files directly inside each folder.",
   motion_format_hint: "Auto Detect uses lightweight heuristics. Use Time + Acc Columns, Single Column or Numeric Stream when the file structure is known.",

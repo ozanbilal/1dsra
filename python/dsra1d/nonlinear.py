@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import numpy.typing as npt
@@ -18,7 +18,12 @@ from dsra1d.materials.damping import (
     modal_matched_damping_matrix as _modal_matched_damping_matrix,
     rayleigh_coefficients as _rayleigh_coefficients,
 )
-from dsra1d.materials.mrdf import MRDFCoefficients, evaluate_mrdf_factor, mrdf_coefficients_from_params
+from dsra1d.materials.mrdf import (
+    MRDFCoefficients,
+    evaluate_mrdf_factor,
+    evolve_mrdf_factor_with_branch_progress,
+    mrdf_coefficients_from_params,
+)
 from dsra1d.motion import effective_input_acceleration
 from dsra1d.types import Motion
 
@@ -102,6 +107,54 @@ def _strain_direction(delta_gamma: float, eps: float) -> int:
 
 
 @dataclass(slots=True)
+class _ReplayBranch:
+    branch_id: int
+    parent_branch_id: int | None
+    gamma_rev: float
+    tau_rev: float
+    gamma_m_global: float
+    reload_factor: float
+    f_mrdf: float
+    direction: int
+    branch_kind: str
+    g_over_gmax: float
+    g_ref: float
+    g_t_ref: float
+    mode: str
+    keeps_reversal_tangent: bool
+
+
+@dataclass(slots=True)
+class _MrdfBridgeState:
+    gamma_hist: float
+    g_over_gmax: float
+    f_mrdf: float
+    g_ref: float
+    tau_ref: float
+    g_t_ref: float
+    mode: str
+    keeps_reversal_tangent: bool = False
+
+
+@dataclass(slots=True)
+class _DirectBranchState:
+    branch_id: int | None
+    parent_branch_id: int | None
+    gamma_rev: float
+    tau_rev: float
+    gamma_m_global: float
+    reload_factor: float
+    f_mrdf: float
+    direction: int
+    branch_kind: str
+    g_over_gmax: float
+    g_ref: float
+    g_t_ref: float
+    mode: str
+    keeps_reversal_tangent: bool
+
+
+@dataclass(slots=True)
 class _ElementConstitutiveState:
     material: MaterialType
     params: dict[str, float]
@@ -118,6 +171,15 @@ class _ElementConstitutiveState:
     has_reversal: bool = False
     gamma_max_seen: float = 0.0
     follow_backbone_until_reversal: bool = False
+    mrdf_bridge_gamma_hist: float = 0.0
+    mrdf_bridge_g_over_gmax: float = 1.0
+    mrdf_bridge_factor: float = 1.0
+    mrdf_bridge_g_ref: float = 0.0
+    branch_stack: list[_ReplayBranch] = field(default_factory=list)
+    branch_lookup: dict[int, _ReplayBranch] = field(default_factory=dict)
+    branch_counter: int = 0
+    active_branch_id: int | None = None
+    last_selected_branch_id: int | None = None
 
     def _backbone(self, gamma: float) -> float:
         return _element_backbone_stress(
@@ -155,6 +217,537 @@ class _ElementConstitutiveState:
             blend = 0.0
         return float(np.clip(blend, 0.0, 1.0))
 
+    def _mrdf_reference_mode_code(self) -> float:
+        raw = self.params.get("mrdf_reference_mode_code", 0.0)
+        try:
+            mode = float(raw)
+        except (TypeError, ValueError):
+            mode = 0.0
+        return mode
+
+    def _tangent_floor(self) -> float:
+        gmax = float(self.params.get("gmax", self.gmax_fallback))
+        g_red_min = float(self.params.get("g_reduction_min", 0.0))
+        return max(gmax * g_red_min, gmax * 1.0e-4)
+
+    def _current_g0(self) -> float:
+        return max(float(self.params.get("gmax", self.gmax_fallback)), 1.0e-12)
+
+    def _mrdf_reference_preserves_tangent(self) -> bool:
+        """Enable experimental mode where MRDF scaling is applied around a Gmax tangent anchor."""
+        mode_code = self._mrdf_reference_mode_code()
+        return 1.5 <= mode_code < 3.0
+
+    def _nested_mrdf_memory_enabled(self) -> bool:
+        """Enable branch replay experiments (mode>=2) without changing default behavior."""
+        mode_code = self._mrdf_reference_mode_code()
+        return 2.0 <= mode_code < 4.0
+
+    def _reversal_tangent_preserving_mrdf_enabled(self) -> bool:
+        mode_code = self._mrdf_reference_mode_code()
+        return 3.0 <= mode_code < 4.0
+
+    def _translated_local_tangent_restore_mrdf_enabled(self) -> bool:
+        mode_code = self._mrdf_reference_mode_code()
+        return 4.0 <= mode_code < 5.0
+
+    def _progressive_f_mrdf_enabled(self) -> bool:
+        mode_code = self._mrdf_reference_mode_code()
+        return 5.0 <= mode_code < 6.0
+
+    def _translated_branch_curvature_enabled(self) -> bool:
+        mode_code = self._mrdf_reference_mode_code()
+        return 6.0 <= mode_code < 7.0
+
+    def _translated_branch_curvature_tangent_restore_enabled(self) -> bool:
+        mode_code = self._mrdf_reference_mode_code()
+        return 7.0 <= mode_code < 8.0
+
+    def _translated_local_tangent_restore_weight(
+        self,
+        *,
+        f_mrdf: float,
+    ) -> float:
+        return float(np.clip(1.0 - f_mrdf, 0.0, 1.0))
+
+    def _mrdf_branch_progress(
+        self,
+        gamma: float,
+        *,
+        gamma_hist: float,
+    ) -> float:
+        if gamma_hist <= self.eps_gamma:
+            return 0.0
+        return float(
+            np.clip(
+                abs(gamma - self.gamma_rev) / max(gamma_hist, self.eps_gamma),
+                0.0,
+                1.0,
+            )
+        )
+
+    def _translated_branch_curvature_weight(
+        self,
+        *,
+        branch_progress: float,
+    ) -> float:
+        raw = self.params.get("translated_curvature_exponent", 2.0)
+        try:
+            exponent = float(raw)
+        except (TypeError, ValueError):
+            exponent = 2.0
+        exponent = max(exponent, 1.0e-6)
+        progress = float(np.clip(branch_progress, 0.0, 1.0))
+        return float(progress**exponent)
+
+    def _build_branch(self, bridge: _MrdfBridgeState, *, parent_branch_id: int | None) -> _ReplayBranch:
+        return _ReplayBranch(
+            branch_id=self.branch_counter + 1,
+            parent_branch_id=parent_branch_id,
+            gamma_rev=self.gamma_rev,
+            tau_rev=self.tau_rev,
+            gamma_m_global=max(bridge.gamma_hist, self.eps_gamma),
+            reload_factor=self._effective_reload_factor(),
+            f_mrdf=bridge.f_mrdf,
+            direction=self.direction if self.direction != 0 else 1,
+            branch_kind=bridge.mode,
+            g_over_gmax=bridge.g_over_gmax,
+            g_ref=bridge.g_ref,
+            g_t_ref=bridge.g_t_ref,
+            mode=bridge.mode,
+            keeps_reversal_tangent=bridge.keeps_reversal_tangent,
+        )
+
+    def _build_direct_branch_state(
+        self,
+        *,
+        bridge: _MrdfBridgeState | None,
+        reload_factor: float,
+        g_t_2x: float,
+    ) -> _DirectBranchState:
+        gamma_hist = max(
+            self.gamma_max_seen,
+            abs(self.gamma_prev),
+            abs(self.gamma_rev),
+            self.eps_gamma,
+        )
+        if bridge is None:
+            g_over_gmax = self._reduction(gamma_hist)
+            f_mrdf = 1.0
+            g_ref = max(g_t_2x, self._tangent_floor())
+            g_t_ref = g_ref
+            mode = "translated_masing"
+            keeps_tangent = False
+        else:
+            g_over_gmax = bridge.g_over_gmax
+            f_mrdf = bridge.f_mrdf
+            g_ref = bridge.g_ref
+            g_t_ref = bridge.g_t_ref
+            mode = bridge.mode
+            keeps_tangent = bridge.keeps_reversal_tangent
+            gamma_hist = max(bridge.gamma_hist, self.eps_gamma)
+        return _DirectBranchState(
+            branch_id=None,
+            parent_branch_id=self.active_branch_id,
+            gamma_rev=self.gamma_rev,
+            tau_rev=self.tau_rev,
+            gamma_m_global=gamma_hist,
+            reload_factor=reload_factor,
+            f_mrdf=f_mrdf,
+            direction=self.direction if self.direction != 0 else 1,
+            branch_kind=mode,
+            g_over_gmax=g_over_gmax,
+            g_ref=g_ref,
+            g_t_ref=g_t_ref,
+            mode=mode,
+            keeps_reversal_tangent=keeps_tangent,
+        )
+
+    def _translated_branch_terms(
+        self,
+        branch: _ReplayBranch,
+        gamma: float,
+    ) -> tuple[float, float, float]:
+        delta_gamma = gamma - branch.gamma_rev
+        abs_delta_gamma = abs(delta_gamma)
+        branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
+        reload_factor = max(branch.reload_factor, 1.0e-12)
+        shifted_gamma = abs_delta_gamma / reload_factor
+        delta_tau_2x = branch_sign * reload_factor * self._backbone(shifted_gamma)
+        g_t_2x = self._backbone_tangent(shifted_gamma)
+        return delta_gamma, delta_tau_2x, g_t_2x
+
+    def _eval_branch_response(
+        self,
+        branch: _ReplayBranch,
+        gamma: float,
+    ) -> tuple[float, float]:
+        delta_gamma, delta_tau_2x, g_t_2x = self._translated_branch_terms(branch, gamma)
+        tangent_floor = self._tangent_floor()
+        if branch.branch_kind == "reversal_tangent_preserving":
+            g0 = self._current_g0()
+            tau = branch.tau_rev + (g0 * delta_gamma) + (
+                branch.f_mrdf * (delta_tau_2x - (g0 * delta_gamma))
+            )
+            kt = g0 + (branch.f_mrdf * (g_t_2x - g0))
+            return tau, max(kt, tangent_floor)
+
+        tau_2x = branch.tau_rev + delta_tau_2x
+        tau_ref = branch.tau_rev + (branch.g_ref * delta_gamma)
+        tau = tau_ref + (branch.f_mrdf * (tau_2x - tau_ref))
+        g_t_branch = max(branch.g_t_ref + branch.f_mrdf * (g_t_2x - branch.g_t_ref), tangent_floor)
+        if branch.keeps_reversal_tangent:
+            return tau, g_t_branch
+        g_t_floor_adaptive = self._adaptive_tangent_floor(
+            gamma,
+            g_t_ref=branch.g_t_ref,
+            f_mrdf=branch.f_mrdf,
+            tangent_floor=tangent_floor,
+        )
+        return tau, max(g_t_branch, g_t_floor_adaptive)
+
+    def _eval_branch_stress(
+        self,
+        branch: _ReplayBranch,
+        gamma: float,
+    ) -> float:
+        return self._eval_branch_response(branch, gamma)[0]
+
+    def _eval_branch_tangent(
+        self,
+        branch: _ReplayBranch,
+        gamma: float,
+    ) -> float:
+        return self._eval_branch_response(branch, gamma)[1]
+
+    def _active_replay_branch(self, *, mutate: bool = False) -> _ReplayBranch | None:
+        if not self.branch_stack:
+            return None
+        if self.active_branch_id is None:
+            if mutate:
+                self.active_branch_id = self.branch_stack[-1].branch_id
+            return self.branch_stack[-1]
+        branch = self.branch_lookup.get(self.active_branch_id)
+        if branch is not None:
+            return branch
+        # Fallback for stale ids; keep behavior deterministic.
+        if mutate:
+            self.active_branch_id = self.branch_stack[-1].branch_id
+        return self.branch_stack[-1]
+
+    def _capture_mrdf_bridge_state(self) -> None:
+        if self.mrdf_coeffs is None:
+            return
+        if abs(self._mrdf_reference_mode_code()) < 0.5:
+            return
+        gamma_hist = max(
+            self.gamma_max_seen,
+            abs(self.gamma_prev),
+            abs(self.gamma_rev),
+            self.eps_gamma,
+        )
+        g_over_gmax = self._reduction(gamma_hist)
+        f_mrdf = evaluate_mrdf_factor(
+            self.mrdf_coeffs,
+            gamma_hist,
+            g_over_gmax=g_over_gmax,
+        )
+        gmax = float(self.params.get("gmax", self.gmax_fallback))
+        self.mrdf_bridge_gamma_hist = gamma_hist
+        self.mrdf_bridge_g_over_gmax = g_over_gmax
+        self.mrdf_bridge_factor = f_mrdf
+        self.mrdf_bridge_g_ref = max(gmax * g_over_gmax, self._tangent_floor())
+
+    def _record_reversal_branch(self, gamma: float) -> None:
+        if self.mrdf_coeffs is None:
+            return
+        if not self._nested_mrdf_memory_enabled():
+            return
+        bridge = self._mrdf_bridge_state(gamma)
+        if bridge is None:
+            return
+        parent = self.active_branch_id
+        branch = self._build_branch(bridge, parent_branch_id=parent)
+        self.branch_counter = branch.branch_id
+        self.branch_stack.append(branch)
+        self.branch_lookup[branch.branch_id] = branch
+        self.active_branch_id = branch.branch_id
+
+    def _replay_candidate_chain(self, active: _ReplayBranch) -> list[_ReplayBranch]:
+        candidates: list[_ReplayBranch] = []
+        parent_id = active.parent_branch_id
+        while parent_id is not None:
+            parent = self.branch_lookup.get(parent_id)
+            if parent is None:
+                break
+            if parent.direction == active.direction:
+                candidates.append(parent)
+            parent_id = parent.parent_branch_id
+        return candidates
+
+    def _find_replay_branch(self, gamma: float) -> _ReplayBranch | None:
+        if not self._nested_mrdf_memory_enabled():
+            return None
+        if len(self.branch_stack) < 2:
+            return None
+        active = self._active_replay_branch(mutate=False)
+        if active is None:
+            return None
+
+        tau_prev_active = self._eval_branch_stress(active, self.gamma_prev)
+        tau_curr_active = self._eval_branch_stress(active, gamma)
+        for branch in self._replay_candidate_chain(active):
+            tau_prev_prior = self._eval_branch_stress(branch, self.gamma_prev)
+            tau_curr_prior = self._eval_branch_stress(branch, gamma)
+            if not (np.isfinite(tau_prev_active) and np.isfinite(tau_curr_active) and np.isfinite(tau_prev_prior) and np.isfinite(tau_curr_prior)):
+                continue
+            diff_prev = tau_prev_active - tau_prev_prior
+            diff_curr = tau_curr_active - tau_curr_prior
+            if diff_prev == 0.0 or diff_curr == 0.0 or diff_prev * diff_curr < 0.0:
+                return branch
+        return None
+
+    def _resolve_replay_branch(self, gamma: float) -> tuple[_ReplayBranch | None, int]:
+        """
+        Resolve the branch that should be used at the given strain.
+
+        Returns tuple of (branch, reason), where reason code is used for debugging:
+        0=new-backbone/monotonic, 1=active branch, 2=replayed branch.
+        """
+        candidate = self._active_replay_branch(mutate=False)
+        if candidate is None:
+            return None, 1
+
+        if self._nested_mrdf_memory_enabled():
+            replay = self._find_replay_branch(gamma)
+            if replay is not None:
+                return replay, 2
+        return candidate, 1
+
+    def _mrdf_bridge_state(self, gamma: float) -> _MrdfBridgeState | None:
+        if self.mrdf_coeffs is None:
+            return None
+
+        delta_gamma = gamma - self.gamma_rev
+        abs_delta_gamma = abs(delta_gamma)
+        branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
+        mode_code = self._mrdf_reference_mode_code()
+        keeps_tangent = self._mrdf_reference_preserves_tangent()
+
+        if abs(mode_code) >= 0.5 and self.has_reversal and not (
+            self._translated_local_tangent_restore_mrdf_enabled()
+            or self._progressive_f_mrdf_enabled()
+            or self._translated_branch_curvature_enabled()
+            or self._translated_branch_curvature_tangent_restore_enabled()
+        ):
+            gamma_hist = max(self.mrdf_bridge_gamma_hist, self.eps_gamma)
+            g_over_gmax = float(np.clip(self.mrdf_bridge_g_over_gmax, 0.0, 1.0))
+            f_mrdf = float(np.clip(self.mrdf_bridge_factor, 0.0, 1.5))
+            if self._reversal_tangent_preserving_mrdf_enabled():
+                g0 = self._current_g0()
+                tau_ref = self.tau_rev + (g0 * delta_gamma)
+                return _MrdfBridgeState(
+                    gamma_hist=gamma_hist,
+                    g_over_gmax=g_over_gmax,
+                    f_mrdf=f_mrdf,
+                    g_ref=g0,
+                    tau_ref=tau_ref,
+                    g_t_ref=g0,
+                    mode="reversal_tangent_preserving",
+                    keeps_reversal_tangent=True,
+                )
+            if keeps_tangent:
+                g_ref = max(
+                    self._current_g0(),
+                    self._tangent_floor(),
+                )
+                tau_ref = self.tau_rev + (g_ref * delta_gamma)
+                mode = "latched_exact_tangent_bridge"
+            else:
+                g_ref = max(self.mrdf_bridge_g_ref, self._tangent_floor())
+                tau_ref = self.tau_rev + (g_ref * delta_gamma)
+                mode = "latched_secant_bridge"
+            return _MrdfBridgeState(
+                gamma_hist=gamma_hist,
+                g_over_gmax=g_over_gmax,
+                f_mrdf=f_mrdf,
+                g_ref=g_ref,
+                tau_ref=tau_ref,
+                g_t_ref=g_ref,
+                mode=mode,
+                keeps_reversal_tangent=keeps_tangent,
+            )
+
+        gamma_hist = max(
+            self.gamma_max_seen,
+            abs(self.gamma_prev),
+            abs(gamma),
+            abs(self.gamma_rev),
+        )
+        g_over_gmax = self._reduction(gamma_hist)
+        f_mrdf = evaluate_mrdf_factor(
+            self.mrdf_coeffs,
+            gamma_hist,
+            g_over_gmax=g_over_gmax,
+        )
+        if self._progressive_f_mrdf_enabled():
+            branch_progress = self._mrdf_branch_progress(gamma, gamma_hist=gamma_hist)
+            f_mrdf = evolve_mrdf_factor_with_branch_progress(
+                f_mrdf,
+                branch_progress,
+                exponent=2.0,
+            )
+        if keeps_tangent:
+            g_ref = max(
+                float(self.params.get("gmax", self.gmax_fallback)),
+                self._tangent_floor(),
+            )
+            tau_ref = self.tau_rev + (g_ref * delta_gamma)
+            mode = "exact_tangent_bridge"
+            g_t_ref = g_ref
+            g_t_ref_secant = g_ref
+        else:
+            blend = self._reload_reference_blend()
+            tau_ref_local = self.tau_rev + (
+                branch_sign * self._backbone(abs_delta_gamma)
+            )
+            tau_ref_secant = self._secant_reference_stress(delta_gamma, g_over_gmax)
+            tau_ref = ((1.0 - blend) * tau_ref_local) + (blend * tau_ref_secant)
+            g_t_ref_local = self._backbone_tangent(abs_delta_gamma)
+            g_t_ref_secant = max(float(self.params.get("gmax", self.gmax_fallback)) * g_over_gmax, self._tangent_floor())
+            g_t_ref = ((1.0 - blend) * g_t_ref_local) + (blend * g_t_ref_secant)
+            if self._translated_local_tangent_restore_mrdf_enabled():
+                restore_weight = self._translated_local_tangent_restore_weight(f_mrdf=f_mrdf)
+                g_t_ref = ((1.0 - restore_weight) * g_t_ref) + (restore_weight * self._current_g0())
+                mode = "translated_local_tangent_restore_bridge"
+            elif self._progressive_f_mrdf_enabled():
+                mode = "translated_local_progressive_f_bridge"
+            elif self._translated_branch_curvature_enabled() or self._translated_branch_curvature_tangent_restore_enabled():
+                branch_progress = self._mrdf_branch_progress(gamma, gamma_hist=gamma_hist)
+                curvature_weight = self._translated_branch_curvature_weight(
+                    branch_progress=branch_progress,
+                )
+                g0 = self._current_g0()
+                tau_ref_g0 = self.tau_rev + (g0 * delta_gamma)
+                tau_ref = ((1.0 - curvature_weight) * tau_ref_g0) + (
+                    curvature_weight * tau_ref
+                )
+                g_t_ref = ((1.0 - curvature_weight) * g0) + (
+                    curvature_weight * g_t_ref
+                )
+                if self._translated_branch_curvature_tangent_restore_enabled():
+                    restore_weight = self._translated_local_tangent_restore_weight(
+                        f_mrdf=f_mrdf,
+                    )
+                    g_t_ref = ((1.0 - restore_weight) * g_t_ref) + (
+                        restore_weight * g0
+                    )
+                    mode = "translated_curvature_tangent_restore_bridge"
+                else:
+                    mode = "translated_curvature_progressive_bridge"
+            else:
+                mode = "translated_local_bridge"
+        if keeps_tangent:
+            g_ref = max(g_t_ref, self._tangent_floor())
+        else:
+            g_ref = max(g_t_ref_secant, self._tangent_floor())
+        return _MrdfBridgeState(
+            gamma_hist=gamma_hist,
+            g_over_gmax=g_over_gmax,
+            f_mrdf=f_mrdf,
+            g_ref=g_ref,
+            tau_ref=tau_ref,
+            g_t_ref=g_t_ref,
+            mode=mode,
+            keeps_reversal_tangent=keeps_tangent,
+        )
+
+    def _eval_direct_branch_response(
+        self,
+        gamma: float,
+    ) -> tuple[float, float, _DirectBranchState]:
+        delta_gamma = gamma - self.gamma_rev
+        abs_delta_gamma = abs(delta_gamma)
+        branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
+        reload_factor = self._effective_reload_factor()
+        shifted_gamma = abs_delta_gamma / max(reload_factor, 1.0e-12)
+        tau_2x = self.tau_rev + (branch_sign * reload_factor * self._backbone(shifted_gamma))
+        g_t_2x = self._backbone_tangent(shifted_gamma)
+        bridge = self._mrdf_bridge_state(gamma)
+        branch_state = self._build_direct_branch_state(
+            bridge=bridge,
+            reload_factor=reload_factor,
+            g_t_2x=g_t_2x,
+        )
+        if bridge is None:
+            return tau_2x, g_t_2x, branch_state
+
+        tangent_floor = self._tangent_floor()
+        if bridge.mode in {"translated_local_bridge", "translated_local_tangent_restore_bridge"}:
+            tau = bridge.tau_ref + (bridge.f_mrdf * (tau_2x - bridge.tau_ref))
+            kt = max(bridge.g_t_ref + bridge.f_mrdf * (g_t_2x - bridge.g_t_ref), tangent_floor)
+            if bridge.keeps_reversal_tangent:
+                return tau, kt, branch_state
+            g_t_floor_adaptive = self._adaptive_tangent_floor(
+                gamma,
+                g_t_ref=bridge.g_t_ref,
+                f_mrdf=bridge.f_mrdf,
+                tangent_floor=tangent_floor,
+            )
+            return tau, max(kt, g_t_floor_adaptive), branch_state
+
+        tau_ref = self.tau_rev + (bridge.g_ref * delta_gamma)
+        tau = tau_ref + (bridge.f_mrdf * (tau_2x - tau_ref))
+        kt = max(bridge.g_t_ref + bridge.f_mrdf * (g_t_2x - bridge.g_t_ref), tangent_floor)
+        if bridge.keeps_reversal_tangent:
+            return tau, kt, branch_state
+        g_t_floor_adaptive = self._adaptive_tangent_floor(
+            gamma,
+            g_t_ref=bridge.g_t_ref,
+            f_mrdf=bridge.f_mrdf,
+            tangent_floor=tangent_floor,
+        )
+        return tau, max(kt, g_t_floor_adaptive), branch_state
+
+    def peek_branch_response(
+        self,
+        gamma: float,
+    ) -> tuple[float, float, int | None, int, _ReplayBranch | _DirectBranchState | None]:
+        if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
+            tau = self._backbone(gamma)
+            return tau, self.gmax_fallback, None, 0, None
+
+        if not self.initialized:
+            tau = self._backbone(gamma)
+            return tau, self._backbone_tangent(gamma), None, 0, None
+
+        if not self.has_reversal:
+            tau = self._backbone(gamma)
+            return tau, self._backbone_tangent(gamma), None, 0, None
+
+        if self.follow_backbone_until_reversal:
+            tau = self._signed_backbone(gamma)
+            return tau, self._backbone_tangent(gamma), None, 0, None
+
+        branch_state: _ReplayBranch | None = None
+        branch_id: int | None = None
+        reason_code = 1
+        if self._nested_mrdf_memory_enabled():
+            branch_state, reason_code = self._resolve_replay_branch(gamma)
+            if branch_state is not None:
+                tau, kt = self._eval_branch_response(branch_state, gamma)
+                branch_id = branch_state.branch_id
+            else:
+                tau, kt, branch_state = self._eval_direct_branch_response(gamma)
+        else:
+            tau, kt, branch_state = self._eval_direct_branch_response(gamma)
+
+        if self._should_follow_backbone(gamma, tau):
+            tau = self._signed_backbone(gamma)
+            return tau, self._backbone_tangent(gamma), None, 0, None
+
+        return tau, kt, branch_id, reason_code, branch_state
+
     def _secant_reference_stress(self, delta_gamma: float, g_over_gmax: float) -> float:
         """DEEPSOIL-style MRDF reference branch based on secant modulus at γ_k."""
         gmax = float(self.params.get("gmax", self.gmax_fallback))
@@ -164,8 +757,7 @@ class _ElementConstitutiveState:
     def _backbone_tangent(self, gamma: float) -> float:
         gmax = float(self.params.get("gmax", self.gmax_fallback))
         gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
-        g_red_min = float(self.params.get("g_reduction_min", 0.0))
-        tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
+        tangent_floor = self._tangent_floor()
         ag = abs(gamma)
         if self.material == MaterialType.GQH:
             if {"tau_max", "theta1", "theta2", "theta3", "theta4", "theta5"}.issubset(self.params):
@@ -200,6 +792,8 @@ class _ElementConstitutiveState:
 
     def _effective_reload_factor(self) -> float:
         base = max(self.reload_factor, 1.0e-6)
+        if self._reversal_tangent_preserving_mrdf_enabled():
+            return base
         mode_code_raw = self.params.get("adaptive_reload_mode_code", 0.0)
         try:
             mode_code = float(mode_code_raw)
@@ -293,6 +887,8 @@ class _ElementConstitutiveState:
     def _should_follow_backbone(self, gamma: float, tau_trial: float) -> bool:
         if abs(gamma) <= self.eps_gamma or self.direction == 0:
             return False
+        if abs(gamma) < (max(self.gamma_max_seen, abs(self.gamma_rev)) - 1.0e-12):
+            return False
         gamma_sign = _strain_direction(gamma, self.eps_gamma)
         if gamma_sign == 0 or gamma_sign != self.direction:
             return False
@@ -341,56 +937,20 @@ class _ElementConstitutiveState:
             self.direction = new_direction
             self.has_reversal = True
             self.follow_backbone_until_reversal = False
+            self._capture_mrdf_bridge_state()
+            self._record_reversal_branch(gamma)
 
         if self.direction == 0:
             self.direction = 1 if gamma >= self.gamma_prev else -1
 
-        if not self.has_reversal:
-            tau = self._backbone(gamma)
+        tau, _, branch_id, reason_code, _ = self.peek_branch_response(gamma)
+        if reason_code == 0:
+            self.follow_backbone_until_reversal = self.has_reversal
+            self.last_selected_branch_id = None
         else:
-            if self.follow_backbone_until_reversal:
-                tau = self._signed_backbone(gamma)
-            else:
-                # Generalized Masing-type branch update.
-                # reload_factor=2.0 -> classical Masing,
-                # reload_factor!=2.0 -> non-Masing approximation.
-                # Optional adaptive mode re-scales k using reversal secant/tangent ratio.
-                k = self._effective_reload_factor()
-                delta_gamma = gamma - self.gamma_rev
-                abs_delta_gamma = abs(delta_gamma)
-                branch_sign = 1.0 if delta_gamma >= 0.0 else -1.0
-                tau_masing = self.tau_rev + (
-                    branch_sign * k * self._backbone(abs_delta_gamma / k)
-                )
-
-                if self.mrdf_coeffs is not None:
-                    # Phillips-Hashash / DeepSoil-style MRDF correction.
-                    # Keep the translated local reference branch as the anchor and
-                    # evaluate the MRDF factor at the maximum strain experienced up
-                    # to the current point (DEEPSOIL manual Eq. 4.6-4.7).
-                    gamma_hist = max(
-                        self.gamma_max_seen,
-                        abs(self.gamma_prev),
-                        abs(gamma),
-                        abs(self.gamma_rev),
-                    )
-                    g_over_gmax = self._reduction(gamma_hist)
-                    f_mrdf = evaluate_mrdf_factor(
-                        self.mrdf_coeffs,
-                        gamma_hist,
-                        g_over_gmax=g_over_gmax,
-                    )
-                    tau_ref_local = self.tau_rev + (branch_sign * self._backbone(abs_delta_gamma))
-                    tau_ref_secant = self._secant_reference_stress(delta_gamma, g_over_gmax)
-                    blend = self._reload_reference_blend()
-                    tau_ref = ((1.0 - blend) * tau_ref_local) + (blend * tau_ref_secant)
-                    tau = tau_ref + f_mrdf * (tau_masing - tau_ref)
-                else:
-                    tau = tau_masing
-
-                if self._should_follow_backbone(gamma, tau):
-                    self.follow_backbone_until_reversal = True
-                    tau = self._signed_backbone(gamma)
+            self.last_selected_branch_id = branch_id
+            if self._nested_mrdf_memory_enabled() and branch_id is not None:
+                self.active_branch_id = branch_id
 
         self.gamma_prev = gamma
         self.tau_prev = tau
@@ -401,45 +961,7 @@ class _ElementConstitutiveState:
         """Return d(tau)/d(gamma) at given strain WITHOUT mutating state."""
         if self.material not in {MaterialType.MKZ, MaterialType.GQH}:
             return self.gmax_fallback
-
-        if not self.has_reversal:
-            return self._backbone_tangent(gamma)
-        if self.follow_backbone_until_reversal:
-            return self._backbone_tangent(gamma)
-        # Masing branch: tangent at shifted strain
-        k = self._effective_reload_factor()
-        abs_delta_gamma = abs(gamma - self.gamma_rev)
-        shifted = abs_delta_gamma / k
-        g_t_masing = self._backbone_tangent(shifted)
-        if self.mrdf_coeffs is not None:
-            gamma_hist = max(
-                self.gamma_max_seen,
-                abs(gamma),
-                abs(self.gamma_rev),
-            )
-            g_over_gmax = self._reduction(gamma_hist)
-            f_mrdf = evaluate_mrdf_factor(
-                self.mrdf_coeffs,
-                gamma_hist,
-                g_over_gmax=g_over_gmax,
-            )
-            blend = self._reload_reference_blend()
-            gmax = float(self.params.get("gmax", self.gmax_fallback))
-            gamma_ref = float(self.params.get("gamma_ref", 1.0e-3))
-            g_red_min = float(self.params.get("g_reduction_min", 0.0))
-            tangent_floor = max(gmax * g_red_min, gmax * 1.0e-4)
-            g_t_ref_local = self._backbone_tangent(abs_delta_gamma)
-            g_t_ref_secant = max(gmax * g_over_gmax, tangent_floor)
-            g_t_ref = ((1.0 - blend) * g_t_ref_local) + (blend * g_t_ref_secant)
-            g_t_branch = max(g_t_ref + f_mrdf * (g_t_masing - g_t_ref), tangent_floor)
-            g_t_floor_adaptive = self._adaptive_tangent_floor(
-                gamma,
-                g_t_ref=g_t_ref,
-                f_mrdf=f_mrdf,
-                tangent_floor=tangent_floor,
-            )
-            return max(g_t_branch, g_t_floor_adaptive)
-        return g_t_masing
+        return self.peek_branch_response(gamma)[1]
 
 
 def solve_nonlinear_sh_response(
@@ -590,9 +1112,9 @@ def solve_nonlinear_sh_response(
             else:
                 f_ext = -m_diag * ag
             if k_sec_elem is not None:
+                k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
+                k_sec = k_sec_full[:n_free, :n_free]
                 if rayleigh_update_matrix:
-                    k_sec_full = _assemble_tridiagonal_from_element_values(k_sec_elem, n_nodes)
-                    k_sec = k_sec_full[:n_free, :n_free]
                     c_step = (alpha_rayleigh * m_mat) + (beta_rayleigh * k_sec)
                 elif viscous_damping_update:
                     c_step = _modal_matched_damping_matrix(m_diag, k_sec, xi_target)

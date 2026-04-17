@@ -3,6 +3,28 @@
 GeoWave is a CLI + Python SDK for 1D site response analysis workflows with an OpenSees adapter.
 Current package version is `0.1.0`; the v1.0 roadmap focuses on effective-stress workflows, reproducible I/O, and benchmark-ready automation.
 
+## Current Engineering Docs
+
+For the current repo state and DeepSoil baseline-parity direction, use these first:
+
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — current engineering truth and next technical iterations
+- [DEEPSOIL_BASELINE_PARITY_RESEARCH.md](DEEPSOIL_BASELINE_PARITY_RESEARCH.md) — living parity dossier and hypothesis ordering
+- [PARITY_MEMORY.md](PARITY_MEMORY.md) — human-readable experiment memory and do-not-repeat guidance
+- [parity_experiment_index.json](parity_experiment_index.json) — machine-readable experiment-family manifest
+- [PROJECT_MAP.md](PROJECT_MAP.md) — current repo architecture and workflow map
+- [AGENTS.md](AGENTS.md) — operator/agent guidance for parity-focused work
+
+Important:
+
+- the status doc is more authoritative than older roadmap language elsewhere in this README
+- the parity research + memory docs are more authoritative than dated one-off research reports
+- current engineering focus is native `linear + eql + nonlinear` baseline parity, not broad feature expansion
+
+Canonical parity references:
+
+- canonical case: `examples/native/deepsoil_gqh_5layer_baseline.yml`
+- primary workbook: `tests/Results_profile_0_motion_Kocaeli.xlsx`
+
 ## Highlights
 - JSON/YAML schema-validated project configs
 - Motion preprocessing (baseline correction + scaling)

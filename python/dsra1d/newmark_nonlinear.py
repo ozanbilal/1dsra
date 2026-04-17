@@ -25,6 +25,8 @@ the tangent stiffness.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import numpy.typing as npt
 
@@ -43,6 +45,119 @@ from dsra1d.nonlinear import (
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
+
+
+def _collect_element_branch_response(
+    states: list[_ElementConstitutiveState],
+    u_free: FloatArray,
+    dz_elem: FloatArray,
+    n_elem: int,
+    n_nodes: int,
+    n_free: int,
+    *,
+    step_index: int | None = None,
+    substep_index: int | None = None,
+    audit_layer_index: int | None = None,
+    audit_rows: list[dict[str, float | int | None]] | None = None,
+) -> list[dict[str, float | int | None]]:
+    u_full = np.zeros(n_nodes, dtype=np.float64)
+    u_full[:n_free] = u_free
+    rows: list[dict[str, float | int | None]] = []
+    for j in range(n_elem):
+        dz = float(max(dz_elem[j], 1.0e-9))
+        gamma_j = float((u_full[j] - u_full[j + 1]) / dz)
+        tau, kt_exact, branch_id, reason_code, branch_state = states[j].peek_branch_response(gamma_j)
+        row: dict[str, float | int | None] = {
+            "layer_index": j,
+            "gamma": gamma_j,
+            "tau": float(tau),
+            "kt_exact": float(kt_exact),
+            "branch_id": branch_id,
+            "reason_code": int(reason_code),
+            "gamma_m_global": (
+                float(branch_state.gamma_m_global) if branch_state is not None else None
+            ),
+            "f_mrdf": float(branch_state.f_mrdf) if branch_state is not None else None,
+            "g_ref": float(branch_state.g_ref) if branch_state is not None else None,
+            "g_t_ref": float(branch_state.g_t_ref) if branch_state is not None else None,
+            "reload_factor": float(branch_state.reload_factor) if branch_state is not None else None,
+            "branch_kind": branch_state.branch_kind if branch_state is not None else None,
+        }
+        rows.append(row)
+        should_audit = audit_rows is not None and (
+            audit_layer_index is None or j == audit_layer_index
+        )
+        if should_audit:
+            audit_rows.append(
+                {
+                    "step": -1 if step_index is None else int(step_index),
+                    "substep": -1 if substep_index is None else int(substep_index),
+                    **row,
+                }
+            )
+    return rows
+
+
+def _write_tangent_audit_csv(
+    path: Path,
+    rows: list[dict[str, float | int | None]],
+) -> None:
+    def _fmt_optional(value: float | int | None) -> str:
+        if value is None:
+            return ""
+        return f"{float(value):.10e}"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(
+            "step,substep,layer_index,gamma,tau,kt_exact,branch_id,reason_code,"
+            "gamma_m_global,f_mrdf,g_ref,g_t_ref,reload_factor,branch_kind\n"
+        )
+        for row in rows:
+            f.write(
+                f"{int(row.get('step', -1))},"
+                f"{int(row.get('substep', -1))},"
+                f"{int(row.get('layer_index', -1))},"
+                f"{float(row.get('gamma', float('nan'))):.10e},"
+                f"{float(row.get('tau', float('nan'))):.10e},"
+                f"{float(row.get('kt_exact', float('nan'))):.10e},"
+                f"{'' if row.get('branch_id') is None else int(row['branch_id'])},"
+                f"{int(row.get('reason_code', -1))},"
+                f"{_fmt_optional(row.get('gamma_m_global'))},"
+                f"{_fmt_optional(row.get('f_mrdf'))},"
+                f"{_fmt_optional(row.get('g_ref'))},"
+                f"{_fmt_optional(row.get('g_t_ref'))},"
+                f"{_fmt_optional(row.get('reload_factor'))},"
+                f"{'' if row.get('branch_kind') is None else str(row['branch_kind'])}\n"
+            )
+
+
+def _write_boundary_audit_csv(
+    path: Path,
+    rows: list[dict[str, float]],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(
+            "step,time_s,input_acc_m_s2,input_vel_m_s,incident_force,base_relative_velocity_m_s,"
+            "dashpot_force,net_boundary_force,base_relative_displacement_m,"
+            "base_relative_acceleration_m_s2,surface_acceleration_m_s2,impedance_c\n"
+        )
+        for row in rows:
+            f.write(
+                f"{int(row['step'])},"
+                f"{float(row['time_s']):.10e},"
+                f"{float(row['input_acc_m_s2']):.10e},"
+                f"{float(row['input_vel_m_s']):.10e},"
+                f"{float(row['incident_force']):.10e},"
+                f"{float(row['base_relative_velocity_m_s']):.10e},"
+                f"{float(row['dashpot_force']):.10e},"
+                f"{float(row['net_boundary_force']):.10e},"
+                f"{float(row['base_relative_displacement_m']):.10e},"
+                f"{float(row['base_relative_acceleration_m_s2']):.10e},"
+                f"{float(row['surface_acceleration_m_s2']):.10e},"
+                f"{float(row['impedance_c']):.10e}\n"
+            )
 
 
 def _solver_column_area(config: ProjectConfig) -> float:
@@ -68,6 +183,11 @@ def _assemble_tangent_stiffness(
     n_elem: int,
     n_nodes: int,
     n_free: int,
+    *,
+    step_index: int | None = None,
+    substep_index: int | None = None,
+    audit_layer_index: int | None = None,
+    audit_rows: list[dict[str, float | int | None]] | None = None,
 ) -> FloatArray:
     """Build global tangent-stiffness matrix K_t from element tangent moduli.
 
@@ -75,13 +195,21 @@ def _assemble_tangent_stiffness(
     ``state.tangent_modulus(gamma)`` which does NOT mutate constitutive state.
     """
     k_t_elem = np.zeros(n_elem, dtype=np.float64)
-    # Build full displacement vector (pad fixed base with zero)
-    u_full = np.zeros(n_nodes, dtype=np.float64)
-    u_full[:n_free] = u_free
-    for j in range(n_elem):
+    branch_rows = _collect_element_branch_response(
+        states,
+        u_free,
+        dz_elem,
+        n_elem,
+        n_nodes,
+        n_free,
+        step_index=step_index,
+        substep_index=substep_index,
+        audit_layer_index=audit_layer_index,
+        audit_rows=audit_rows,
+    )
+    for j, row in enumerate(branch_rows):
         dz = float(max(dz_elem[j], 1.0e-9))
-        gamma_j = float((u_full[j] - u_full[j + 1]) / dz)
-        g_t = states[j].tangent_modulus(gamma_j)
+        g_t = float(row["kt_exact"])
         k_t_elem[j] = max(g_t * area / dz, 1.0e-9)
     k_t_full = _assemble_tridiagonal_from_element_values(k_t_elem, n_nodes)
     return k_t_full[:n_free, :n_free]
@@ -198,6 +326,9 @@ def solve_nonlinear_implicit_newmark(
     min_dz_m: float = 0.25,
     substeps: int | None = None,
     return_nodal_displacement: bool = False,
+    _tangent_audit_layer: int | None = None,
+    _tangent_audit_path: str | Path | None = None,
+    _boundary_audit_path: str | Path | None = None,
 ) -> tuple[FloatArray, FloatArray] | tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
     """Solve nonlinear 1-D SH response using implicit Newmark-beta integration.
 
@@ -359,9 +490,44 @@ def solve_nonlinear_implicit_newmark(
     a_rel = np.zeros(n_free, dtype=np.float64)
     a_rel_hist = np.zeros((n_free, n_steps), dtype=np.float64)
     u_hist_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
+    tangent_audit_rows: list[dict[str, float | int | None]] | None = (
+        [] if _tangent_audit_path is not None else None
+    )
+    boundary_audit_rows: list[dict[str, float]] | None = (
+        [] if (_boundary_audit_path is not None and use_elastic_halfspace) else None
+    )
 
     # ---- initial internal force (zero displacement → zero) ----
     f_int_prev = np.zeros(n_free, dtype=np.float64)
+
+    def _append_boundary_audit(step_index: int) -> None:
+        if (
+            boundary_audit_rows is None
+            or input_vel is None
+            or n_free <= 0
+            or not use_elastic_halfspace
+        ):
+            return
+        base_idx = n_free - 1
+        incident_force = 2.0 * base_rho * base_vs * area * float(input_vel[step_index])
+        base_relative_velocity = float(v[base_idx])
+        dashpot_force = float(dashpot_c * base_relative_velocity)
+        boundary_audit_rows.append(
+            {
+                "step": float(step_index),
+                "time_s": float(time[step_index]),
+                "input_acc_m_s2": float(acc_g[step_index]),
+                "input_vel_m_s": float(input_vel[step_index]),
+                "incident_force": float(incident_force),
+                "base_relative_velocity_m_s": base_relative_velocity,
+                "dashpot_force": dashpot_force,
+                "net_boundary_force": float(incident_force - dashpot_force),
+                "base_relative_displacement_m": float(u[base_idx]),
+                "base_relative_acceleration_m_s2": float(a_rel[base_idx]),
+                "surface_acceleration_m_s2": float(a_rel[0]),
+                "impedance_c": float(dashpot_c),
+            }
+        )
 
     # ---- compute initial acceleration from initial conditions ----
     # At t=0: M*a0 + C*v0 + F_int(u0) = F_ext(0) → a0 = F_ext(0) / M
@@ -375,16 +541,21 @@ def solve_nonlinear_implicit_newmark(
     a_rel = rhs0 / m_diag
     a_rel_hist[:, 0] = a_rel
     u_hist_full[:n_free, 0] = u
+    _append_boundary_audit(0)
 
     # ---- implicit Newmark time integration ----
     for i in range(1, n_steps):
         ag = float(acc_g[i])
 
-        for _ in range(n_sub):
+        for substep_idx in range(n_sub):
             # 1) Assemble tangent stiffness from current constitutive state
             k_t = _assemble_tangent_stiffness(
                 constitutive_states, u, dz_elem, area,
                 n_elem, n_nodes, n_free,
+                step_index=i,
+                substep_index=substep_idx,
+                audit_layer_index=_tangent_audit_layer,
+                audit_rows=tangent_audit_rows,
             )
 
             # 2) Update damping if viscous update mode
@@ -445,12 +616,17 @@ def solve_nonlinear_implicit_newmark(
 
         a_rel_hist[:, i] = a_rel
         u_hist_full[:n_free, i] = u
+        _append_boundary_audit(i)
 
     # ---- check for non-finite response ----
     if not np.all(np.isfinite(a_rel_hist)):
         raise ValueError(
             "Non-finite surface response detected in implicit Newmark nonlinear solver."
         )
+    if tangent_audit_rows is not None and _tangent_audit_path is not None:
+        _write_tangent_audit_csv(Path(_tangent_audit_path), tangent_audit_rows)
+    if boundary_audit_rows is not None and _boundary_audit_path is not None:
+        _write_boundary_audit_csv(Path(_boundary_audit_path), boundary_audit_rows)
 
     # ---- surface acceleration ----
     if use_elastic_halfspace:

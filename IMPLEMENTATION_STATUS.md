@@ -1,543 +1,337 @@
 # GeoWave Implementation Status
 
-Last updated: 2026-03-24
+Last updated: 2026-04-17
 
-## 1. Summary
+## Summary
 
-This file tracks implementation progress against the original v1.0 plan.
-Current state is: **core scaffold complete, effective-stress OpenSees adapter functional, production hardening and scientific parity still pending**.
+This file remains the implementation/status source of truth for the repo.
 
-Recent updates (2026-03-24):
-- Added automated MKZ calibration sweep utility (`scripts/sweep_mkz_calibration.py`):
-  - generates grid of YAML configs varying `reload_factor`, `gamma_ref` scaling, `damping_max`, and `nonlinear_substeps`
-  - each config uses Darendeli-calibrated base parameters with configurable scaling
-  - writes `sweep_manifest.json` for batch execution
-- Added calibration sweep runner (`scripts/run_calibration_sweep.py`):
-  - executes each candidate config, runs GeoWave nonlinear analysis, and compares against DEEPSOIL reference
-  - ranks results by PSA NRMSE and writes `sweep_results.json` + `sweep_results.md`
-- Ran 40-case wide calibration sweep for Example 5A rigid-base nonlinear parity:
-  - best Darendeli-calibrated case: `rf=1.30, gamma_ref_scale=1.50` -> PSA NRMSE=0.1994
-  - confirms that Darendeli-based calibration with ~1.5x gamma_ref scaling approaches the hand-tuned best case (0.1939)
-  - `damping_max` has no measurable effect in nonlinear solver (0.10 vs 0.12 produce identical results)
-  - time-domain surface correlation remains near zero across all candidates - this is a structural solver-model limitation, not a calibration gap
-- Structural fix: moved handoff notes from Phase 2 body to dedicated Section 10
+The repo is operating in `core-only + DeepSoil baseline parity` mode.
 
-Previous updates (2026-03-23):
-- Native nonlinear solver now accepts configurable `analysis.nonlinear_substeps`; this is wired through runtime metadata and can be used for tighter parity studies without code edits.
-- Iterated DEEPSOIL `Example_5A` rigid-base parity on the native MKZ path:
-  - sweep evidence saved under `output/pdf/validation/deepsoil_examples/reload_sweep*/`
-  - tuned case (`reload_factor=1.45`, `nonlinear_substeps=16`) is now the best current native parity artifact
-  - best current report case improved from `PSA NRMSE≈0.2007` to `PSA NRMSE≈0.1939`
-- Regenerated focused DEEPSOIL example parity report with the tuned best case under
-  `output/pdf/validation/deepsoil_examples/report/`
-- Added focused DEEPSOIL example parity reporting outside product runtime:
-  - `scripts/build_deepsoil_example_parity_report.py`
-  - writes `JSON + Markdown + PDF` under `output/pdf/validation/deepsoil_examples/report/`
-  - uses actual local DEEPSOIL batch-reference runs and native GeoWave compare artifacts
-  - explicitly reports current best case, partial parity level, and solver-model caveats instead of overstating DEEPSOIL equivalence
-- Native linear/nonlinear solvers now honor `boundary_condition: elastic_halfspace` with base impedance damping derived from the deepest layer.
-- Native linear/nonlinear solvers now use incident-wave style base forcing for `elastic_halfspace` runs in addition to base impedance damping.
-- DEEPSOIL parity iteration extended with native elastic-halfspace runs for `Example_5A` at `dt=0.005` and `dt=0.0025`; these improved the original elastic-halfspace mismatch substantially, but still did not beat the current best rigid-base reduced-`dt` case on PSA parity.
-- The `Example_5A` native elastic-halfspace case at `dt=0.02` remains numerically unstable; pipeline now reports this as an explicit non-finite solver failure instead of a downstream SQLite integrity error.
-- Native pipeline now rejects non-finite linear/eql/nonlinear surface responses before result-store writes, producing explicit solver-level errors instead of downstream SQLite integrity failures.
-- Added external parity-prep helper `scripts/scaffold_deepsoil_compare_manifest.py` to seed
-  `compare-deepsoil-batch` manifests from existing `run-*` folders without hand-writing JSON.
-- Added initial DEEPSOIL side-by-side comparison tooling for GeoWave run folders:
-  `compare-deepsoil` writes JSON/Markdown parity artifacts with PGA, surface correlation/RMSE, and PSA mismatch metrics from DEEPSOIL-exported CSVs.
-- Added manifest-driven DEEPSOIL parity campaigns:
-  `compare-deepsoil-batch` evaluates multiple GeoWave-vs-DEEPSOIL cases against configurable tolerances and emits batch pass/fail artifacts.
-- `summarize` now accepts a DEEPSOIL batch parity report (`--deepsoil-compare-report`) and merges it into `campaign_summary.json/.md`.
-- DEEPSOIL compare scope now extends beyond surface response:
-  optional profile CSV and hysteresis CSV inputs are supported in `compare-deepsoil`, with profile/hysteresis metrics propagated into batch parity and campaign summaries.
-- Strict signoff policy can now explicitly require DEEPSOIL parity coverage through
-  `require_deepsoil_compare`, `require_deepsoil_profile`, and `require_deepsoil_hysteresis`
-  in `benchmarks/policies/release_signoff.yml`.
-- Release workflow now includes a policy-aware DEEPSOIL parity stage via
-  `scripts/run_release_deepsoil_compare.py`; it writes `deepsoil_compare_batch.json/.md`
-  into `out/release-signoff` when `benchmarks/policies/release_signoff_deepsoil_manifest.json`
-  is present.
-- Web API/UI now surface latest DEEPSOIL batch parity directly:
-  - `GET /api/parity/deepsoil/latest`
-  - `GET /api/parity/deepsoil/release-manifest`
-  - `GET /api/parity/deepsoil/release-manifest/editor`
-  - `POST /api/parity/deepsoil/release-manifest/save`
-  - React `Deepsoil Parity` card with case-level pass/fail, failed checks, compact metric summaries, release-manifest/policy visibility, and editable release manifest studio
-- Native MKZ/GQH path now supports Darendeli-style calibration directly in config via `layer.calibration`.
-- New calibration module derives MKZ/GQH `material_params` from Darendeli modulus-reduction/damping targets during config validation/load.
-- Added `mkz-gqh-darendeli` template plus example config `examples/configs/mkz_gqh_darendeli.yml`.
-- Darendeli-calibrated MKZ/GQH configs are now regression-tested through native `eql` and `nonlinear` solvers.
-- Results Frame now includes a dedicated `Runtime Diagnostics` panel in the analysis canvas: backend, run status, warning/failure counters, timeout recovery, and issue lists are visible without switching to the raw `Convergence` tab.
-- Release quality card is now context-aware in React Web Studio: ordinary run workspaces without parity/signoff artifacts render as `not-evaluated` instead of false `no-go`, while real runtime failures still surface as blockers.
-- OpenSees backend readiness presentation now filters the prompt-only `OpenSees >` line and shows the actual executable banner/version text.
-- Web convergence/profile health surfaces timeout recovery diagnostics (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage).
-- OpenSees backend probe hardened against double-timeout false negatives (`-version` + Tcl fallback timeout now defers final decision to runtime execution).
-- Run resolution hardened for partial runs: directories with `run_meta.json` are discoverable even when artifacts are incomplete; data endpoints now report explicit `409 artifacts incomplete` instead of `404 run not found`.
-- Web run endpoint now returns normalized `output_root`, and React run flow uses it to keep run-detail fetch root in sync.
-- React run-detail fetch path now supports partial rendering: summary/convergence remain visible even if one or more result channels fail (soft warning instead of hard blank-state failure).
-- Push CI no longer waits on dedicated OpenSees runner; dedicated parity/signoff gate remains mandatory in `release.yml` and manual parity workflow. `ci.yml` now also uses workflow `concurrency` to auto-cancel superseded queued runs on the same ref.
-- Results `Profile` tab now includes a `Profile Atlas` block: stratigraphy bands plus depth-oriented `Vs`, `gamma_max`, and mesh-density plots above the layer table.
-- Results `Profile` tab now also includes a `Layer Response Atlas`: depth-oriented `tau_peak`, mobilized-strength ratio, damping proxy, and static overburden proxy plots, plus expanded layer table fields.
-- OpenSees Tcl now emits per-layer representative pore-pressure recorders (`layer_<tag>_pwp_raw.out`) in addition to stress/strain recorder channels.
-- Web `profile-summary` now reads representative layer `pwp_raw` artifacts and returns per-layer `sigma_v0_mid_kpa`, `ru_max`, `delta_u_max`, and `sigma_v_eff_min`.
-- React `Profile` tab now includes an `Effective Stress Atlas` and corresponding table columns for layer-wise effective-stress review.
-- Results artifact/download panel now exposes `profile_summary.csv` for direct export of the layer response table.
-- React `Profile` tab now includes a `Layer Ledger` strip for dense, one-glance layer review before dropping into atlases and tables.
-- Web chart readability improved further: key results, compare, stress-strain, and profile charts now include explicit x/y axis titles.
-- Profile gamma-depth rendering now falls back to layer hysteresis strain amplitude when backend-native `gamma_max` channels are unavailable.
-- `Results Frame` mode is now a true two-panel studio: left rail for run/artifact/quality navigation and right canvas for the active result tab.
+Active runtime surface:
 
-## 2. Phase-by-Phase Status
+- `linear`
+- `eql`
+- `nonlinear`
 
-### Phase 0 - Bootstrap and Repository Skeleton
-Status: **Completed**
+Primary engineering target:
 
-Implemented:
-- Standalone git repo structure under `GeoWave`
-- Packaging (`pyproject.toml`), license, README
-- CI workflow (`.github/workflows/ci.yml`)
-- Developer quality gates (`ruff`, `mypy`, `pytest`, pre-commit)
-- Docker scaffolding
+- close `DeepSoil rigid/outcrop baseline parity`
+- using the native `GQ/H + MRDF (UIUC)` nonlinear path
+- judged on response-level compare metrics against the real workbook export
 
-### Phase 1 - Schema, I/O, Motion Processing
-Status: **Completed (v1 scope)**
+Supporting parity-campaign docs:
 
-Implemented:
-- Pydantic config schema (`ProjectConfig`, profile, analysis, motion, output, opensees)
-- YAML/JSON config load + template writer
-- Motion load and preprocessing (baseline correction, scale modes)
-- Web motion-process path now supports explicit/fallback `dt` handling for one-column motions (prevents implicit `dt=1.0` PSA bias)
-- Material-level parameter validation for PM4Sand/PM4Silt/elastic (`material_params`)
-- Material-level parameter validation for MKZ/GQH (required params + damping bounds)
-- Darendeli calibration schema for MKZ/GQH:
-  - config-level `calibration` block on layer
-  - auto-derived `gmax/gamma_ref/damping/reload_factor`
-  - GQH shape fit (`a1/a2/m`) from Darendeli target curves
-- Backend-aware validation: OpenSees runs now require PM4 mandatory parameter sets per layer
-- Backend-aware guard: OpenSees backend rejects MKZ/GQH in v1 pipeline
-- PM4 validation profiles: `basic` and `strict` (strict adds conservative range checks)
-- PM4 validation profiles: `basic`, `strict`, and `strict_plus` (`strict_plus` adds u-p setup sanity checks for OpenSees)
-- `strict_plus` validation tightened: PM4-only layer stacks and permeability anisotropy ratio bounds (`h_perm/v_perm`)
-- Motion unit validation + conversion to SI (`m/s2`) for consistent downstream calculations
+- `DEEPSOIL_BASELINE_PARITY_RESEARCH.md`
+- `PARITY_MEMORY.md`
+- `parity_experiment_index.json`
+- `AGENTS.md`
 
-Notes:
-- Input validation works for current config model.
-- Extended schema (full PM4 calibration catalog, richer constraints, additional curve families such as Vucetic-Dobry/Menq) is still pending.
+Current repo truth:
 
-### Phase 2 - OpenSees Adapter Core
-Status: **Completed (functional) / Partial (production depth)**
+- Excel importer is in place
+- compare pipeline is in place
+- input history and applied-input semantics are effectively closed
+- the main remaining mismatch is constitutive hysteresis parity
 
-Implemented:
-- TCL generation from config
-- OpenSees subprocess runner with timeout/error handling
-- Retries and fallback behavior
-- Parser support for recorder formats (1-column and 2-column time series)
-- Structured OpenSees artifact logging (`run_meta.json`, stdout/stderr logs, SQLite `artifacts`)
-- OpenSees log diagnostics are now extracted per run (`opensees_diagnostics.json`) and persisted into `run_meta.json`
-- OpenSees runtime now uses adaptive timeout budgeting (motion-duration/sample-aware) instead of fixed 180s-only behavior; run metadata includes configured/effective timeout fields
-- Timeout-recovery path added: if OpenSees exceeds timeout but required outputs are already complete, pipeline preserves recovered outputs instead of forcing mock overwrite
-- Boundary-condition aware TCL assembly:
-  - `rigid` base fixity
-  - `elastic_halfspace` base with Lysmer-style dashpot (`uniaxialMaterial Viscous` + `zeroLength`)
-- Configurable u-p assembly constants in `opensees` config:
-  - `column_width_m`, `thickness_m`, `fluid_bulk_modulus`, `fluid_mass_density`, `h_perm`, `v_perm`, `gravity_steps`
-- OpenSees u-p stabilization updates applied in generated Tcl:
-  - hydraulic conductivity (`h_perm/v_perm`) converted to quadUP permeability coefficients
-  - gravity stage uses high temporary permeability and restores target permeability via `parameter/updateParameter`
-  - PM4 dynamic-stage `FirstCall` initialization is applied per element/material tag
-  - dynamic stage uses step-by-step fallback (`KrylovNewton` -> `ModifiedNewton` + substep retry)
-- OpenSees Tcl now emits per-layer representative stress/strain element recorders (`layer_<tag>_stress.out`, `layer_<tag>_strain.out`) for UI hysteresis channels
-- OpenSees Tcl now emits per-layer representative pore-pressure recorders (`layer_<tag>_pwp_raw.out`) for depth-wise effective-stress review
-- CLI backend preflight check (`validate --check-backend`) for deterministic OpenSees path validation
-- OpenSees backend probe hardening: if both `-version` and Tcl fallback probes timeout, probe now reports "assumed available" to avoid false blockers (final authority is runtime execution)
-- Optional real-binary integration test harness (`DSRA1D_RUN_OPENSEES_INTEGRATION=1`)
+## Current Product Reality
 
-Current level:
-- `render_tcl` now emits u-p-style assembly with materials, nodes, `quadUP` elements, BCs, gravity+dynamic stages, and recorders.
-- It is calibration-ready scaffold, not yet full benchmark-validated engineering template set.
+### Active runtime surface
 
-### Phase 3 - Effective Stress (PM4Sand/PM4Silt)
-Status: **Partial (runtime-stable baseline)**
+- Config/runtime defaults come from `python/dsra1d/config/models.py`
+- Current parity-critical defaults are:
+  - `boundary_condition = rigid`
+  - `analysis.solver_backend = nonlinear`
+  - `analysis.damping_mode = frequency_independent`
+  - `analysis.integration_scheme = newmark`
+  - `analysis.viscous_damping_update = false`
+  - `motion.input_type = outcrop`
 
-Implemented:
-- PM4Sand/PM4Silt command blocks in generated TCL
-- Layer-level material parameter plumbing via `material_params`
-- Layer-level PM4 positional tail arguments via `material_optional_args` for calibration runs
-- Calibration-ready starter templates for PM4 tuning workflows:
-  - `pm4sand-calibration`
-  - `pm4silt-calibration`
-- Example config includes PM4 placeholder calibration parameters
-- Effective-stress normalization outputs in result stores:
-  - HDF5 `/pwp`: `ru`, `delta_u`, `sigma_v_ref`, `sigma_v_eff`
-  - SQLite `metrics`: `delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`
-- PM4 runtime stability hardening in OpenSees assembly:
-  - stage-transition `FirstCall` hook for PM4 elements
-  - gravity-to-dynamic permeability staging path
-  - robust dynamic fallback path without immediate hard abort
+### Active engineering path
 
-Not completed:
-- Full parameter coverage and robust validation of PM4 inputs
-- Verified physics-level parity against reference OpenSees/DEEPSOIL datasets
-- Dissipation model tuning and advanced pore-pressure workflows
-- Published-reference calibration for MKZ/GQH nonlinear hysteresis (current native coupling exists)
+- Canonical baseline example:
+  - `examples/native/deepsoil_gqh_5layer_baseline.yml`
+- Primary DeepSoil reference workbook:
+  - `tests/Results_profile_0_motion_Kocaeli.xlsx`
+- Secondary cross-check workbook:
+  - `tests/Results_profile_0_motion_Kocaeli-EL.xlsx`
 
-### Phase 4 - Result Store and Reporting
-Status: **Completed (v1 base)**
+### Active parity toolchain
 
-Implemented:
-- HDF5 output (`/time`, `/depth`, `/signals`, `/pwp`, `/spectra`, `/mesh`)
-- SQLite output tables (runs, layers, motions, metrics, spectra, transfer_function, pwp_stats, mesh_slices, artifacts)
-- EQL output persistence (`/eql` group in HDF5; `eql_summary` + `eql_layers` tables in SQLite)
-- Transfer-function outputs now persisted (`/spectra/freq_hz`, `/spectra/transfer_abs`, SQLite `transfer_function`)
-- Time-step metadata is persisted (`run_meta.json: dt_s/delta_t_s`, HDF5 `/meta/delta_t_s`)
-- Run-level CSV artifacts are now written by pipeline (`surface_acc.csv`, `pwp_effective.csv` with `delta_t_s`)
-- Run-level config snapshot is now persisted (`config_snapshot.json`) for deterministic post-processing and UI reconstruction
-- SQLite write path is idempotent for deterministic reruns (run-id scoped rows are replaced)
-- Checksum table + run verification commands (`verify`, `verify-batch`) for HDF5/SQLite/meta consistency checks
-- `verify` checks extended to effective-stress metrics (`delta_u_max`, `sigma_v_ref`, `sigma_v_eff_min`)
-- `verify` now also checks `pwp_effective_stats` table-level consistency vs HDF5
-- `verify` now checks successful OpenSees runs for command metadata + stdout/stderr artifact/log presence
-- `verify-batch` now emits machine-readable policy verdicts (`require_runs`, condition flags, `passed`) including path/directory guards
-- HTML/PDF report generation (includes effective-stress KPI summary and additional time-history plots)
-- Report/UI PSA path now recomputes spectra from run `surface_acc` + run `dt` instead of relying on stale stored arrays
+- Workbook import:
+  - `python/dsra1d/deepsoil_excel.py`
+- Response-level compare:
+  - `python/dsra1d/deepsoil_compare.py`
+- Constitutive replay and solver audit:
+  - `python/dsra1d/constitutive_debug.py`
+- Recent parity iteration outputs:
+  - `output/baseline_iter/`
 
-### Phase 5 - Benchmark and Regression
-Status: **Completed (basic) / Partial (scientific depth)**
+## Baseline Parity
 
-Implemented:
-- `benchmark` command
-- Core benchmark suite with multi-case pass/fail output and metric-level tolerance checks
-- Added `core-hyst` benchmark suite for MKZ/GQH native nonlinear regression coverage (3-case matrix)
-- Added `core-linear` benchmark suite for native linear SH backend coverage (3-case matrix)
-- Added `core-eql` benchmark suite for native equivalent-linear backend coverage (3-case matrix)
-- Added Darendeli-calibrated config coverage in unit/regression tests for native `eql` and `nonlinear` MKZ/GQH paths
-- `core-linear` golden checks now include transfer-function metrics (`transfer_abs_max`, `transfer_peak_freq_hz`) with deterministic and dt-sensitivity gates
-- OpenSees parity suite scaffold (`opensees-parity`) with auto-skip when executable is unavailable
-- OpenSees parity suite expanded to 6-case matrix (`parity01`..`parity06`) with explicit-check golden envelopes
-- OpenSees parity golden envelopes were re-locked from real-binary local runs (6/6 execution coverage) including transfer metrics (`transfer_abs_max`, `transfer_peak_freq_hz`)
-- OpenSees parity constraints now include solver-quality gates from diagnostics (`solver_warning_max`, `solver_failed_converge_max`, `solver_analyze_failed_max`, `solver_divide_by_zero_max`, `solver_dynamic_fallback_failed_max`)
-- Strict benchmark policy options (`--fail-on-skip`, `--require-runs`) for CI gating
-- Backend fingerprint policy options (`--require-backend-version-regex`, `--require-backend-sha256`) for `validate`, `benchmark`, and `campaign`
-- Manual parity workflow (`.github/workflows/opensees-parity.yml`) with executable override input
-- Manual parity workflow now also accepts executable extra-args override (`opensees_extra_args`)
-- Manual parity workflow now supports backend fingerprint requirements and defaults to 6-run parity target
-- New aggregated benchmark suite: `release-signoff` (`core-es` + `core-hyst` + `core-linear` + `core-eql` + `opensees-parity`)
-- Release/manual dedicated runner parity gate is non-optional (`self-hosted, linux, x64, opensees`) and executes `release-signoff`
-- CI dedicated runner now enforces `summarize --strict-signoff` for machine-readable signoff verdicts
-- Parity suite expanded to multi-case set (3 baseline scenarios) for stronger coverage
-- Parity suite now distinguishes missing executable vs failed backend probe (`missing_opensees` / `probe_failed`)
-- Parity reports now persist backend fingerprint diagnostics (`binary_sha256`, requirements verdict/errors)
-- Campaign summary aggregation (`summarize`) for benchmark + verify outputs (`campaign_summary.json/.md`)
-- Campaign orchestration command (`campaign`) for benchmark + verify + summarize pipeline
-- Golden envelope locking command (`lock-golden`) to generate explicit check matrices from benchmark reports
-- Parity workflow now publishes campaign summary into GitHub Step Summary
-- Parity suite now treats failed backend probes as backend-unavailable (`skip_kind=probe_failed`) for deterministic gating
-- Automated test coverage including TCL generation, parser robustness, fallback behavior
-- Added constitutive path-regression tests for native nonlinear MKZ/GQH hysteresis (`reload_factor` sensitivity + loop dissipation)
-- Time-step sensitivity utility command (`dt-check`) for Δt vs Δt/2 comparison
-- Additional benchmark guards:
-  - physical ru bounds checks
-  - ru monotonicity option and lower-bound checks for `delta_u` / `sigma_v_eff`
-  - PGA min/max guard checks
-  - deterministic repeat-signature checks
-  - effective-stress metric checks (`delta_u_max`, `sigma_v_eff_min`)
-  - varied case matrix (`pm4sand`, `pm4silt`, mixed profile + scaling modes)
-  - optional per-case Δt vs Δt/2 PSA sensitivity checks
-- Batch runner now deduplicates identical motions to prevent output collisions and redundant runs
+### Canonical case
 
-Not completed:
-- Broad benchmark library (multiple soil profiles, strong-motion sets, edge cases)
-- Strict published reference matching (DEEPSOIL/OpenSees parity matrix)
-- Deepened automated DEEPSOIL parity harness for MKZ/GQH + Darendeli-calibrated cases
-  (current compare utility now covers surface/PSA/profile/hysteresis and is wired into strict signoff;
-  missing piece is reference campaign population and evidence quality, not CLI coupling)
+- Case name: `deepsoil_gqh_5layer_baseline`
+- Required semantics:
+  - `nonlinear`
+  - `rigid`
+  - `outcrop`
+  - `frequency_independent`
+  - `newmark`
+  - `viscous_damping_update = false`
 
-### Phase 6 - v1.0 Hardening and Release
-Status: **In progress (mid)**
+### Latest measured parity signature
 
-Missing:
-- Final dedicated runner provisioning + operational reliability monitoring (self-hosted agent health/SLA)
-- Organization-level sign-off for release gates (release path enforces `release-signoff` + `strict-signoff`)
-- Production fingerprint lifecycle process (rotate/update `DSRA1D_CI_OPENSEES_SHA256` and matrix evidence)
-- Artifact publishing policy finalization (GitHub release workflow + release tag/version + changelog guards are now added)
-- Dedicated OpenSees parity release gate runner provisioning (`self-hosted, linux, x64, opensees`) and secret/variable bootstrap
-- User manual completeness and migration notes
+Current baseline (`mode3_current` compare artifact):
 
-## 3. What Is Working Today
+- `surface_nrmse = 0.09870589867598616`
+- `psa_nrmse = 0.07108930093481652`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+- `input_history_nrmse = 8.170042486602506e-07`
+- `applied_input_psa_nrmse = 2.3215137809655103e-07`
+- `gamma_max_nrmse = 0.14464029225429248`
+- `secant_g_over_gmax_nrmse = 0.16772921218927922`
+- `stress_path_nrmse = 0.28814503592641405`
+- `loop_energy_pct_diff = 139.8288639695613`
 
-- CLI commands: `init`, `validate`, `render-tcl`, `run`, `quickstart`, `batch`, `benchmark`, `campaign`, `summarize`, `lock-golden`, `report`, `dt-check`, `verify`, `verify-batch`, `ui`
-- CLI command `calibrate-darendeli` now exports fitted MKZ/GQH params plus target/fitted curve CSV for calibration review
-- `init` now supports both `effective-stress` and `mkz-gqh-mock` templates
-- `init` now supports `effective-stress`, `effective-stress-strict-plus`, `pm4sand-calibration`, `pm4silt-calibration`, `mkz-gqh-mock`, `mkz-gqh-eql`, and `mkz-gqh-nonlinear` templates
-- `init` now also supports `mkz-gqh-darendeli` for config-driven Darendeli calibration into native MKZ/GQH runs
-- `benchmark`/`campaign` support direct OpenSees override option: `--opensees-executable`
-- `run`/`batch`/`dt-check` now support runtime backend override: `--backend config|auto|opensees|mock|linear|eql|nonlinear`
-- `--backend auto` now enables OpenSees->mock fallback for immediate analyzable runs when executable is unavailable
-- `--backend linear` now enables native linear SH baseline analysis without OpenSees dependency
-- `--backend eql` now enables native equivalent-linear (strain-compatible MKZ/GQH iteration) analysis without OpenSees dependency
-- `--backend nonlinear` now enables native MKZ/GQH stateful hysteretic time-domain analysis without OpenSees dependency
-- Native MKZ/GQH runs can now be calibrated from Darendeli-style curves without manual `gamma_ref/a1/a2/m` entry
-- `compare-deepsoil` now lets you compare a GeoWave run folder against DEEPSOIL-exported surface acceleration
-  and optional PSA CSVs, producing parity artifacts for fast MKZ/GQH iteration
-- `compare-deepsoil-batch` now lets you run a manifest-driven DEEPSOIL parity campaign with case-level pass/fail checks
-- `scripts/scaffold_deepsoil_compare_manifest.py` now lets you bootstrap a batch parity manifest from completed run folders before attaching DEEPSOIL-exported reference CSVs
-- `summarize` can now fold benchmark, verify, and DEEPSOIL batch parity into one campaign summary for MKZ/GQH iteration tracking
-- `compare-deepsoil` now also supports:
-  - `--profile-csv` for layer/depth mismatch metrics
-  - `--hysteresis-csv` + `--hysteresis-layer` for loop-path and loop-energy mismatch metrics
-- `summarize --strict-signoff` now emits explicit DEEPSOIL release conditions:
-  - `deepsoil_compare_present`
-  - `deepsoil_compare_passed`
-  - `deepsoil_profile_required_ok`
-  - `deepsoil_hysteresis_required_ok`
-- React `Soil Profile` step now includes a two-column `Layer Properties` studio with focused layer QA, Darendeli calibration controls for MKZ/GQH, and live target-vs-fit curve preview (`G/Gmax`, damping, single-element loop)
-- EQL convergence diagnostics are now stored and verifiable across HDF5/SQLite/report outputs
-- `quickstart` command now creates a self-contained sample case, runs analysis, and writes `quickstart_summary.json`
-- `benchmark`/`campaign` support OpenSees readiness enforcement: `--require-opensees` (parity suites fail fast when backend is missing)
-- `benchmark`/`campaign` support execution coverage enforcement: `--min-execution-coverage` (ratio gate for executed/non-skipped cases)
-- `benchmark`/`campaign` support explicit-checks enforcement: `--require-explicit-checks` (parity envelopes must be explicitly locked)
-- Campaign summaries now carry backend coverage telemetry (`backend_ready`, `skipped_backend`, `execution_coverage`)
-- Benchmark reports now include explicit backend skip diagnostics (`backend_missing_cases`, `skip_kind`)
-- Release/manual parity workflow gates enforce full coverage (`--min-execution-coverage 1.0`)
-- `release-signoff` suite now aggregates all critical suites into one parity-first gate
-- Dedicated OpenSees parity gate is mandatory in release/manual parity workflows (`self-hosted, linux, x64, opensees`)
-- Release workflow now enforces strict signoff + machine-check checklist (`check_release_signoff.py`)
-- Release machine-check now enforces exact SHA-256 parity: matrix `opensees-parity.binary_fingerprint` must match signoff observed backend fingerprint
-- Strict signoff now also enforces `backend_probe_not_assumed` (probe timeout-assumption is treated as release blocker)
-- Release/manual dedicated runner gates now run `scripts/check_fingerprint_alignment.py` so CI variable, policy fingerprint, and matrix fingerprint must match before parity execution
-- CI/release workflows now run `scripts/check_release_policy_consistency.py` to prevent `release_signoff.yml` drift from benchmark suite/case matrix
-- Release policy consistency checks now also validate that DEEPSOIL profile/hysteresis gates cannot be enabled without `require_deepsoil_compare`
-- Release workflow now executes DEEPSOIL batch parity before `summarize --strict-signoff`, so strict signoff can consume release parity artifacts without manual staging
-- Campaign summary now includes machine-readable policy verdicts (`policy.benchmark`, `policy.verify_batch`, `policy.campaign`)
-- Verify policy metadata is now preserved/merged across CLI/UI campaign outputs and propagated in summary conditions
-- CLI backend preflight: `validate --check-backend` (path + lightweight `-version` probe output)
-- Parity benchmark reports now include `backend_probe` diagnostics (`requested`, `resolved`, `available`, `version`)
-- OpenSees override env now supports executable extra args (`DSRA1D_OPENSEES_EXTRA_ARGS_OVERRIDE`)
-- Python SDK entry points: `run_analysis`, `run_batch`, `load_result`, `compute_spectra`, `verify_run`, `verify_batch`
-- Streamlit UI with run/benchmark/report controls and plot panels
-- Streamlit UI now shows effective-stress metrics/plots (`ru`, `delta_u`, `sigma_v_eff`)
-- Streamlit UI now shows transfer-function visualization (`|H(f)|`) when available
-- Streamlit UI includes campaign controls and inline campaign summary rendering
-- Streamlit UI includes config preset switch (`effective-stress`, `effective-stress-strict-plus`, `mkz-gqh-mock`, `mkz-gqh-eql`, `mkz-gqh-nonlinear`)
-- Streamlit UI run panel includes backend mode selector (`config/auto/opensees/mock/linear/eql/nonlinear`) and run-level OpenSees executable override
-- Streamlit UI now visualizes transfer function (`|H(f)|`) for runs with stored spectral ratio outputs
-- Streamlit UI includes `Render Tcl` flow with inline preview and downloadable `model.tcl` / `motion_processed.csv`
-- Streamlit UI includes MKZ/GQH curve inspector plots (`G/Gmax`, damping proxy) for config-level sanity checks
-- Streamlit UI MKZ/GQH inspector now includes Masing-style hysteresis loop preview and per-layer loop energy proxy
-- FastAPI + React migration starter is now available (`GeoWave web`) with API-backed run listing, signal fetch, `surface_acc.csv` and `pwp-effective.csv` downloads
-- FastAPI dashboard upgraded with run-detail cards and multi-chart views (surface acc, PSA, transfer, ru, `delta_u`, `sigma_v_eff`) plus artifact downloads (`surface_acc.csv`, `pwp_effective.csv`, `surface_acc.out`, `results.h5`, `results.sqlite`, `run_meta.json`)
-- React dashboard now includes a dedicated `Results Frame` focus mode so outputs can be reviewed in a full-width workspace (without Wizard/Runs crowding)
-- `Results Frame` focus mode now uses a split studio layout instead of stacking all diagnostic cards above the plots
-- Wizard `Damping` step is now solver-routed:
-  - `rayleigh` mode writes `analysis.damping_mode`, `rayleigh_mode_1_hz`, `rayleigh_mode_2_hz`, `rayleigh_update_matrix`
-  - native linear/eql/nonlinear backends now consume Rayleigh damping in runtime
-- Results `Convergence` tab now includes OpenSees log-derived diagnostics for non-EQL runs (warning/divergence counters and severity)
-- Results `Convergence` tab upgraded from raw JSON view to structured diagnostics cards + severity badge (EQL and OpenSees modes)
-- Results `Convergence` and profile health cards now surface OpenSees timeout diagnostics/recovery metadata (`timeout_s_configured`, `timeout_s_effective`, `timeout_recovered`, coverage) even when log-level diagnostics are absent
-- Results `Profile` tab now surfaces a compact solver-health snapshot (severity + key diagnostics) for faster run triage
-- Results `Profile` tab now includes visual depth summaries (`Profile Atlas`) in addition to the layer table for faster engineering review
-- Results `Profile` tab now includes a second visual `Layer Response Atlas` for depth-based stress/strength diagnostics (`tau_peak`, mobilized ratio, damping proxy, static overburden proxy)
-- Results `Profile` tab now includes an `Effective Stress Atlas` for depth-based `ru_max`, `delta_u_max`, and `sigma'_v,min` review from representative layer pore-pressure recorders
-- Runs list and run-tree now surface health severity at-a-glance (`convergence_mode` / `convergence_severity`) via API-backed chips
-- Results workspace now includes `Parity Health` and `Scientific Confidence` cards for release-readiness visibility
-- Results workspace now includes API-backed `Release Blockers` panel (go/no-go + blocker/warning list from parity/science/signoff/runtime diagnostics)
-- `/api/runs` now includes solver diagnostic counters (`warning`, `failed_converge`, `analyze_failed`, `divide_by_zero`, `dynamic_fallback_failed`) for pre-detail triage
-- Run-detail fetch path now retries with run-specific output-root parent to reduce cross-root `Run not found` failures in UI
-- Run discovery/resolution is now recursive under `output_root` (nested campaign folders supported), and run detail endpoints now resolve run-id from parent roots instead of requiring direct run-folder root
-- New wizard readiness API (`POST /api/wizard/sanity-check`) provides blocker/warning diagnostics before run (motion path, dt/f_max, backend probe, config/material compatibility)
-- Wizard sanity-check now includes OpenSees timeout budget diagnostics (`timeout_budget`) with recommended timeout warning for long motions
-- Step-5 now includes a `Run Sanity Check` action and structured readiness result cards
-- Step-5 `Run Now` now supports single-click execution by auto-generating config (if missing) and enforcing sanity-check blockers before launch
-- New profile summary API (`GET /api/runs/{run_id}/results/profile-summary`) and Profile tab layer table (depth bounds, sublayer count, `gamma_max` when available)
-- Runtime backend resolver now handles `backend=config|auto` with `config.solver_backend=auto` deterministically (OpenSees if available, else mock fallback)
-- CI reliability: fixed Python 3.12 mypy strict-typing break in web profile-summary model field aliasing
-- Web chart UX: chart cards now render numeric axes/ticks + gridlines for direct value reading in UI
-- Web API `signals` payload now includes `dt_s` / `delta_t_s` (and alias `delta_t`) for frontend consumers
-- Web UI now includes DEEPSOIL-style 5-step wizard (`Analysis Type -> Soil Profile -> Input Motion -> Damping -> Analysis Control`)
-- Wizard schema now exposes template catalog + per-template defaults, and React UI supports one-click template apply in Analysis step (including PM4 calibration templates)
-- React wizard now includes step-level readiness indicators (`ready`/`issue` badges), inline step issue list, and gated `Generate Config` / `Run Now` actions based on required inputs
-- React Motion step now supports direct file uploads (CSV and AT2) without manual filesystem path entry
-- Results panel now supports multi-run overlay comparison (surface acceleration, PSA, transfer `|H(f)|`)
-- Multi-run compare now includes reference-based diagnostics (`PSA ratio`, transfer/surface `Δ`, `ΔPGA`/PGA ratio)
-- Web API now includes backend readiness probe endpoint (`/api/backend/opensees/probe`) used by wizard run diagnostics
-- Backend probe payload now includes `assumed_available`; UI/CLI render this as warning when probe timed out and availability was inferred
-- Backend probe payload now includes executable-source diagnostics (`requested_input`, env override value/used) to debug path override issues
-- Web API now includes wizard/motion orchestration endpoints (`/api/wizard/schema`, `/api/config/from-wizard`, `/api/motion/import/peer-at2`, `/api/motion/process`, `/api/runs/tree`, `/api/runs/{run_id}/results/summary`)
-- Web API now includes parity/science visibility endpoints (`/api/parity/latest`, `/api/science/confidence`)
-- Web API now includes release signoff visibility endpoint (`/api/release/signoff/latest`) with normalized go/no-go fields (`release_ready`, coverage/runs, fingerprint match, blocker categories, severity score/label)
-- React motion tools now support CSV + PEER AT2 import, baseline processing (`deepsoil_bap_like` included), scaling, and preview plots (acc/PSA/FAS ratio)
-- Motion wizard now keeps imported/processed motion units in `m/s2` and exposes optional `dt override` input to reduce PSA preprocessing errors
-- Web API now exposes layer-wise hysteresis/mobilized payload (`/api/runs/{run_id}/results/hysteresis`) using stored config snapshots with sqlite fallback
-- React Results tabs `Stress-Strain` and `Mobilized Strength` now render backend data (layer selector, loop plot, mobilized ratio/energy charts) instead of static placeholders
-- React Soil Profile step now includes per-layer `material_params` and `material_optional_args` editors with material-aware default parameter sets (PM4Sand/PM4Silt/MKZ/GQH/elastic)
-- React Soil Profile step now includes layer utility actions: `duplicate`, `up/down reorder`, and `CSV import/export` for full layer-stack editing without YAML
-- React Soil Profile step now supports DEEPSOIL-style table editing mode (Table/Cards switch) plus `Auto Profile Build` (f_max, points-per-wavelength, minimum slice thickness, max sublayers per main layer)
-- React Soil Profile step now includes starter profile builders (`5-Layer Starter` quick action and preset loader)
-- MKZ/GQH helper module (`python/dsra1d/materials/hysteretic.py`) with backbone/reduction utilities
-- MKZ/GQH helper module now includes `generate_masing_loop` for calibration-oriented loop generation
-- Mock backend now uses layer-material-aware proxy behavior for MKZ/GQH campaigns
-- OpenSees TCL generator with boundary-specific base handling (`rigid` / `elastic_halfspace`)
-- Version synchronization guard (`pyproject.toml`, `python/dsra1d/__init__.py`, `core/src/version.cpp`) + `scripts/release_bump.py`
-- Release tag/version consistency guard (`scripts/check_release_tag.py`, release workflow integration)
-- Release changelog guard (`scripts/check_changelog.py`, release workflow integration)
-- Stable run-id generation now hashes full config payload + motion series digest
-- Quality gate currently green in local runs:
-  - `ruff check .`
-  - `mypy python`
-  - `pytest` (currently passing)
+Best recent non-accepting improvement (`mode4_experimental`):
 
-## 4. What Is Not Yet Production-Ready
+- `surface_nrmse = 0.09784566426405236`
+- `psa_nrmse = 0.07056179329734742`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+- `gamma_max_nrmse = 0.1403686017946717`
+- `secant_g_over_gmax_nrmse = 0.1660441579439227`
+- `stress_path_nrmse = 0.2882942693825603`
+- `loop_energy_pct_diff = 136.20347327498024`
 
-- No confirmed OpenSees binary execution in this environment (binary not present at runtime checks)
-- Dedicated runner parity gate configured in release/manual parity workflows; runner availability and secret/var provisioning remain environment-dependent
-- No full scientific validation campaign for PM4 calibration fidelity
-- No formal acceptance thresholds for all engineering KPIs across scenario matrix
-- Native solver path (`core/` C++ runtime) is scaffold-only
+Meaning:
 
-## 5. Recommended Next Development Steps
+- input parity is already closed to numerical noise
+- small constitutive changes can improve amplitude metrics slightly
+- the dominant residual signature is still the unchanged `+11.732%` surface PSA peak-period drift
 
-Priority 1:
-- Run real OpenSees binary integration tests on a machine with OpenSees installed.
-- Lock a validated TCL template family for PM4Sand and PM4Silt (document required parameters).
+Standalone `F_mrdf` branch-progress experiment (`mode5_experimental`):
 
-Priority 2:
-- Expand benchmark suite with published/reference scenarios and stricter tolerances.
-- Add scenario-specific assertions for boundary behavior and pore-pressure evolution under strong motions.
+- `surface_nrmse = 0.10650708966370438`
+- `psa_nrmse = 0.08096349146053539`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+- `gamma_max_nrmse = 0.1659109966823451`
+- `secant_g_over_gmax_nrmse = 0.14502475357300681`
+- `stress_path_nrmse = 0.300855359393076`
+- `loop_energy_pct_diff = 212.55845555241683`
 
-Priority 3:
-- Add config-level validation profiles for PM4 parameter ranges and compatibility checks.
-- Complete release automation details (changelog discipline + tagged build policy + artifact publication controls).
+Meaning:
 
-Priority 4:
-- Start native solver roadmap (linear/EQL first), while preserving OpenSees interop mode.
+- local Layer 1 replay improved
+- system-level parity regressed
+- standalone branch-progress `F_mrdf` evolution is not sufficient as a closure path
 
-## 5A. Immediate Critical Path (Next Phase Execution Order)
+Translated-branch curvature experiments (`mode6_experimental` / `mode7_experimental`):
 
-1. **Real OpenSees parity closure:** Run full `opensees-parity` (6/6 executed, no skip) on dedicated runner and lock final explicit envelopes.
-2. **Scientific envelope hardening:** Expand `SCIENTIFIC_CONFIDENCE_MATRIX.md` with published/reference-mapped tolerances per scenario class.
-3. **PM4 calibration templates:** Publish and freeze calibration-ready PM4Sand/PM4Silt template set with documented parameter defaults/ranges.
-4. **UI production transition:** Continue React/FastAPI path (keep Streamlit as engineering panel), and complete artifact + diagnostics UX parity.
-5. **Release gate finalization:** Enforce parity policy in release path as non-bypassable and finalize release checklist/sign-off flow.
+- `mode6 surface_nrmse = 0.11831004510158506`
+- `mode6 psa_nrmse = 0.09562715448573829`
+- `mode6 surface_psa_peak_period_diff_pct = 11.732494130275942`
+- `mode7 surface_nrmse = 0.11771469066700418`
+- `mode7 psa_nrmse = 0.09489100396522135`
+- `mode7 surface_psa_peak_period_diff_pct = 11.732494130275942`
 
-## 6. Quick Milestone Estimate From Current State
+Meaning:
 
-- To "engineering beta" (real OpenSees validated templates + extended benchmark): short-to-medium effort.
-- To "v1.0 release candidate" (hardening, docs, release automation): medium effort.
-- To "native effective-stress solver beyond OpenSees adapter": major follow-on phase.
+- both mode 6 and mode 7 improved local Layer 1 replay strongly
+- both regressed full-column parity relative to current baseline and mode 4
+- mode 4 remains the best observed non-accepting system-level variant
 
-## 7. Deep Research Traceability Matrix
+### What is already ruled out
 
-This section maps `deep-research-report.md` scope items to current implementation state.
-Use it as the single backlog bridge once current v1 hardening tasks are completed.
+The remaining mismatch is not primarily:
 
-Status legend:
-- `Done`: implemented in repo and covered in tests/flows.
-- `Partial`: implemented scaffold or subset only.
-- `Pending`: planned but not implemented yet.
-- `Out-of-v1`: intentionally deferred beyond current delivery scope.
+- input `dt`
+- rigid vs outcrop semantics
+- plotting/displacement UI artifacts
+- monotonic literal `theta` / backbone mismatch
 
-| Deep-Research Workstream | Status | Current Coverage | Next Action |
-|---|---|---|---|
-| 1D SH effective-stress workflow via OpenSees adapter | Done | u-p style TCL generation, run orchestration, parsing, artifacts | Keep parity checks in CI and validate with real binaries |
-| Boundary conditions (`rigid`, `elastic_halfspace` + dashpot) | Done | Both modes available in TCL generator | Add stronger scenario assertions in parity suite |
-| Motion preprocessing (baseline/scaling/unit normalization) | Done | Motion load/preprocess and unit conversion in pipeline | Add advanced filters (optional) as separate enhancement |
-| Config schema + validation (`ProjectConfig` family) | Done | Pydantic schema, backend-aware checks, PM4 strict profiles | Extend with richer calibration catalogs |
-| PM4Sand support for effective-stress runs | Partial | Parameterized material blocks and strict validation profiles | Complete parameter coverage and reference-calibrated templates |
-| PM4Silt support for effective-stress runs | Partial | Material blocks, params, and strict_plus profile checks | Add deeper PM4Silt benchmark/validation matrix |
-| PWP output normalization (`ru`, `delta_u`, `sigma_v_eff`) | Done | Stored in HDF5/SQLite + verified in `verify` checks | Add richer depth-dependent diagnostics |
-| PWP model family (Dobry/Matasovic/GMP/Park-Ahn etc.) | Pending | Not implemented as native model family | Implement first simplified model + dissipation strategy |
-| Nonlinear total-stress MKZ/GQH native coupling | Partial | Three integration schemes (implicit Newmark, Verlet, Euler) all converge; **G/Gmax floor achieves near-DEEPSOIL parity**: floor=0.047 gives PGA=18.59 vs DEEPSOIL 18.05 (+3% gap), PSA NRMSE 0.17→0.12, PSA corr -0.02→0.63; **MRDF module implemented** (`materials/mrdf.py`) with Phillips-Hashash F(gamma) correction wired into constitutive state; MRDF needs per-scenario target damping calibration before production use | Calibrate MRDF target damping from Darendeli curves; validate g_reduction_min across broader scenario set; investigate surface time-series phase alignment |
-| Masing/non-Masing production hysteresis rules | Partial | Time-stepping constitutive update now supports generalized reload factor (`reload_factor`, Masing/non-Masing approximation) | Extend with advanced path-dependence checks and reference loop matching |
-| Small-strain damping package (freq-independent + Rayleigh) | Done | Shared damping module (`materials/damping.py`) with `layer_damping`, `rayleigh_coefficients`, and `frequency_independent_element_damping`; linear/EQL/nonlinear solvers now delegate to single source; Rayleigh + freq-independent + secant-update modes all wired; MRDF correction module available but requires case-specific calibration (over-corrects when combined with G/Gmax floor) | Add published-reference validation for damping module |
-| Linear native solver (time/frequency domain) | Partial | Python native linear SH backend (lumped shear-beam + Newmark) is now available via `--backend linear` | Add frequency-domain transfer-function mode and broader validation tests |
-| EQL solver (SHAKE-like + deconv/conv) | Partial | Native time-domain strain-compatible EQL backend (`solver_backend: eql`) is implemented with iterative MKZ/GQH modulus+damping updates and convergence tracking | Add frequency-domain deconvolution/convolution mode and published-reference validation |
-| f_max-driven auto sublayering / mesh controls | Partial | Element slicing logic exists in OpenSees TCL path; Web UI now has `Auto Profile Build` for interactive profile slicing from main layers | Expose shared mesh service/API across all backends and add randomization options |
-| Result store (HDF5 + SQLite) | Done | Implemented with deterministic run-id consistency checks | Add optional DuckDB/Parquet query utilities |
-| CLI coverage (`run/batch/benchmark/campaign/verify/report/ui`) | Done | End-to-end command set available | Maintain backward compatibility and docs |
-| Python SDK stable entry points | Done | `run_analysis`, `run_batch`, `load_result`, `compute_spectra` | Add examples for calibration and campaign automation |
-| GUI capability (engineering monitoring UI) | Partial | Streamlit UI available with run/campaign/plots/TCL preview | Decide whether to keep Streamlit or move to full product UI |
-| Benchmark + regression framework | Partial | `core-es`, `core-hyst`, `core-linear`, `core-eql`, `opensees-parity`, policy gates | Expand with published reference sets and stricter tolerances |
-| Scientific parity against DEEPSOIL/OpenSees references | Pending | Scaffold and policy telemetry exist; no full parity qualification | Build full parity matrix and acceptance envelopes |
-| Real-binary OpenSees integration validation | Partial | Optional integration harness + dedicated release/manual parity gates with backend fingerprint policy hooks | Run and lock final parity envelopes on dedicated runner with production OpenSees binary |
-| Deterministic reproducibility (hash/checksum/policy) | Done | Checksums, verify commands, campaign policies, stable run-id | Add release-level reproducibility checklist |
-| Release hardening and governance | Partial | Release/tag/changelog guards added | Finalize org sign-off, manuals, and artifact policy |
-| Native effective-stress solver beyond OpenSees interop | Out-of-v1 | Explicitly deferred | Start after linear/EQL native milestones |
+Recent falsifications add:
 
-Tracking rule for continuation:
-- When a `Partial`/`Pending` item advances, update both this matrix and the corresponding phase section above in the same commit.
+- increasing tangent floor or local tangent restore alone does not close peak-period drift
+- deep layers do dominate compliance, but selective deep-layer tangent restore still does not move peak period
+- standalone branch-progress `F_mrdf` evolution improved local loop behavior but regressed full-column response and left peak period unchanged
+- standalone translated-branch curvature shaping, with or without tangent restore, improved local replay but regressed full-column response and left peak period unchanged
+- DeepSoil v7.1 halfspace definition notes bedrock damping ratio has no effect in time-domain analyses; for elastic-halfspace parity the primary lever is impedance boundary semantics (`Vs`, unit weight), not a standalone bedrock `% damping` tweak
+- canonical Kocaeli boundary audit confirms that most `rigid+outcrop` vs `elastic_halfspace+outcrop` amplitude gap is still input-semantics-driven; once compared against `rigid+within`, the residual boundary effect is modest in PSA amplitude and clearer in peak period (`+5.703592242778525%`)
+- canonical Kocaeli elastic-halfspace force-balance audit shows the incident force and dashpot reaction nearly cancel (`dashpot_to_incident_rms_ratio ≈ 0.989`, correlation `≈ 0.994`); the residual net boundary traction RMS is only about `10.85%` of the incident-force RMS
+- canonical Kocaeli elastic-halfspace frequency audit shows that the residual net boundary traction and surface response share the same dominant frequency (`≈ 5.3667 Hz`, `T ≈ 0.1863 s`); the remaining halfspace effect is therefore frequency-selective and phase-coupled, not a bulk force amplification
 
-## 7A. DEEPSOIL UI Parity Backlog
+### Current mismatch interpretation
 
-| Wave-1 (zorunlu) | Durum | Wave-2 (sonraki) | Durum |
-|---|---|---|---|
-| 5-step wizard state + config üretimi | Done | Auto-profile advanced heuristics (Vs gradient + curve-aware slicing) | Pending |
-| Motion import (`CSV`, `PEER AT2`) | Done | Thickness/Vs/dynamic curve randomization UI | Pending |
-| Baseline pipeline opsiyonları (`deepsoil_bap_like` dahil) | Done | Genişletilmiş database browser parity | Pending |
-| Scale by / scale to PGA | Done | Multi-profile random batch scenario editor | Pending |
-| Soil Profile tablo/kart editörü + katman yardımcıları (duplicate/reorder/CSV) | Done | Bulk layer templates library (regional presets) | Pending |
-| Auto Profile Builder (`f_max`, points/wavelength, min slice, max sublayers) | Done | Stochastic/randomized auto-profile realizations | Pending |
-| Results tab yapısı (`Time Histories`, `Spectral`, `Profile`, `Convergence`) | Partial | Advanced mobilized strength and convergence diagnostics parity | Pending |
-| Run tree (`project -> motion -> run`) | Done | DEEPSOIL-style batch navigator parity (full) | Pending |
-| Advanced Table View parity (multi-column layer grid) | Partial | Layer/material library persistence (`Save Materials`, external files) | Pending |
-| Layer Properties parity (current properties + curve fit plots) | Partial | Full Single Element Test parity with strain-path controls / cyclic history presets | Pending |
-| Motion Viewer parity (multi-motion overlay + metrics/tools) | Partial | Tripartite graph / timestep reduction / kappa estimator parity | Pending |
-| Results tabs parity (`Stress-Strain`, `Mobilized Strength`) | Partial | `Response Spectra Summary` and `Displacement Animation` parity | Pending |
-| Options/Preferences parity (working dir, units, graph theme, multicore) | Pending | Full database browser / export parity | Pending |
+The strongest current diagnosis is:
 
-Notes:
-- Wave-1 UI parity is orchestration-focused; numerik çekirdek değişiklikleri bu dalgada hedeflenmez.
-- `Stress-Strain` ve `Mobilized Strength` tabları mevcut, fakat detay veri kanalı için ek recorder/çıktı şeması gereklidir.
-- Manual check baseline: [DEEPSOIL_User_Manual_v7.pdf](C:/Program Files/University of Illinois at Urbana-Champaign/DEEPSOIL%207.0/DEEPSOIL_User_Manual_v7.pdf), especially UI flow pages 21-61 and examples 107-161.
+- not an input application problem
+- not a monotonic backbone problem
+- not a simple deep-layer stiffness-floor problem
+- not a standalone branch-progress `F_mrdf` problem
+- not a standalone translated-branch curvature problem
+- most likely a cyclic branch-evolution problem
 
-### Manual-Derived Gaps
+The likely remaining cause is now centered on:
 
-- `Program Organization` (manual pp. 21-26): DEEPSOIL has top-level `Analysis`, `Motions`, `Profiles` tabs plus an `Options` window for working directory, units, language, multicore, and graph styling. GeoWave currently covers the main workflow but not the preferences surface.
-- `Motion Viewer` (manual pp. 23-26, 47-49): DEEPSOIL exposes multi-motion compare, single-motion view, scaling, baseline correction, FAS smoothing, multiple response-spectrum methods, data tables, timestep reduction, tripartite graph, and kappa tools. GeoWave covers import/baseline/scale/preview, but not the full tool matrix.
-- `Soil Profile Definition` (manual pp. 40-46): DEEPSOIL combines `Layer Properties`, `Advanced Table View`, curve-fit plots, implied strength profile, maximum-frequency checks, halfspace editor, and `Single Element Test`. GeoWave now has layer table/cards and auto-profile slicing, but implied-strength QA and single-element calibration review are still missing.
-- `Results` (manual pp. 55-61): DEEPSOIL separates `Time History`, `Stress-Strain`, `Spectral`, `Profile`, `Mobilized Strength`, `Displacement Animation`, `Response Spectra Summary`, and `Check Convergence`. GeoWave has the core tabs and focused Results Frame, but still lacks full spectra-summary/animation parity and denser convergence QA presentation.
+- layer-distributed constitutive evolution across the full column
+- active tangent history as it accumulates over all layers, not only Layer 1 replay quality
+- `F_mrdf` evolution and translated-branch curvature only insofar as they improve the multi-layer response path
+- active tangent evolution and how that tangent reaches the global solver
 
-## 8. Scientific Confidence Matrix
+## Latest Diagnostic Findings
 
-- Single source of truth: [SCIENTIFIC_CONFIDENCE_MATRIX.md](SCIENTIFIC_CONFIDENCE_MATRIX.md)
-- Update rule: when benchmark tolerances/reference-basis change, update confidence matrix in the same commit.
-- Release rule: `opensees-parity.binary_fingerprint` must match both policy fingerprint (`benchmarks/policies/release_signoff.yml`) and strict-signoff observed backend SHA256.
+### Single-element replay
 
-## 9. Example Smoke Pack
+Current baseline direct replay:
 
-- A ready-to-run DEEPSOIL-equivalent example pack now exists under `examples/deepsoil_equivalent/`.
-- It includes linear, EQL, nonlinear MKZ/GQH, and effective-stress reference configs.
-- Smoke validation was completed on 2026-03-19 using the repo CLI:
-  - linear reference: `run` completed successfully
-  - EQL reference: `run` completed successfully
-  - nonlinear reference: `run` completed successfully
-  - effective-stress reference: `run` completed successfully with the configured OpenSees binary
-- This pack is meant as a reproducible sanity-check path for users who want to confirm the software runs before building parity campaigns.
-Recent updates (2026-03-23):
-- Added an external validation pack generator under `scripts/build_validation_pack.py`.
-- Generated shareable technical validation artifacts under `output/pdf/validation/` from existing smoke, benchmark, parity, and confidence evidence.
+- `stress_path_nrmse = 0.015184199057194654`
+- `secant_path_nrmse = 0.010475989816892187`
+- `secant_envelope_nrmse = 0.13034828283465213`
+- `loop_energy_pct_diff = 60.11186908406478`
+- branch kind is effectively `translated_local_bridge`
 
-## 10. Handoff Notes
+Mode 3 reversal-tangent-preserving replay:
 
-If a new agent picks up the repo, continue from the current best native DEEPSOIL parity state:
-- Best hand-tuned parity case: `nonlinear_5a_rigid_dt0025_tuned`
-  - `reload_factor = 1.45`, `gamma_ref = 0.00166/0.00116` (hand-tuned)
-  - `PSA NRMSE = 0.1939`, `surface NRMSE = 0.4364`
-- Best Darendeli-calibrated parity case: `rf1.30_grs1.50_dmax0.10_sub16`
-  - `reload_factor = 1.30`, `gamma_ref_scale = 1.50` (Darendeli-derived base x 1.5)
-  - `PSA NRMSE = 0.1994`, `surface NRMSE = 0.4366`
-- Time-history correlation remains near zero across all candidates (structural solver-model limitation).
-- `damping_max` does not affect nonlinear solver output (confirmed via sweep: 0.10 vs 0.12 identical).
+- `stress_path_nrmse = 0.03868166454105839`
+- `secant_path_nrmse = 0.031393935013354225`
+- `secant_envelope_nrmse = 0.408112824163333`
+- `loop_energy_pct_diff = 39.39043271636329`
+- peak-period closure did not improve at system level
 
-Calibration sweep tooling is now available:
-- `scripts/sweep_mkz_calibration.py` generates candidate config grids
-- `scripts/run_calibration_sweep.py` runs + compares + ranks candidates
-- Sweep evidence stored under `output/pdf/validation/deepsoil_examples/calibration_sweep_wide/`
+Interpretation:
 
-Next highest-leverage engineering steps (in order):
-1. **Time-domain parity investigation:** The ~0.43 surface NRMSE and near-zero correlation suggest the native solver's time integration or damping formulation produces structurally different waveforms. Investigate small-strain damping treatment and compare native vs DEEPSOIL time-stepping schemes.
-2. **Frequency-domain solver path:** Add frequency-domain transfer function mode for linear/EQL to enable direct spectral comparison without time-domain artifacts.
-3. **Extended sweep:** Run finer grid around `rf=1.2-1.5, grs=1.3-1.7` to find the Pareto front between PSA and surface NRMSE.
+- mode 3 altered loop energy, but degraded local path parity and did not move the system-period signature
 
-Keep external validation artifacts outside product runtime:
-- `output/pdf/validation/`
-- `examples/output/deepsoil_equivalent/`
-Keep mock fallbacks clearly separated from parity campaigns and release signoff.
+### Solver tangent audit
+
+Current direct debug, Layer 1:
+
+- `g_ref_min_kpa = 460221.23764`
+- `g_t_ref_min_kpa = 255116.44108`
+
+Mode 4 direct debug, Layer 1:
+
+- `g_ref_min_kpa = 460344.11462`
+- `g_t_ref_min_kpa = 300808.71321`
+
+Interpretation:
+
+- mode 4 does raise the tangent reference floor
+- that change produces only small amplitude improvement
+- peak-period drift remains unchanged
+
+### Layer sweep
+
+Current all-layer audit:
+
+- dominant layer by mean compliance: `Layer 5`
+- dominant mean compliance fraction: `0.20733761653761226`
+- lower-layer compliance share (`Layer 3-5`) is about `0.6128809573684435`
+- equivalent stiffness minimum: `8558.666197495662`
+
+Mode 4 all-layer audit:
+
+- dominant layer by mean compliance: `Layer 5`
+- dominant mean compliance fraction: `0.20587104941325168`
+- equivalent stiffness minimum: `10361.731182540727`
+
+Selective deep-layer experiments:
+
+- `mode4_bottom3` and `mode4_bottom2` slightly improve amplitude metrics
+- both leave `surface_psa_peak_period_diff_pct` unchanged at `11.732494130275942`
+
+Interpretation:
+
+- the residual is not explained by only “which layer got more tangent”
+- the residual is more likely driven by how tangent evolves through branch progress over the full cyclic history
+
+### Mode 5 branch-progress audit
+
+Single-element replay, mode 5:
+
+- `stress_path_nrmse = 0.015088039604454448`
+- `secant_path_nrmse = 0.011210464172541816`
+- `loop_energy_pct_diff = 48.93282270680512`
+- `f_mrdf` now evolves from `1.0` at reversal to `0.82` deeper into the branch
+
+System compare, mode 5:
+
+- `surface_nrmse = 0.10650708966370438`
+- `psa_nrmse = 0.08096349146053539`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+
+Interpretation:
+
+- improving a local hysteresis replay signature is not enough on its own
+- the remaining problem is more likely in translated-branch curvature at system scale than in standalone `F_mrdf` progression
+
+### Mode 6 / Mode 7 curvature-family audit
+
+Mode 6 single-element replay:
+
+- `stress_path_nrmse = 0.014380843963461912`
+- `secant_path_nrmse = 0.01137543607915916`
+- `loop_energy_pct_diff = 32.83278145613474`
+
+Mode 7 single-element replay:
+
+- `stress_path_nrmse = 0.014380843963461912`
+- `secant_path_nrmse = 0.01137543607915916`
+- `loop_energy_pct_diff = 32.83278145613474`
+
+Mode 6 system compare:
+
+- `surface_nrmse = 0.11831004510158506`
+- `psa_nrmse = 0.09562715448573829`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+
+Mode 7 system compare:
+
+- `surface_nrmse = 0.11771469066700418`
+- `psa_nrmse = 0.09489100396522135`
+- `surface_psa_peak_period_diff_pct = 11.732494130275942`
+
+Interpretation:
+
+- making Layer 1 translated-branch shape look better does not automatically improve the column response
+- current acceptance should not be driven by Layer 1 replay quality alone
+- the next diagnostic step should target multi-layer response path closure, not another isolated branch-shape family
+
+## Next Technical Iterations
+
+The next work is decision-complete and should proceed in this order:
+
+1. add multi-layer path targeting diagnostics
+   - compare per-layer `gamma_max`, secant proxy, stress-path signal, and compliance contribution together
+   - stop treating Layer 1 replay improvement as a sufficient proxy for column parity
+2. revisit mode 4 as the best non-accepting baseline
+   - use new multi-layer diagnostics to target constitutive changes where they matter system-wide
+3. revisit `F_mrdf evolution / branch-progress` or translated-branch curvature only if coupled to the multi-layer target
+   - do not reopen standalone mode 5, 6, or 7 as primary strategies
+4. revisit previous-cycle memory only if new multi-layer data supports it
+   - do not reopen generic replay work without evidence
+5. rerun full primary compare against `tests/Results_profile_0_motion_Kocaeli.xlsx`
+6. only after meaningful primary improvement, rerun the secondary workbook cross-check
+
+## Legacy Context
+
+Older roadmap language still exists elsewhere in the repo and may mention:
+
+- OpenSees-heavy product direction
+- PM4 calibration paths
+- broader feature-expansion goals
+
+Treat that as legacy context, not current engineering direction.
+
+For dated research notes, see:
+
+- `deep-research-report.md`
+- `deep-research-report_15042026.md`
+
+Those remain useful as historical context, but the active parity campaign now lives in:
+
+- `IMPLEMENTATION_STATUS.md`
+- `DEEPSOIL_BASELINE_PARITY_RESEARCH.md`
+- `PARITY_MEMORY.md`
+- `parity_experiment_index.json`

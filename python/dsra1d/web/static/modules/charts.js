@@ -10,12 +10,58 @@ import { fmt } from "./utils.js";
 
 // ── Geometry helpers ─────────────────────────────────────
 
-function linearTicks(min, max, count = 5) {
-  if (!isFinite(min) || !isFinite(max) || max <= min) return [];
-  const step = (max - min) / count;
+function roundTick(value) {
+  return Number(value.toPrecision(12));
+}
+
+function niceLinearStep(rawStep) {
+  if (!isFinite(rawStep) || rawStep <= 0) return 1;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const magnitude = Math.pow(10, exponent);
+  const fraction = rawStep / magnitude;
+  let niceFraction = 10;
+  if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 2.5) niceFraction = 2.5;
+  else if (fraction <= 5) niceFraction = 5;
+  return niceFraction * magnitude;
+}
+
+function buildLinearAxis(min, max, opts = {}) {
+  if (!isFinite(min) || !isFinite(max) || max <= min) {
+    return { min, max, ticks: [], step: null };
+  }
+  const targetCount = opts.targetCount ?? 6;
+  const step = niceLinearStep((max - min) / Math.max(targetCount, 1));
+  const preferZero = !!opts.preferZero;
+  const anchorZero = preferZero && min >= 0 && min <= step * 1.25;
+  const domainMin = anchorZero ? 0 : Math.floor(min / step) * step;
+  const domainMax = Math.ceil(max / step) * step;
   const ticks = [];
-  for (let i = 0; i <= count; i++) ticks.push(min + i * step);
-  return ticks;
+  for (let value = domainMin; value <= domainMax + step * 0.5; value += step) {
+    ticks.push(roundTick(value));
+  }
+  return {
+    min: roundTick(domainMin),
+    max: roundTick(domainMax),
+    ticks,
+    step,
+  };
+}
+
+function tickDecimals(step, fallback = 2) {
+  if (!isFinite(step) || step <= 0) return fallback;
+  if (step >= 1) return 0;
+  if (step >= 0.1) return 1;
+  if (step >= 0.01) return 2;
+  if (step >= 0.001) return 3;
+  return 4;
+}
+
+function formatLinearTick(value, step, fallback = 2) {
+  const decimals = tickDecimals(step, fallback);
+  if (decimals === 0) return String(Math.round(value));
+  return Number(value).toFixed(decimals).replace(/\.?0+$/, "");
 }
 
 function logTicks(min, max) {
@@ -50,10 +96,22 @@ function buildGeometry(x, y, w, h, pad, opts = {}) {
   const filteredY = logY ? yArr.filter(v => Number.isFinite(v) && v > 0) : yArr.filter(Number.isFinite);
   if (filteredX.length < 2 || filteredY.length < 2) return null;
 
-  const xMin = opts.xMin != null ? opts.xMin : Math.min(...filteredX);
-  const xMax = opts.xMax != null ? opts.xMax : Math.max(...filteredX);
-  const yMin = opts.yMin != null ? opts.yMin : Math.min(...filteredY);
-  const yMax = opts.yMax != null ? opts.yMax : Math.max(...filteredY);
+  const rawXMin = opts.xMin != null ? opts.xMin : Math.min(...filteredX);
+  const rawXMax = opts.xMax != null ? opts.xMax : Math.max(...filteredX);
+  const rawYMin = opts.yMin != null ? opts.yMin : Math.min(...filteredY);
+  const rawYMax = opts.yMax != null ? opts.yMax : Math.max(...filteredY);
+
+  const linearXAxis = logX
+    ? null
+    : buildLinearAxis(rawXMin, rawXMax, { targetCount: 10, preferZero: true });
+  const linearYAxis = logY
+    ? null
+    : buildLinearAxis(rawYMin, rawYMax, { targetCount: 5, preferZero: rawYMin === 0 });
+
+  const xMin = logX ? rawXMin : linearXAxis.min;
+  const xMax = logX ? rawXMax : linearXAxis.max;
+  const yMin = logY ? rawYMin : linearYAxis.min;
+  const yMax = logY ? rawYMax : linearYAxis.max;
 
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
@@ -95,17 +153,33 @@ function buildGeometry(x, y, w, h, pad, opts = {}) {
     .map(({ x, y }) => `${scaleX(x)},${scaleY(y)}`)
     .join(" ");
 
-  const xTicks = logX ? logTicks(xMin, xMax) : linearTicks(xMin, xMax, 5);
-  const yTicks = logY ? logTicks(yMin, yMax) : linearTicks(yMin, yMax, 5);
+  const xTicks = logX ? logTicks(xMin, xMax) : linearXAxis.ticks;
+  const yTicks = logY ? logTicks(yMin, yMax) : linearYAxis.ticks;
 
-  return { points, scaleX, scaleY, invertX, xTicks, yTicks, xMin, xMax, yMin, yMax, plotW, plotH, pad };
+  return {
+    points,
+    scaleX,
+    scaleY,
+    invertX,
+    xTicks,
+    yTicks,
+    xTickStep: linearXAxis?.step || null,
+    yTickStep: linearYAxis?.step || null,
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+    plotW,
+    plotH,
+    pad,
+  };
 }
 
 // ── Axis renderer ────────────────────────────────────────
 
 function Axes({ geo, w, h, xLabel, yLabel, logX, logY }) {
   if (!geo) return null;
-  const { scaleX, scaleY, xTicks, yTicks, pad, plotH } = geo;
+  const { scaleX, scaleY, xTicks, yTicks, xTickStep, yTickStep, pad, plotH } = geo;
 
   return html`
     <g className="axes">
@@ -129,7 +203,7 @@ function Axes({ geo, w, h, xLabel, yLabel, logX, logY }) {
               stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
             ${isMajor ? html`
               <text x=${tx} y=${h - 4} text-anchor="middle" fill="var(--ink-60)" font-size="9">
-                ${logX ? t.toExponential(0) : fmt(t, 2)}
+                ${logX ? t.toExponential(0) : formatLinearTick(t, xTickStep, 2)}
               </text>
             ` : null}
           </g>
@@ -149,7 +223,7 @@ function Axes({ geo, w, h, xLabel, yLabel, logX, logY }) {
               stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
             ${isMajor ? html`
               <text x=${pad.left - 6} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="9">
-                ${logY ? t.toExponential(0) : fmt(t, 3)}
+                ${logY ? t.toExponential(0) : formatLinearTick(t, yTickStep, 3)}
               </text>
             ` : null}
           </g>
@@ -579,13 +653,15 @@ export function DepthProfileChart({
   const vMin = Number.isFinite(xMin) ? xMin : autoVMin;
   const vMaxBase = Number.isFinite(xMax) ? xMax : autoVMax;
   const vMax = vMaxBase === vMin ? vMin + 1 : vMaxBase;
+  const xAxis = buildLinearAxis(vMin, vMax, { targetCount: 4, preferZero: vMin >= 0 });
+  const yAxis = buildLinearAxis(dMin, dMax, { targetCount: 5, preferZero: dMin === 0 });
 
   function sx(v) { return pad.left + ((v - vMin) / (vMax - vMin)) * plotW; }
   function sy(d) { return pad.top + ((d - dMin) / (dMax - dMin || 1)) * plotH; }
 
   const points = depths.map((d, i) => `${sx(values[i])},${sy(d)}`).join(" ");
-  const xTicks = linearTicks(vMin, vMax, 4);
-  const yTicks = linearTicks(dMin, dMax, 5);
+  const xTicks = xAxis.ticks;
+  const yTicks = yAxis.ticks;
 
   return html`
     <div className="chart-card">
@@ -602,7 +678,7 @@ export function DepthProfileChart({
             <g key=${"xt" + t}>
               <line x1=${tx} y1=${pad.top} x2=${tx} y2=${pad.top + plotH} stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
               <line x1=${tx} y1=${pad.top - 3} x2=${tx} y2=${pad.top} stroke="var(--ink-40)" />
-              <text x=${tx} y=${pad.top - 5} text-anchor="middle" fill="var(--ink-60)" font-size="8">${fmt(t, t < 1 ? 3 : 1)}</text>
+              <text x=${tx} y=${pad.top - 5} text-anchor="middle" fill="var(--ink-60)" font-size="8">${formatLinearTick(t, xAxis.step, 3)}</text>
             </g>
           `;
         })}
@@ -614,7 +690,7 @@ export function DepthProfileChart({
             <g key=${"yt" + t}>
               <line x1=${pad.left} y1=${ty} x2=${w - pad.right} y2=${ty} stroke="var(--ink-10)" stroke-width="0.5" stroke-dasharray="2,3" />
               <line x1=${pad.left - 3} y1=${ty} x2=${pad.left} y2=${ty} stroke="var(--ink-40)" />
-              <text x=${pad.left - 5} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="8">${fmt(t, 1)}</text>
+              <text x=${pad.left - 5} y=${ty + 3} text-anchor="end" fill="var(--ink-60)" font-size="8">${formatLinearTick(t, yAxis.step, 1)}</text>
             </g>
           `;
         })}

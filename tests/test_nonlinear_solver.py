@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from dsra1d.config import BoundaryCondition, load_project_config
+from dsra1d.config import BedrockProperties, BoundaryCondition, load_project_config
 from dsra1d.motion import load_motion
 from dsra1d.nonlinear import solve_nonlinear_sh_response
 from dsra1d.pipeline import run_analysis
@@ -78,6 +78,36 @@ def test_nonlinear_solver_elastic_halfspace_changes_response() -> None:
     assert surface_rigid.shape == surface_halfspace.shape
     assert np.all(np.isfinite(surface_halfspace))
     assert not np.allclose(surface_rigid, surface_halfspace)
+
+
+def test_nonlinear_solver_bedrock_damping_ratio_does_not_change_time_domain_response() -> None:
+    cfg = load_project_config(Path("examples/configs/mkz_gqh_nonlinear.yml"))
+    cfg.boundary_condition = BoundaryCondition.ELASTIC_HALFSPACE
+    dt = cfg.analysis.dt or (1.0 / (20.0 * cfg.analysis.f_max))
+    motion = load_motion(Path("examples/motions/sample_motion.csv"), dt=dt, unit=cfg.motion.units)
+
+    cfg_zero = cfg.model_copy(deep=True)
+    cfg_zero.profile.bedrock = BedrockProperties(
+        name="Rock",
+        vs_m_s=760.0,
+        unit_weight_kN_m3=25.0,
+        damping_ratio=0.0,
+    )
+    _, surface_zero = solve_nonlinear_sh_response(cfg_zero, motion)
+
+    cfg_damped = cfg.model_copy(deep=True)
+    cfg_damped.profile.bedrock = BedrockProperties(
+        name="Rock",
+        vs_m_s=760.0,
+        unit_weight_kN_m3=25.0,
+        damping_ratio=0.02,
+    )
+    _, surface_damped = solve_nonlinear_sh_response(cfg_damped, motion)
+
+    assert surface_zero.shape == surface_damped.shape
+    assert np.all(np.isfinite(surface_zero))
+    assert np.all(np.isfinite(surface_damped))
+    assert np.allclose(surface_zero, surface_damped)
 
 
 def test_nonlinear_solver_viscous_damping_update_changes_response() -> None:

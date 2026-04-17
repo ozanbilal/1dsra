@@ -82,6 +82,7 @@ def test_effective_bedrock_falls_back_to_last_layer() -> None:
     last = cfg.profile.layers[-1]
     assert bedrock.vs_m_s == pytest.approx(last.vs_m_s)
     assert bedrock.unit_weight_kn_m3 == pytest.approx(last.unit_weight_kn_m3)
+    assert bedrock.damping_ratio == pytest.approx(0.0)
 
 
 def test_effective_bedrock_prefers_explicit_halfspace(tmp_path: Path) -> None:
@@ -94,6 +95,7 @@ profile:
     name: Rock
     vs_m_s: 760.0
     unit_weight_kN_m3: 25.0
+    damping_ratio: 0.02
   layers:
     - name: L1
       thickness_m: 20.0
@@ -113,6 +115,7 @@ analysis:
     assert bedrock.name == "Rock"
     assert bedrock.vs_m_s == pytest.approx(760.0)
     assert bedrock.unit_weight_kn_m3 == pytest.approx(25.0)
+    assert bedrock.damping_ratio == pytest.approx(0.02)
 
 
 def test_load_darendeli_core_config_ok() -> None:

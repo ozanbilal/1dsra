@@ -104,6 +104,7 @@ export function ProfileEditor({ wizard, setWizard }) {
       name: `${lastLayer.name || "Bottom layer"} halfspace`,
       vs_m_s: Number(lastLayer.vs || lastLayer.vs_m_s || 760),
       unit_weight_kN_m3: Number(lastLayer.unit_weight || lastLayer.unit_weight_kN_m3 || 20),
+      damping_ratio: 0.0,
     };
   }
 
@@ -980,6 +981,26 @@ export function ProfileEditor({ wizard, setWizard }) {
                         }}
                       />
                     </div>
+                    <div className="field">
+                      <label htmlFor="profile-bedrock-damping">Bedrock Damping Ratio (0.02 = 2%)</label>
+                      <input
+                        id="profile-bedrock-damping"
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="0.5"
+                        value=${effectiveBedrock?.damping_ratio ?? 0}
+                        onInput=${e => {
+                          const nextValue = parseFloat(e.target.value);
+                          updateBedrock(
+                            "damping_ratio",
+                            Number.isFinite(nextValue) && nextValue >= 0
+                              ? Math.min(nextValue, 0.5)
+                              : 0.0,
+                          );
+                        }}
+                      />
+                    </div>
                   ` : html`
                     <div className="stage-empty profile-stage-span-4">
                       <p className="muted">Rigid Base uses the recorded motion directly at the base. Separate halfspace impedance properties are ignored in this mode.</p>
@@ -991,6 +1012,7 @@ export function ProfileEditor({ wizard, setWizard }) {
                   <div className="metric-card compact"><span>Motion Input</span><b>${motionInputType === "outcrop" ? "Outcrop" : "Within"}</b></div>
                   <div className="metric-card compact"><span>Bedrock Source</span><b>${bedrockSourceLabel}</b></div>
                   <div className="metric-card compact"><span>Bedrock Vs</span><b>${fmt(effectiveBedrock?.vs_m_s, 1)} m/s</b></div>
+                  ${boundaryIsElastic ? html`<div className="metric-card compact"><span>Bedrock Damping</span><b>${fmt((Number(effectiveBedrock?.damping_ratio || 0) * 100), 2)}%</b></div>` : null}
                   ${bedrockImpedanceRatio != null ? html`<div className="metric-card compact"><span>Impedance Ratio</span><b>${fmt(bedrockImpedanceRatio, 3)}</b></div>` : null}
                 </div>
                 ${boundaryIsElastic ? html`
@@ -998,7 +1020,7 @@ export function ProfileEditor({ wizard, setWizard }) {
                     <button type="button" className="btn btn-sm" onClick=${copyLastLayerToBedrock}>Copy Last Layer To Bedrock</button>
                     <button type="button" className="btn btn-sm" disabled=${!explicitBedrock} onClick=${resetBedrockToLastLayer}>Use Last Layer Values</button>
                   </div>
-                  <p className="muted section-footnote">GeoWave currently uses explicit halfspace Vs and unit weight. Separate bedrock damping is not parameterized yet.</p>
+                  <p className="muted section-footnote">DeepSoil v7.1 notes that bedrock damping ratio has no effect in time-domain analyses. GeoWave stores the value for parity/reference, but current time-domain solvers use halfspace impedance from Vs and unit weight only.</p>
                 ` : null}
               </section>
             ` : null}

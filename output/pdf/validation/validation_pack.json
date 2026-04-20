@@ -1,0 +1,176 @@
+{
+  "generated_utc": "2026-03-23T13:32:39.461950+00:00",
+  "repo_root": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA",
+  "out_dir": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation",
+  "core_verdict": "Calisiyor",
+  "parity_verdict": "Kismi",
+  "release_verdict": "Kismi",
+  "overall_verdict": "Kismi",
+  "smoke_summary": {
+    "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.json",
+    "total_cases": 4,
+    "passed_cases": 4,
+    "failed_cases": 0,
+    "passed": true
+  },
+  "benchmark_snapshot": {
+    "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\benchmarks_parity\\benchmark_opensees-parity.json",
+    "all_passed": true,
+    "ran": 0,
+    "skipped": 1,
+    "reason": "OpenSees executable not found: OpenSees"
+  },
+  "status_matrix": [
+    {
+      "bucket": "Done",
+      "items": "Native linear/EQL/nonlinear; OpenSees adapter; Darendeli calibration; DEEPSOIL-like UI; benchmark harness",
+      "horizon": "Current",
+      "note": "Core workflows execute and produce reproducible outputs."
+    },
+    {
+      "bucket": "Partial",
+      "items": "DEEPSOIL parity, release-signoff runner in local environment, visual appendix coverage",
+      "horizon": "Near-term",
+      "note": "Parity tooling exists, but reference coverage is not yet publication-locked."
+    },
+    {
+      "bucket": "Pending",
+      "items": "Broader published-reference matrix and native full effective-stress solver",
+      "horizon": "Next",
+      "note": "Current engineering gaps, not blockers for validation reporting."
+    },
+    {
+      "bucket": "Out-of-v1",
+      "items": "Full native u-p solver and complete DEEPSOIL project import/export",
+      "horizon": "Later",
+      "note": "Explicitly outside the current delivery boundary."
+    }
+  ],
+  "scientific_confidence": {
+    "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\SCIENTIFIC_CONFIDENCE_MATRIX.md",
+    "rows": [
+      "`core-es` | Medium | Internal-only reference lock; external publication lock pending",
+      "`core-hyst` | Medium | Published loop/reference lock pending",
+      "`core-linear` | Medium-High | Physics-grounded but not yet publication-locked",
+      "`core-eql` | Medium | SHAKE/DEEPSOIL external lock pending",
+      "`opensees-parity` | Medium | Fingerprint locked from local OpenSees binary; dedicated runner must match exactly at release signoff"
+    ]
+  },
+  "evidence": [
+    {
+      "claim": "Native linear/EQL/nonlinear example pack",
+      "artifact": "Smoke summary",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.json",
+      "note": "4/4 cases passed in the example bundle.",
+      "status": "ok"
+    },
+    {
+      "claim": "OpenSees effective-stress path executes",
+      "artifact": "OpenSees stdout log",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\effective_stress\\run-485b214d64ad\\opensees_stdout.log",
+      "note": "Representative effective-stress smoke artifact.",
+      "status": "ok"
+    },
+    {
+      "claim": "OpenSees diagnostics are captured",
+      "artifact": "OpenSees diagnostics",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\effective_stress\\run-485b214d64ad\\opensees_diagnostics.json",
+      "note": "Shows the adapter is not a stub.",
+      "status": "ok"
+    },
+    {
+      "claim": "Darendeli calibration is wired",
+      "artifact": "PM4 validation guide",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\PM4_CALIBRATION_VALIDATION.md",
+      "note": "Declares valid ranges and strict-plus constraints.",
+      "status": "ok"
+    },
+    {
+      "claim": "DEEPSOIL parity tooling exists",
+      "artifact": "Compare engine",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\python\\dsra1d\\deepsoil_compare.py",
+      "note": "Surface, profile, and hysteresis compare support.",
+      "status": "ok"
+    },
+    {
+      "claim": "Release parity wiring exists",
+      "artifact": "Release parity helper",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\scripts\\run_release_deepsoil_compare.py",
+      "note": "Policy-aware compare orchestration.",
+      "status": "ok"
+    },
+    {
+      "claim": "Scientific confidence is tracked",
+      "artifact": "Confidence matrix",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\SCIENTIFIC_CONFIDENCE_MATRIX.md",
+      "note": "Canonical release-scientific signoff table.",
+      "status": "ok"
+    },
+    {
+      "claim": "UI exposes wizard/results/parity/confidence",
+      "artifact": "React + FastAPI web layer",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\python\\dsra1d\\web\\app.py",
+      "note": "React + FastAPI orchestration layer.",
+      "status": "ok"
+    },
+    {
+      "claim": "Examples show the target workflow",
+      "artifact": "DEEPSOIL-equivalent examples",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\README.md",
+      "note": "Linear, EQL, nonlinear, and effective-stress references.",
+      "status": "ok"
+    },
+    {
+      "claim": "Parity manifests are defined",
+      "artifact": "Parity manifest sample",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\parity\\deepsoil_compare_manifest.sample.json",
+      "note": "Batch compare manifest format for side-by-side checks.",
+      "status": "ok"
+    },
+    {
+      "claim": "Release parity manifest is defined",
+      "artifact": "Release manifest sample",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\benchmarks\\policies\\release_signoff_deepsoil_manifest.sample.json",
+      "note": "Used by release workflow when parity is available.",
+      "status": "ok"
+    },
+    {
+      "claim": "Release gate is codified",
+      "artifact": "Release signoff checklist",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\docs\\RELEASE_SIGNOFF_CHECKLIST.md",
+      "note": "Operational gate for v* tags.",
+      "status": "ok"
+    },
+    {
+      "claim": "OpenSees parity benchmark exists",
+      "artifact": "Benchmark JSON",
+      "path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\benchmarks_parity\\benchmark_opensees-parity.json",
+      "note": "Gate evidence; local environment may skip when OpenSees is absent.",
+      "status": "ok"
+    }
+  ],
+  "appendices": [
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-2c32ae6cc181\\report.pdf",
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-ddd5bbb22b69\\report.pdf",
+    "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-9b578ad94620\\report.pdf"
+  ],
+  "appendix_previews": [
+    {
+      "source_pdf": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-2c32ae6cc181\\report.pdf",
+      "preview_image": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\assets\\ui_appendix_preview_01.png",
+      "label": "run-2c32ae6cc181"
+    },
+    {
+      "source_pdf": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-ddd5bbb22b69\\report.pdf",
+      "preview_image": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\assets\\ui_appendix_preview_02.png",
+      "label": "run-ddd5bbb22b69"
+    },
+    {
+      "source_pdf": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\run-9b578ad94620\\report.pdf",
+      "preview_image": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\assets\\ui_appendix_preview_03.png",
+      "label": "run-9b578ad94620"
+    }
+  ],
+  "markdown_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\validation_pack.md",
+  "pdf_path": "H:\\Drive'ım\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\validation_pack.pdf"
+}

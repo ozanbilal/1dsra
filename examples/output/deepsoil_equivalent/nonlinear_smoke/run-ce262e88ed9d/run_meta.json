@@ -1,0 +1,20 @@
+{
+  "run_id": "run-ce262e88ed9d",
+  "timestamp_utc": "2026-03-19T10:22:54.804401+00:00",
+  "solver_backend": "nonlinear",
+  "timeout_s_configured": 180,
+  "timeout_s_effective": 180,
+  "dt_s": 0.0025000000000000022,
+  "delta_t_s": 0.0025000000000000022,
+  "status": "ok",
+  "message": "completed",
+  "opensees_command": [],
+  "input_motion": "examples\\motions\\sample_motion.csv",
+  "processed_motion": "examples\\output\\deepsoil_equivalent\\nonlinear_smoke\\run-ce262e88ed9d\\motion_processed.csv",
+  "model_tcl": "examples\\output\\deepsoil_equivalent\\nonlinear_smoke\\run-ce262e88ed9d\\model.tcl",
+  "config_snapshot": "examples\\output\\deepsoil_equivalent\\nonlinear_smoke\\run-ce262e88ed9d\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "589e2b9823b122559536f0ccd4945e6b0b9099f46d7cacff59b0799a10f5c92f",
+    "results.sqlite": "415f984bec4581d7b2fd357820fd6bd14d62ad799e249c4661eabab5f971d9a7"
+  }
+}

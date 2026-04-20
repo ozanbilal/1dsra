@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(find G:/Drive''ım/GitHub_Repo/Deepsoil/1DSRA/benchmarks -name *golden* -o -name *hyst*)",
+      "Read(//g/Drive''''''''ım/GitHub_Repo/Deepsoil/**)",
+      "Bash(/c/Users/PC/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/ -q --tb=line -k \"not cli and not validation and not web_api\")",
+      "Bash(/c/Users/PC/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/test_benchmark.py -q --tb=line)",
+      "Bash(cmd /c \"del /f \"\"G:\\\\Drive''ım\\\\GitHub_Repo\\\\Deepsoil\\\\1DSRA\\\\.git\\\\index.lock\"\"\")",
+      "Bash(cmd /c \"cd /d \"\"G:\\\\Drive''ım\\\\GitHub_Repo\\\\Deepsoil\\\\1DSRA\"\" && del /f .git\\\\index.lock 2>nul & git add python\\\\dsra1d\\\\web\\\\static\\\\app.v2.js python\\\\dsra1d\\\\web\\\\static\\\\modules\\\\wizard.js python\\\\dsra1d\\\\web\\\\static\\\\modules\\\\profile-editor.js python\\\\dsra1d\\\\web\\\\static\\\\modules\\\\charts.js && git commit -m \"\"feat: localStorage persistence, layer ops, chart hover tooltips\"\"\")",
+      "Bash(cmd /c \"cd /d \"\"G:\\\\Drive''ım\\\\GitHub_Repo\\\\Deepsoil\\\\1DSRA\"\" && git status --short\")",
+      "Bash(git -C \"G:/Drive''ım/GitHub_Repo/Deepsoil/1DSRA\" status --short)",
+      "Bash(git -C \"G:/Drive''ım/GitHub_Repo/Deepsoil/1DSRA\" add python/dsra1d/web/static/app.v2.js python/dsra1d/web/static/modules/charts.js python/dsra1d/web/static/modules/profile-editor.js python/dsra1d/web/static/modules/wizard.js)",
+      "Bash(git -C \"G:/Drive''ım/GitHub_Repo/Deepsoil/1DSRA\" commit -m \"feat: localStorage persistence, layer ops, chart hover tooltips\")",
+      "Bash(git -C \"G:/Drive''ım/GitHub_Repo/Deepsoil/1DSRA\" commit -m \"feat: run management with date grouping, search, delete\")"
+    ]
+  }
+}

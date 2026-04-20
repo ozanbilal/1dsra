@@ -1,0 +1,20 @@
+{
+  "run_id": "run-35e5926f6625",
+  "timestamp_utc": "2026-04-16T17:11:18.654896+00:00",
+  "solver_backend": "nonlinear",
+  "nonlinear_substeps": 4,
+  "timeout_s_configured": 240,
+  "timeout_s_effective": 240,
+  "dt_s": 0.004999999999999893,
+  "delta_t_s": 0.004999999999999893,
+  "input_dt_s": 0.004999999999999893,
+  "status": "ok",
+  "message": "completed",
+  "input_motion": "out\\tmp_replay_eval\\compare\\_deepsoil_bundle\\input_motion.csv",
+  "processed_motion": "output\\baseline_iter\\mode4_bottom2\\run-35e5926f6625\\motion_processed.csv",
+  "config_snapshot": "output\\baseline_iter\\mode4_bottom2\\run-35e5926f6625\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "254eb13dbc541a35c072295250f0942ed98dd0b744e4965209ffd440b545daef",
+    "results.sqlite": "4d70f92d4c7a539226a25560179a8fc5f5dfa6219b7744bd68823385e7b31286"
+  }
+}

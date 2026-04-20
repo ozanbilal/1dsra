@@ -92,6 +92,17 @@ def test_docs_include_current_technical_direction() -> None:
         assert term in agents_text
 
 
+def test_docs_include_boundary_first_acceptance_truth() -> None:
+    status_text = _read_text(REPO_ROOT / "IMPLEMENTATION_STATUS.md")
+    research_text = _read_text(REPO_ROOT / "DEEPSOIL_BASELINE_PARITY_RESEARCH.md")
+    agents_text = _read_text(REPO_ROOT / "AGENTS.md")
+
+    for text in (status_text, research_text, agents_text):
+        assert "elastic_halfspace + outcrop" in text
+        assert "rigid + within" in text
+        assert "deepsoilout.db3" in text
+
+
 def test_project_map_mentions_debug_entrypoints_and_artifact_families() -> None:
     text = _read_text(REPO_ROOT / "PROJECT_MAP.md")
 

@@ -17,7 +17,7 @@ from dsra1d.materials.damping import (
     modal_matched_damping_matrix as _modal_matched_damping_matrix,
     rayleigh_coefficients as _rayleigh_coefficients,
 )
-from dsra1d.motion import effective_input_acceleration
+from dsra1d.motion import build_boundary_excitation
 from dsra1d.types import Motion
 
 FloatArray = npt.NDArray[np.float64]
@@ -166,8 +166,10 @@ def _solve_shear_beam_response(
             c_mat[-1, -1] += dashpot_c
 
     dt = float(motion.dt)
-    acc_g = effective_input_acceleration(config, motion.acc)
-    n_steps = acc_g.size
+    excitation = build_boundary_excitation(config, motion.acc)
+    rigid_input_acc = np.asarray(excitation.within_acceleration_m_s2, dtype=np.float64)
+    incident_input_acc = np.asarray(excitation.incident_acceleration_m_s2, dtype=np.float64)
+    n_steps = rigid_input_acc.size
     time = np.arange(n_steps, dtype=np.float64) * dt
 
     beta = 0.25
@@ -183,11 +185,11 @@ def _solve_shear_beam_response(
         bedrock = config.effective_bedrock()
         base_rho = float(max(bedrock.unit_weight_kn_m3 / 9.81, 1.0e-6))
         base_vs = float(max(bedrock.vs_m_s, 1.0e-6))
-        input_vel = _integrate_acc_to_velocity(acc_g, dt)
+        input_vel = _integrate_acc_to_velocity(incident_input_acc, dt)
         force = np.zeros((n_free, n_steps), dtype=np.float64)
         force[-1, :] = 2.0 * base_rho * base_vs * area * input_vel
     else:
-        force = -np.outer(m_diag, acc_g)
+        force = -np.outer(m_diag, rigid_input_acc)
     u = np.zeros((n_free, n_steps), dtype=np.float64)
     v = np.zeros((n_free, n_steps), dtype=np.float64)
     acc_rel = np.zeros((n_free, n_steps), dtype=np.float64)
@@ -215,13 +217,13 @@ def _solve_shear_beam_response(
         )
 
     if n_free == 0:
-        surface_acc = acc_g.copy()
+        surface_acc = rigid_input_acc.copy()
         u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
     else:
         if use_elastic_halfspace:
             surface_acc = acc_rel[0, :]
         else:
-            surface_acc = acc_rel[0, :] + acc_g
+            surface_acc = acc_rel[0, :] + rigid_input_acc
         u_full = np.zeros((n_nodes, n_steps), dtype=np.float64)
         u_full[:n_free, :] = u
 

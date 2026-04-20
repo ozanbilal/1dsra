@@ -1,0 +1,128 @@
+{
+  "project_name": "sweep-rf1.80_grs3.50_dmax0.12_sub16",
+  "seed": 20260324,
+  "profile": {
+    "layers": [
+      {
+        "name": "Layer1",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 250.0,
+        "material": "mkz",
+        "material_params": {
+          "gmax": 127420.0,
+          "gamma_ref": 0.0016485876303543247,
+          "damping_min": 0.013000852218556118,
+          "damping_max": 0.12,
+          "reload_factor": 1.8
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer2",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 250.0,
+        "material": "mkz",
+        "material_params": {
+          "gmax": 127420.0,
+          "gamma_ref": 0.0020755093391368186,
+          "damping_min": 0.010641534464702524,
+          "damping_max": 0.12,
+          "reload_factor": 1.8
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer3",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 250.0,
+        "material": "mkz",
+        "material_params": {
+          "gmax": 127420.0,
+          "gamma_ref": 0.0025997082103001107,
+          "damping_min": 0.01007942990810848,
+          "damping_max": 0.12,
+          "reload_factor": 1.8
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer4",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 250.0,
+        "material": "mkz",
+        "material_params": {
+          "gmax": 127420.0,
+          "gamma_ref": 0.00286026135338208,
+          "damping_min": 0.009275581978909674,
+          "damping_max": 0.12,
+          "reload_factor": 1.8
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer5",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 250.0,
+        "material": "mkz",
+        "material_params": {
+          "gmax": 127420.0,
+          "gamma_ref": 0.003080177333459935,
+          "damping_min": 0.008696487266041749,
+          "damping_max": 0.12,
+          "reload_factor": 1.8
+        },
+        "material_optional_args": [],
+        "calibration": null
+      }
+    ]
+  },
+  "boundary_condition": "rigid",
+  "analysis": {
+    "dt": 0.0025,
+    "t_end": null,
+    "f_max": 25.0,
+    "solver_backend": "nonlinear",
+    "nonlinear_substeps": 16,
+    "pm4_validation_profile": "basic",
+    "damping_mode": "frequency_independent",
+    "rayleigh_mode_1_hz": 1.0,
+    "rayleigh_mode_2_hz": 5.0,
+    "rayleigh_update_matrix": false,
+    "timeout_s": 180,
+    "retries": 1
+  },
+  "motion": {
+    "units": "g",
+    "baseline": "none",
+    "scale_mode": "none",
+    "scale_factor": null,
+    "target_pga": null
+  },
+  "output": {
+    "write_hdf5": true,
+    "write_sqlite": true,
+    "parquet_export": false
+  },
+  "opensees": {
+    "executable": "OpenSees",
+    "extra_args": [],
+    "require_version_regex": null,
+    "require_binary_sha256": null,
+    "column_width_m": 1.0,
+    "thickness_m": 1.0,
+    "fluid_bulk_modulus": 2200000.0,
+    "fluid_mass_density": 1.0,
+    "h_perm": 1e-05,
+    "v_perm": 1e-05,
+    "gravity_steps": 20
+  }
+}

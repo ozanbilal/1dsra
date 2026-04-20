@@ -1,0 +1,25 @@
+{
+  "source_audit_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_force_audit_kocaeli\\elastic_boundary_force_audit.csv",
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_frequency_audit_kocaeli",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_frequency_audit_kocaeli\\elastic_boundary_frequency_audit_summary.json",
+    "summary_md": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_frequency_audit_kocaeli\\elastic_boundary_frequency_audit_summary.md",
+    "source_audit_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_force_audit_kocaeli\\elastic_boundary_force_audit.csv"
+  },
+  "summary": {
+    "row_count": 6000,
+    "dt_s": 0.004999999999999893,
+    "dominant_surface_frequency_hz": 5.366666666666781,
+    "dominant_surface_period_s": 0.18633540372670412,
+    "dominant_net_force_frequency_hz": 5.366666666666781,
+    "dominant_net_force_period_s": 0.18633540372670412,
+    "dominant_incident_force_frequency_hz": 0.10000000000000211,
+    "dominant_incident_force_period_s": 9.999999999999789,
+    "net_to_incident_amplitude_ratio_at_surface_peak": 0.5885603351606552,
+    "net_to_surface_amplitude_ratio_at_surface_peak": 24.33190066752959,
+    "incident_to_surface_amplitude_ratio_at_surface_peak": 41.341387133891516,
+    "net_surface_phase_diff_deg_at_surface_peak": 5.666631858655279,
+    "incident_surface_phase_diff_deg_at_surface_peak": 17.070885736726552,
+    "net_incident_phase_diff_deg_at_surface_peak": -11.404253878071273
+  }
+}

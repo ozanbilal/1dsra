@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "name": "primary",
+      "run": "Results_profile_0_motion_Kocaeli",
+      "deepsoil_excel": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\tests\\Results_profile_0_motion_Kocaeli.xlsx"
+    },
+    {
+      "name": "secondary",
+      "run": "Results_profile_0_motion_Kocaeli-EL",
+      "deepsoil_excel": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\tests\\Results_profile_0_motion_Kocaeli-EL.xlsx"
+    }
+  ]
+}

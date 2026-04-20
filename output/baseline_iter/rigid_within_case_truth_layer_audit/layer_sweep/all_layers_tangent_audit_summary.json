@@ -1,0 +1,157 @@
+{
+  "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\boundary_semantics\\run-24be21e0eccb\\config_snapshot.json",
+  "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\audit_motion.csv",
+  "mrdf_reference_mode_code": 0.0,
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\layer_sweep",
+    "audit_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\layer_sweep\\all_layers_tangent_audit.csv",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\layer_sweep\\all_layers_tangent_audit_summary.json",
+    "layer_summary_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\layer_sweep\\layer_compliance_summary.csv",
+    "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\rigid_within_case_truth_layer_audit\\audit_motion.csv"
+  },
+  "summary": {
+    "row_count": 239960,
+    "state_count": 23996,
+    "equivalent_stiffness_min": 6284.124067463985,
+    "equivalent_stiffness_max": 25479.90994918959,
+    "dominant_layer_by_mean_compliance": 5,
+    "dominant_layer_mean_compliance": 0.20965163157805458,
+    "layers": [
+      {
+        "profile_layer_index": 1,
+        "profile_layer_name": "Layer 1",
+        "element_count": 2,
+        "mean_compliance_fraction": 0.18352555208560797,
+        "max_compliance_fraction": 0.32036478014869474,
+        "mean_kt_kpa": 457662.07142818364,
+        "min_kt_kpa": 212151.20745,
+        "max_kt_kpa": 509586.78107,
+        "gamma_abs_max": 8.0285204938e-05,
+        "tau_abs_max": 22.77942474,
+        "gamma_m_global_max": 8.0285204938e-05,
+        "f_mrdf_min": 0.81999999969,
+        "f_mrdf_max": 0.82,
+        "g_ref_min_kpa": 334008.30432,
+        "g_ref_max_kpa": 509683.98315,
+        "g_t_ref_min_kpa": 199948.70542,
+        "g_t_ref_max_kpa": 509588.52763,
+        "reason_counts": {
+          "0": 87,
+          "1": 47905
+        },
+        "branch_kind_counts": {
+          "none": 87,
+          "translated_local_bridge": 47905
+        }
+      },
+      {
+        "profile_layer_index": 2,
+        "profile_layer_name": "Layer 2",
+        "element_count": 2,
+        "mean_compliance_fraction": 0.19584372758808025,
+        "max_compliance_fraction": 0.35728547640479513,
+        "mean_kt_kpa": 430888.6004021593,
+        "min_kt_kpa": 136530.79737,
+        "max_kt_kpa": 509638.24521,
+        "gamma_abs_max": 0.00024489278675,
+        "tau_abs_max": 51.793952257,
+        "gamma_m_global_max": 0.00024489278675,
+        "f_mrdf_min": 0.72999996112,
+        "f_mrdf_max": 0.73,
+        "g_ref_min_kpa": 262301.85228,
+        "g_ref_max_kpa": 509677.24094,
+        "g_t_ref_min_kpa": 125011.54062,
+        "g_t_ref_max_kpa": 509639.4297,
+        "reason_counts": {
+          "0": 99,
+          "1": 47893
+        },
+        "branch_kind_counts": {
+          "none": 99,
+          "translated_local_bridge": 47893
+        }
+      },
+      {
+        "profile_layer_index": 3,
+        "profile_layer_name": "Layer 3",
+        "element_count": 2,
+        "mean_compliance_fraction": 0.20344995105549507,
+        "max_compliance_fraction": 0.41941564810892684,
+        "mean_kt_kpa": 417200.2832550766,
+        "min_kt_kpa": 101808.14879,
+        "max_kt_kpa": 509643.98511,
+        "gamma_abs_max": 0.00044329175643,
+        "tau_abs_max": 76.396793937,
+        "gamma_m_global_max": 0.00044329175643,
+        "f_mrdf_min": 0.68499966458,
+        "f_mrdf_max": 0.685,
+        "g_ref_min_kpa": 218449.96181,
+        "g_ref_max_kpa": 509673.19645,
+        "g_t_ref_min_kpa": 91462.004084,
+        "g_t_ref_max_kpa": 509645.01837,
+        "reason_counts": {
+          "0": 115,
+          "1": 47877
+        },
+        "branch_kind_counts": {
+          "none": 115,
+          "translated_local_bridge": 47877
+        }
+      },
+      {
+        "profile_layer_index": 4,
+        "profile_layer_name": "Layer 4",
+        "element_count": 2,
+        "mean_compliance_fraction": 0.20752913769276204,
+        "max_compliance_fraction": 0.48282105710948436,
+        "mean_kt_kpa": 410881.06819312845,
+        "min_kt_kpa": 91212.96278,
+        "max_kt_kpa": 509647.87847,
+        "gamma_abs_max": 0.00057593086421,
+        "tau_abs_max": 92.289128842,
+        "gamma_m_global_max": 0.00057593086421,
+        "f_mrdf_min": 0.68499759059,
+        "f_mrdf_max": 0.685,
+        "g_ref_min_kpa": 204074.39719,
+        "g_ref_max_kpa": 509669.00171,
+        "g_t_ref_min_kpa": 81063.062828,
+        "g_t_ref_max_kpa": 509647.95299,
+        "reason_counts": {
+          "0": 142,
+          "1": 47850
+        },
+        "branch_kind_counts": {
+          "none": 142,
+          "translated_local_bridge": 47850
+        }
+      },
+      {
+        "profile_layer_index": 5,
+        "profile_layer_name": "Layer 5",
+        "element_count": 2,
+        "mean_compliance_fraction": 0.20965163157805458,
+        "max_compliance_fraction": 0.4289557532156464,
+        "mean_kt_kpa": 407446.6036606361,
+        "min_kt_kpa": 97495.43692,
+        "max_kt_kpa": 509650.50324,
+        "gamma_abs_max": 0.00057830033272,
+        "tau_abs_max": 97.403114818,
+        "gamma_m_global_max": 0.00057830033272,
+        "f_mrdf_min": 0.68499788886,
+        "f_mrdf_max": 0.685,
+        "g_ref_min_kpa": 212692.83299,
+        "g_ref_max_kpa": 509665.07093,
+        "g_t_ref_min_kpa": 87139.085863,
+        "g_t_ref_max_kpa": 509650.61622,
+        "reason_counts": {
+          "0": 168,
+          "1": 47824
+        },
+        "branch_kind_counts": {
+          "none": 168,
+          "translated_local_bridge": 47824
+        }
+      }
+    ]
+  }
+}

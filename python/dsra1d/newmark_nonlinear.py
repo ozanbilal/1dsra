@@ -33,7 +33,7 @@ import numpy.typing as npt
 from dsra1d.config import BoundaryCondition, ProjectConfig
 from dsra1d.interop.opensees import build_element_slices, build_layer_slices
 from dsra1d.materials.mrdf import mrdf_coefficients_from_params
-from dsra1d.motion import effective_input_acceleration
+from dsra1d.motion import build_boundary_excitation
 from dsra1d.nonlinear import (
     _ElementConstitutiveState,
     _assemble_tridiagonal_from_element_values,
@@ -139,20 +139,28 @@ def _write_boundary_audit_csv(
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(
-            "step,time_s,input_acc_m_s2,input_vel_m_s,incident_force,base_relative_velocity_m_s,"
-            "dashpot_force,net_boundary_force,base_relative_displacement_m,"
-            "base_relative_acceleration_m_s2,surface_acceleration_m_s2,impedance_c\n"
+            "step,time_s,raw_input_acc_m_s2,raw_input_vel_m_s,"
+            "semantic_input_acc_m_s2,semantic_input_vel_m_s,incident_force,base_relative_velocity_m_s,"
+            "dashpot_force,net_boundary_force,reconstructed_net_boundary_force,"
+            "assembled_boundary_force,assembled_vs_reconstructed_force_error,"
+            "base_relative_displacement_m,base_relative_acceleration_m_s2,"
+            "surface_acceleration_m_s2,impedance_c\n"
         )
         for row in rows:
             f.write(
                 f"{int(row['step'])},"
                 f"{float(row['time_s']):.10e},"
-                f"{float(row['input_acc_m_s2']):.10e},"
-                f"{float(row['input_vel_m_s']):.10e},"
+                f"{float(row['raw_input_acc_m_s2']):.10e},"
+                f"{float(row['raw_input_vel_m_s']):.10e},"
+                f"{float(row['semantic_input_acc_m_s2']):.10e},"
+                f"{float(row['semantic_input_vel_m_s']):.10e},"
                 f"{float(row['incident_force']):.10e},"
                 f"{float(row['base_relative_velocity_m_s']):.10e},"
                 f"{float(row['dashpot_force']):.10e},"
                 f"{float(row['net_boundary_force']):.10e},"
+                f"{float(row['reconstructed_net_boundary_force']):.10e},"
+                f"{float(row['assembled_boundary_force']):.10e},"
+                f"{float(row['assembled_vs_reconstructed_force_error']):.10e},"
                 f"{float(row['base_relative_displacement_m']):.10e},"
                 f"{float(row['base_relative_acceleration_m_s2']):.10e},"
                 f"{float(row['surface_acceleration_m_s2']):.10e},"
@@ -479,10 +487,14 @@ def solve_nonlinear_implicit_newmark(
     a5 = dt_sub * ((gamma_nm / (2.0 * beta_nm)) - 1.0)
 
     # ---- external force array ----
-    acc_g = effective_input_acceleration(config, motion.acc)
-    n_steps = acc_g.size
+    excitation = build_boundary_excitation(config, motion.acc)
+    raw_input_acc = np.asarray(excitation.raw_acceleration_m_s2, dtype=np.float64)
+    rigid_input_acc = np.asarray(excitation.within_acceleration_m_s2, dtype=np.float64)
+    incident_input_acc = np.asarray(excitation.incident_acceleration_m_s2, dtype=np.float64)
+    n_steps = raw_input_acc.size
     time = np.arange(n_steps, dtype=np.float64) * dt
-    input_vel = _integrate_acc_to_velocity(acc_g, dt) if use_elastic_halfspace else None
+    input_vel = _integrate_acc_to_velocity(incident_input_acc, dt) if use_elastic_halfspace else None
+    raw_input_vel = _integrate_acc_to_velocity(raw_input_acc, dt) if use_elastic_halfspace else None
 
     # ---- state vectors ----
     u = np.zeros(n_free, dtype=np.float64)
@@ -504,6 +516,7 @@ def solve_nonlinear_implicit_newmark(
         if (
             boundary_audit_rows is None
             or input_vel is None
+            or raw_input_vel is None
             or n_free <= 0
             or not use_elastic_halfspace
         ):
@@ -512,16 +525,29 @@ def solve_nonlinear_implicit_newmark(
         incident_force = 2.0 * base_rho * base_vs * area * float(input_vel[step_index])
         base_relative_velocity = float(v[base_idx])
         dashpot_force = float(dashpot_c * base_relative_velocity)
+        assembled_boundary_force = float(incident_force - dashpot_force)
+        reconstructed_boundary_force = (
+            float(dashpot_c * (raw_input_vel[step_index] - base_relative_velocity))
+            if excitation.input_type == "outcrop"
+            else assembled_boundary_force
+        )
         boundary_audit_rows.append(
             {
                 "step": float(step_index),
                 "time_s": float(time[step_index]),
-                "input_acc_m_s2": float(acc_g[step_index]),
-                "input_vel_m_s": float(input_vel[step_index]),
+                "raw_input_acc_m_s2": float(raw_input_acc[step_index]),
+                "raw_input_vel_m_s": float(raw_input_vel[step_index]),
+                "semantic_input_acc_m_s2": float(incident_input_acc[step_index]),
+                "semantic_input_vel_m_s": float(input_vel[step_index]),
                 "incident_force": float(incident_force),
                 "base_relative_velocity_m_s": base_relative_velocity,
                 "dashpot_force": dashpot_force,
-                "net_boundary_force": float(incident_force - dashpot_force),
+                "net_boundary_force": assembled_boundary_force,
+                "reconstructed_net_boundary_force": reconstructed_boundary_force,
+                "assembled_boundary_force": assembled_boundary_force,
+                "assembled_vs_reconstructed_force_error": float(
+                    assembled_boundary_force - reconstructed_boundary_force
+                ),
                 "base_relative_displacement_m": float(u[base_idx]),
                 "base_relative_acceleration_m_s2": float(a_rel[base_idx]),
                 "surface_acceleration_m_s2": float(a_rel[0]),
@@ -536,7 +562,7 @@ def solve_nonlinear_implicit_newmark(
         f_ext_0 = np.zeros(n_free, dtype=np.float64)
         f_ext_0[-1] = 2.0 * base_rho * base_vs * area * float(input_vel[0])
     else:
-        f_ext_0 = -m_diag * float(acc_g[0])
+        f_ext_0 = -m_diag * float(rigid_input_acc[0])
     rhs0 = f_ext_0 - (c_mat @ v) - f_int_prev
     a_rel = rhs0 / m_diag
     a_rel_hist[:, 0] = a_rel
@@ -545,8 +571,6 @@ def solve_nonlinear_implicit_newmark(
 
     # ---- implicit Newmark time integration ----
     for i in range(1, n_steps):
-        ag = float(acc_g[i])
-
         for substep_idx in range(n_sub):
             # 1) Assemble tangent stiffness from current constitutive state
             k_t = _assemble_tangent_stiffness(
@@ -582,7 +606,7 @@ def solve_nonlinear_implicit_newmark(
                 f_ext = np.zeros(n_free, dtype=np.float64)
                 f_ext[-1] = 2.0 * base_rho * base_vs * area * float(input_vel[i])
             else:
-                f_ext = -m_diag * ag
+                f_ext = -m_diag * float(rigid_input_acc[i])
 
             # 5) RHS: F_ext + M_terms + C_terms + K_t*u_n - F_int(u_n)
             #    The (K_t*u_n - F_int) term corrects for linearisation error
@@ -632,7 +656,7 @@ def solve_nonlinear_implicit_newmark(
     if use_elastic_halfspace:
         surface_acc = a_rel_hist[0, :]
     else:
-        surface_acc = a_rel_hist[0, :] + acc_g
+        surface_acc = a_rel_hist[0, :] + rigid_input_acc
 
     if not return_nodal_displacement:
         return time, surface_acc
@@ -772,10 +796,12 @@ def solve_nonlinear_newmark(
     # ---- time stepping setup ----
     dt = float(motion.dt)
     dt_sub = dt / float(n_sub)
-    acc_g = effective_input_acceleration(config, motion.acc)
-    n_steps = acc_g.size
+    excitation = build_boundary_excitation(config, motion.acc)
+    rigid_input_acc = np.asarray(excitation.within_acceleration_m_s2, dtype=np.float64)
+    incident_input_acc = np.asarray(excitation.incident_acceleration_m_s2, dtype=np.float64)
+    n_steps = rigid_input_acc.size
     time = np.arange(n_steps, dtype=np.float64) * dt
-    input_vel = _integrate_acc_to_velocity(acc_g, dt) if use_elastic_halfspace else None
+    input_vel = _integrate_acc_to_velocity(incident_input_acc, dt) if use_elastic_halfspace else None
 
     # ---- state vectors ----
     u = np.zeros(n_free, dtype=np.float64)
@@ -786,7 +812,6 @@ def solve_nonlinear_newmark(
 
     # ---- velocity-Verlet time integration ----
     for i in range(n_steps):
-        ag = float(acc_g[i])
         for _ in range(n_sub):
             v_half = vel + 0.5 * dt_sub * a_prev
             u = u + dt_sub * v_half
@@ -803,7 +828,7 @@ def solve_nonlinear_newmark(
                 f_ext = np.zeros_like(m_diag)
                 f_ext[-1] = 2.0 * base_rho * base_vs * area * float(input_vel[i])
             else:
-                f_ext = -m_diag * ag
+                f_ext = -m_diag * float(rigid_input_acc[i])
 
             c_step = c_mat
             if viscous_update:
@@ -828,11 +853,11 @@ def solve_nonlinear_newmark(
 
     # ---- surface acceleration ----
     if n_free == 0:
-        surface_acc = acc_g.copy()
+        surface_acc = rigid_input_acc.copy()
     elif use_elastic_halfspace:
         surface_acc = a_rel_hist[0, :]
     else:
-        surface_acc = a_rel_hist[0, :] + acc_g
+        surface_acc = a_rel_hist[0, :] + rigid_input_acc
 
     if not return_nodal_displacement:
         return time, surface_acc

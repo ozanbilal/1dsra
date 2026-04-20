@@ -1,0 +1,49 @@
+{
+  "timestamp_utc": "2026-03-19T10:33:43.395468+00:00",
+  "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke",
+  "motion_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\motions\\sample_motion.csv",
+  "total_cases": 4,
+  "passed_cases": 4,
+  "failed_cases": 0,
+  "cases": [
+    {
+      "name": "linear",
+      "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\linear_reference.yml",
+      "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\linear\\run-b9c700c79253",
+      "run_id": "run-b9c700c79253",
+      "status": "ok",
+      "message": "completed",
+      "passed": true
+    },
+    {
+      "name": "eql",
+      "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\eql_reference.yml",
+      "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\eql\\run-289038c33fe9",
+      "run_id": "run-289038c33fe9",
+      "status": "ok",
+      "message": "completed",
+      "passed": true
+    },
+    {
+      "name": "nonlinear",
+      "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\nonlinear_reference.yml",
+      "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\nonlinear\\run-ce262e88ed9d",
+      "run_id": "run-ce262e88ed9d",
+      "status": "ok",
+      "message": "completed",
+      "passed": true
+    },
+    {
+      "name": "effective_stress",
+      "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\deepsoil_equivalent\\effective_stress_reference.yml",
+      "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\effective_stress\\run-485b214d64ad",
+      "run_id": "run-485b214d64ad",
+      "status": "ok",
+      "message": "completed",
+      "passed": true
+    }
+  ],
+  "summary_json_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.json",
+  "summary_md_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\output\\deepsoil_equivalent\\smoke\\smoke_summary.md",
+  "passed": true
+}

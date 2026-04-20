@@ -1,0 +1,31 @@
+{
+  "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\native\\deepsoil_gqh_5layer_baseline.yml",
+  "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\bundle_primary\\input_motion.csv",
+  "boundary_condition": "elastic_halfspace",
+  "motion_input_type": "outcrop",
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_force_audit_kocaeli",
+    "audit_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_force_audit_kocaeli\\elastic_boundary_force_audit.csv",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\elastic_halfspace_force_audit_kocaeli\\elastic_boundary_force_audit_summary.json",
+    "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\bundle_primary\\input_motion.csv"
+  },
+  "summary": {
+    "row_count": 6000,
+    "raw_input_pga_m_s2": 2.146778217,
+    "applied_input_pga_m_s2": 2.146778217,
+    "incident_force_abs_max": 685.41614568,
+    "dashpot_force_abs_max": 689.82712851,
+    "net_boundary_force_abs_max": 118.99361183,
+    "incident_force_rms": 156.20425415202888,
+    "dashpot_force_rms": 154.50019300009896,
+    "net_boundary_force_rms": 16.94615500949377,
+    "dashpot_to_incident_rms_ratio": 0.9890908147080847,
+    "net_to_incident_rms_ratio": 0.10848715421668725,
+    "dashpot_incident_corr": 0.9941105244846584,
+    "base_relative_velocity_abs_max": 0.35616863845,
+    "base_relative_displacement_abs_max": 0.27308490927,
+    "surface_acc_abs_max": 4.6839955047,
+    "surface_acc_std_m_s2": 0.6432316180112747,
+    "impedance_c": 1936.7991845
+  }
+}

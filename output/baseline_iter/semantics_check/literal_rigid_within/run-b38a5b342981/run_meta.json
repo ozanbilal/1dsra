@@ -1,0 +1,20 @@
+{
+  "run_id": "run-b38a5b342981",
+  "timestamp_utc": "2026-04-14T15:12:54.612208+00:00",
+  "solver_backend": "nonlinear",
+  "nonlinear_substeps": 4,
+  "timeout_s_configured": 240,
+  "timeout_s_effective": 240,
+  "dt_s": 0.004999999999999893,
+  "delta_t_s": 0.004999999999999893,
+  "input_dt_s": 0.004999999999999893,
+  "status": "ok",
+  "message": "completed",
+  "input_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\run_primary_applied\\run-f771a03c21c9\\compare_applied\\_deepsoil_bundle\\input_motion.csv",
+  "processed_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\semantics_check\\literal_rigid_within\\run-b38a5b342981\\motion_processed.csv",
+  "config_snapshot": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\semantics_check\\literal_rigid_within\\run-b38a5b342981\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "0401ad11ec1dbe9c0327b64cab80215ade1cfc902ac6fefd15ad1beb7218bc53",
+    "results.sqlite": "16707cde4a8dd6b35deab0ad5cf780dacba8283db373f88cd669e78eb5c26c5d"
+  }
+}

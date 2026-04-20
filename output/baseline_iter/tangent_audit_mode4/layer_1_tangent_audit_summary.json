@@ -1,0 +1,34 @@
+{
+  "config_path": "examples\\native\\deepsoil_gqh_5layer_baseline.yml",
+  "motion_csv": "out\\tmp_replay_eval\\compare\\_deepsoil_bundle\\input_motion.csv",
+  "layer_index": 0,
+  "mrdf_reference_mode_code": 4.0,
+  "artifacts": {
+    "output_dir": "output\\baseline_iter\\tangent_audit_mode4",
+    "audit_csv": "output\\baseline_iter\\tangent_audit_mode4\\layer_1_tangent_audit.csv",
+    "summary_json": "output\\baseline_iter\\tangent_audit_mode4\\layer_1_tangent_audit_summary.json",
+    "motion_csv": "out\\tmp_replay_eval\\compare\\_deepsoil_bundle\\input_motion.csv"
+  },
+  "summary": {
+    "row_count": 23996,
+    "max_branch_id": null,
+    "reason_counts": {
+      "0": 56,
+      "1": 23940
+    },
+    "branch_kind_counts": {
+      "none": 23996
+    },
+    "gamma_abs_max": 1.2496761798e-05,
+    "tau_abs_max": 5.324950804,
+    "kt_min_kpa": 254818.13267,
+    "kt_max_kpa": 509590.93572,
+    "gamma_m_global_max": null,
+    "f_mrdf_min": null,
+    "f_mrdf_max": null,
+    "g_ref_min_kpa": null,
+    "g_ref_max_kpa": null,
+    "g_t_ref_min_kpa": null,
+    "g_t_ref_max_kpa": null
+  }
+}

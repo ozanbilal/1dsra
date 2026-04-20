@@ -1,0 +1,58 @@
+[
+  {
+    "reload_factor": 0.8,
+    "run_id": "run-7e9d72fdec06",
+    "pga_pct_diff": -80.61777956215913,
+    "surface_nrmse": 0.4338487456184083,
+    "surface_corr": -0.0006608236050508118,
+    "psa_nrmse": 0.217100419854122
+  },
+  {
+    "reload_factor": 1.0,
+    "run_id": "run-cf0e98362f1c",
+    "pga_pct_diff": -78.24536063397919,
+    "surface_nrmse": 0.43461938448051307,
+    "surface_corr": 0.0006192256171023376,
+    "psa_nrmse": 0.20792823202470626
+  },
+  {
+    "reload_factor": 1.2,
+    "run_id": "run-9f73837038dd",
+    "pga_pct_diff": -78.34804289261652,
+    "surface_nrmse": 0.43540097727235033,
+    "surface_corr": 0.004516845986897203,
+    "psa_nrmse": 0.2037552373558849
+  },
+  {
+    "reload_factor": 1.4,
+    "run_id": "run-8ca84bb72851",
+    "pga_pct_diff": -76.28772830321394,
+    "surface_nrmse": 0.4363395158450831,
+    "surface_corr": 0.0002847891115239284,
+    "psa_nrmse": 0.20079912656849103
+  },
+  {
+    "reload_factor": 1.6,
+    "run_id": "run-0aee7db94924",
+    "pga_pct_diff": -64.66198900622683,
+    "surface_nrmse": 0.4369342824565766,
+    "surface_corr": -0.0013847752047893805,
+    "psa_nrmse": 0.19496907347830367
+  },
+  {
+    "reload_factor": 1.8,
+    "run_id": "run-069a26042bba",
+    "pga_pct_diff": -60.60612622967302,
+    "surface_nrmse": 0.4378519084589272,
+    "surface_corr": -0.0038239348813200744,
+    "psa_nrmse": 0.19665584985595166
+  },
+  {
+    "reload_factor": 2.0,
+    "run_id": "run-ebbfd5c09c7e",
+    "pga_pct_diff": -57.14730509534864,
+    "surface_nrmse": 0.4389091914328092,
+    "surface_corr": -0.0032055361990283443,
+    "psa_nrmse": 0.20068766631659474
+  }
+]

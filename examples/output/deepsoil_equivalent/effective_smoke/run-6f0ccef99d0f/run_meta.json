@@ -1,0 +1,44 @@
+{
+  "run_id": "run-6f0ccef99d0f",
+  "timestamp_utc": "2026-03-19T10:23:06.911445+00:00",
+  "solver_backend": "opensees",
+  "timeout_s_configured": 180,
+  "timeout_s_effective": 180,
+  "dt_s": 0.0050000000000000044,
+  "delta_t_s": 0.0050000000000000044,
+  "status": "ok",
+  "message": "completed",
+  "opensees_command": [
+    "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+    "model.tcl"
+  ],
+  "input_motion": "examples\\motions\\sample_motion.csv",
+  "processed_motion": "examples\\output\\deepsoil_equivalent\\effective_smoke\\run-6f0ccef99d0f\\motion_processed.csv",
+  "model_tcl": "examples\\output\\deepsoil_equivalent\\effective_smoke\\run-6f0ccef99d0f\\model.tcl",
+  "config_snapshot": "examples\\output\\deepsoil_equivalent\\effective_smoke\\run-6f0ccef99d0f\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "b5353a504f38ce73ac72e4a2929e0f476c1f164e1d69040e9f3d2c7ad91932d6",
+    "results.sqlite": "51ca15d5442a7797abdbe247ed3aae7b708e262603da368757fc99a4f7de8ffb"
+  },
+  "opensees_backend_probe": {
+    "available": true,
+    "assumed_available": false,
+    "resolved": "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+    "version": "OpenSees -- Open System For Earthquake Engineering Simulation",
+    "command": [
+      "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+      "-version"
+    ],
+    "binary_sha256": "5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d"
+  },
+  "opensees_diagnostics": {
+    "source": "opensees_logs",
+    "severity": "ok",
+    "warning_count": 0,
+    "failed_converge_count": 0,
+    "analyze_failed_count": 0,
+    "divide_by_zero_count": 0,
+    "pm4_initialize_count": 76,
+    "dynamic_fallback_failed": false
+  }
+}

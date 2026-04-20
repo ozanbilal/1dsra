@@ -1,0 +1,36 @@
+{
+  "reference_source": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_first_deepsoil_acceptance\\boundary_sensitivity_compare.json",
+  "candidate_source": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_first_geowave_acceptance\\boundary_sensitivity_compare.json",
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_first_delta_compare",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_first_delta_compare\\boundary_delta_comparison.json",
+    "summary_md": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_first_delta_compare\\boundary_delta_comparison.md"
+  },
+  "summary": {
+    "reference_label": "DeepSoil",
+    "candidate_label": "GeoWave",
+    "reference_peak_ratio": 0.456364862735604,
+    "candidate_peak_ratio": 0.5919061710181303,
+    "peak_ratio_delta": 0.13554130828252625,
+    "peak_ratio_abs_rel_error": 0.2970020686300128,
+    "reference_peak_period_shift_pct": -10.80562182914802,
+    "candidate_peak_period_shift_pct": -10.80562182914802,
+    "peak_period_shift_delta_pct": 0.0,
+    "peak_period_shift_abs_rel_error": 0.0,
+    "reference_surface_pga_ratio": 0.606462884870241,
+    "candidate_surface_pga_ratio": 0.7591068150415613,
+    "surface_pga_ratio_delta": 0.15264393017132027,
+    "surface_pga_ratio_abs_rel_error": 0.2516954194220476,
+    "reference_surface_pgd_ratio": 0.615220667162744,
+    "candidate_surface_pgd_ratio": 0.6037920132428813,
+    "surface_pgd_ratio_delta": -0.011428653919862697,
+    "surface_pgd_ratio_abs_rel_error": 0.01857651169712652,
+    "direction_match_peak_ratio": true,
+    "direction_match_peak_period": true,
+    "direction_match_surface_pga": true,
+    "direction_match_surface_pgd": true,
+    "directional_gate_passed": true,
+    "mean_abs_rel_error": 0.14181849993729673,
+    "worst_metric_by_abs_rel_error": "peak_ratio"
+  }
+}

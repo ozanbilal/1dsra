@@ -1,0 +1,59 @@
+{
+  "profile": "deepsoil_gqh_5layer_baseline geometry with explicit bedrock Vs=760 m/s, unit weight=25 kN/m3, damping_ratio=0.02",
+  "motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\motions\\sample_motion.csv",
+  "cases": {
+    "rigid_outcrop": {
+      "boundary_condition": "rigid",
+      "motion_input_type": "outcrop",
+      "raw_input_pga_m_s2": 0.02,
+      "applied_input_pga_m_s2": 0.01,
+      "surface_pga_m_s2": 0.01641709045296754,
+      "max_surface_psa_m_s2": 0.0417220450781677,
+      "surface_peak_period_s": 0.049999999999999996,
+      "max_applied_input_psa_m_s2": 0.02005633869157177,
+      "input_peak_period_s": 0.049999999999999996,
+      "surface_to_input_psa_ratio": 2.080242347308408,
+      "surface_std_m_s2": 0.007258382425727575
+    },
+    "rigid_within": {
+      "boundary_condition": "rigid",
+      "motion_input_type": "within",
+      "raw_input_pga_m_s2": 0.02,
+      "applied_input_pga_m_s2": 0.02,
+      "surface_pga_m_s2": 0.032285435927159004,
+      "max_surface_psa_m_s2": 0.0833640778861373,
+      "surface_peak_period_s": 0.049999999999999996,
+      "max_applied_input_psa_m_s2": 0.04011267738314354,
+      "input_peak_period_s": 0.049999999999999996,
+      "surface_to_input_psa_ratio": 2.0782476594586328,
+      "surface_std_m_s2": 0.014488139914893778
+    },
+    "elastic_halfspace_outcrop": {
+      "boundary_condition": "elastic_halfspace",
+      "motion_input_type": "outcrop",
+      "raw_input_pga_m_s2": 0.02,
+      "applied_input_pga_m_s2": 0.02,
+      "surface_pga_m_s2": 0.03735288452780153,
+      "max_surface_psa_m_s2": 0.09230339421244564,
+      "surface_peak_period_s": 0.049999999999999996,
+      "max_applied_input_psa_m_s2": 0.04011267738314354,
+      "input_peak_period_s": 0.049999999999999996,
+      "surface_to_input_psa_ratio": 2.301102799266999,
+      "surface_std_m_s2": 0.020719726577402488
+    }
+  },
+  "comparisons": {
+    "elastic_vs_rigid_outcrop": {
+      "surface_pga_ratio": 2.275243876788755,
+      "max_surface_psa_ratio": 2.2123410786674533,
+      "applied_input_pga_ratio": 2.0,
+      "surface_peak_period_diff_pct": 0.0
+    },
+    "elastic_outcrop_vs_rigid_within": {
+      "surface_pga_ratio": 1.1569577258326473,
+      "max_surface_psa_ratio": 1.107232234230649,
+      "applied_input_pga_ratio": 1.0,
+      "surface_peak_period_diff_pct": 0.0
+    }
+  }
+}

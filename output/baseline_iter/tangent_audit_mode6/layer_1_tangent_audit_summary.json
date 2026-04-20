@@ -1,0 +1,35 @@
+{
+  "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\native\\deepsoil_gqh_5layer_baseline.yml",
+  "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\mode6_experimental\\_deepsoil_bundle\\input_motion.csv",
+  "layer_index": 0,
+  "mrdf_reference_mode_code": 6.0,
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\tangent_audit_mode6",
+    "audit_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\tangent_audit_mode6\\layer_1_tangent_audit.csv",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\tangent_audit_mode6\\layer_1_tangent_audit_summary.json",
+    "motion_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\mode6_experimental\\_deepsoil_bundle\\input_motion.csv"
+  },
+  "summary": {
+    "row_count": 23996,
+    "max_branch_id": null,
+    "reason_counts": {
+      "0": 57,
+      "1": 23939
+    },
+    "branch_kind_counts": {
+      "none": 57,
+      "translated_curvature_progressive_bridge": 23939
+    },
+    "gamma_abs_max": 1.4085612664e-05,
+    "tau_abs_max": 6.1046396734,
+    "kt_min_kpa": 254818.13267,
+    "kt_max_kpa": 509605.17783,
+    "gamma_m_global_max": 1.4085612664e-05,
+    "f_mrdf_min": 0.82,
+    "f_mrdf_max": 0.82,
+    "g_ref_min_kpa": 455217.1558,
+    "g_ref_max_kpa": 509682.07262,
+    "g_t_ref_min_kpa": 276632.51394,
+    "g_t_ref_max_kpa": 509684.0
+  }
+}

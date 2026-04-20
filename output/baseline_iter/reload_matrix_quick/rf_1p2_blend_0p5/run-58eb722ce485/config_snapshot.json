@@ -1,0 +1,161 @@
+{
+  "project_name": "deepsoil-gqh-5layer-baseline",
+  "seed": 42,
+  "profile": {
+    "water_table_depth_m": null,
+    "bedrock": null,
+    "layers": [
+      {
+        "name": "Layer 1",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "damping_min": 0.0138748644731001,
+          "reload_factor": 1.2,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0,
+          "reload_reference_blend": 0.5
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer 2",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 443.046,
+          "theta1": -2.8,
+          "theta2": -2.52,
+          "theta3": 0.12022644346,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "damping_min": 0.0104352566254,
+          "reload_factor": 1.2,
+          "mrdf_p1": 0.73,
+          "mrdf_p2": 0.45,
+          "mrdf_p3": 22.5,
+          "reload_reference_blend": 0.5
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer 3",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 466.579,
+          "theta1": -2.5,
+          "theta2": -2.5,
+          "theta3": 0.27542287033,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "damping_min": 0.0090127217905,
+          "reload_factor": 1.2,
+          "mrdf_p1": 0.685,
+          "mrdf_p2": 0.4,
+          "mrdf_p3": 25.0,
+          "reload_reference_blend": 0.5
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer 4",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 490.112,
+          "theta1": -2.4,
+          "theta2": -2.31,
+          "theta3": 0.4265795188,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "damping_min": 0.0081630304317,
+          "reload_factor": 1.2,
+          "mrdf_p1": 0.685,
+          "mrdf_p2": 0.4,
+          "mrdf_p3": 23.5,
+          "reload_reference_blend": 0.5
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "Layer 5",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 513.645,
+          "theta1": -2.3,
+          "theta2": -2.15,
+          "theta3": 0.51286138399,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "damping_min": 0.007587423921,
+          "reload_factor": 1.2,
+          "mrdf_p1": 0.685,
+          "mrdf_p2": 0.4,
+          "mrdf_p3": 22.5,
+          "reload_reference_blend": 0.5
+        },
+        "material_optional_args": [],
+        "calibration": null
+      }
+    ]
+  },
+  "boundary_condition": "rigid",
+  "analysis": {
+    "dt": 0.005,
+    "t_end": null,
+    "f_max": 25.0,
+    "solver_backend": "nonlinear",
+    "nonlinear_substeps": 4,
+    "integration_scheme": "newmark",
+    "damping_mode": "frequency_independent",
+    "damping_correction": "auto",
+    "viscous_damping_update": false,
+    "rayleigh_mode_1_hz": 1.0,
+    "rayleigh_mode_2_hz": 5.0,
+    "rayleigh_update_matrix": false,
+    "timeout_s": 240,
+    "retries": 1
+  },
+  "motion": {
+    "units": "m/s2",
+    "input_type": "outcrop",
+    "baseline": "remove_mean",
+    "scale_mode": "none",
+    "scale_factor": null,
+    "target_pga": null,
+    "processing": null
+  },
+  "output": {
+    "write_hdf5": true,
+    "write_sqlite": true,
+    "parquet_export": false
+  }
+}

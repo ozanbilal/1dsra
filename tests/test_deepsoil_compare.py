@@ -571,6 +571,32 @@ def test_load_profile_from_run_prefers_calibration_mean_effective_stress(
     assert profile["effective_stress_kpa"] == pytest.approx(expected, rel=0.0, abs=1.0e-9)
 
 
+def test_load_profile_from_run_uses_relative_displacement_convention(tmp_path: Path) -> None:
+    dt = 0.01
+    time = np.arange(0.0, 2.0 + dt, dt)
+    acc = 0.2 * np.sin(2.0 * np.pi * 1.3 * time)
+    run_dir = tmp_path / "run-relative-disp"
+    _write_minimal_run(run_dir, time, acc)
+    _write_profile_sqlite(run_dir)
+
+    node_depth = np.array([0.0, 2.5, 5.0], dtype=np.float64)
+    deform = np.array([0.0040, 0.0020, 0.0], dtype=np.float64).reshape(-1, 1)
+    rigid_translation = (0.08 * np.sin(2.0 * np.pi * 0.8 * time)).reshape(1, -1)
+    nodal_disp = deform * np.sin(2.0 * np.pi * 1.1 * time).reshape(1, -1) + rigid_translation
+
+    with h5py.File(run_dir / "results.h5", "a") as h5:
+        if "/mesh/node_depth_m" in h5:
+            del h5["/mesh/node_depth_m"]
+        if "/signals/nodal_disp_m" in h5:
+            del h5["/signals/nodal_disp_m"]
+        h5.create_dataset("/mesh/node_depth_m", data=node_depth)
+        h5.create_dataset("/signals/nodal_disp_m", data=nodal_disp)
+
+    profile = _load_profile_from_run(run_dir)
+
+    assert np.nanmax(profile["max_displacement_m"]) < 0.01
+
+
 def test_compare_deepsoil_manifest_accepts_excel_cases(tmp_path: Path) -> None:
     primary_workbook = _workbook_path("Results_profile_0_motion_Kocaeli.xlsx")
     secondary_workbook = _workbook_path("Results_profile_0_motion_Kocaeli-EL.xlsx")

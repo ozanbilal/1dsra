@@ -1,0 +1,19 @@
+{
+  "run_id": "run-b92531d25a69",
+  "timestamp_utc": "2026-04-13T12:37:10.863503+00:00",
+  "solver_backend": "nonlinear",
+  "nonlinear_substeps": 4,
+  "timeout_s_configured": 240,
+  "timeout_s_effective": 240,
+  "dt_s": 0.004999999999999893,
+  "delta_t_s": 0.004999999999999893,
+  "status": "ok",
+  "message": "completed",
+  "input_motion": "out\\ui\\motions\\Kocaeli_runready_1776082134993_1.csv",
+  "processed_motion": "output\\debug_nl_scheme_compare\\euler\\run-b92531d25a69\\motion_processed.csv",
+  "config_snapshot": "output\\debug_nl_scheme_compare\\euler\\run-b92531d25a69\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "b876113c4c8e18bd2e9540358e38ffff279d6cf491de98fd3db8cb28f6966eb9",
+    "results.sqlite": "0518aa2ce6536311773999eb22cde6d1f07e89685b445621d5fa9389b4ba6411"
+  }
+}

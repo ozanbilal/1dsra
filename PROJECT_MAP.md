@@ -10,6 +10,7 @@ Current engineering focus:
 
 - native `linear + eql + nonlinear`
 - DeepSoil rigid/outcrop baseline parity
+- boundary-first elastic-vs-rigid verification against DeepSoil DB output
 - compare-driven iteration against workbook exports
 
 ## Current Source Of Truth
@@ -29,6 +30,11 @@ Canonical case:
 Primary workbook:
 
 - `tests/Results_profile_0_motion_Kocaeli.xlsx`
+
+Primary DeepSoil DB boundary surface:
+
+- `C:/DEEPSOIL/Batch Output/Batch_run_22/.../deepsoilout.db3`
+- `C:/DEEPSOIL/Batch Output/Batch_run_23/.../deepsoilout.db3`
 
 Primary acceptance outputs:
 
@@ -69,6 +75,7 @@ Purpose:
 Current importance:
 
 - input time-step and outcrop application are parity-critical
+- boundary-input semantic locking lives here
 - generated uploaded/converted motions are written under `out/ui/motions/`
 
 Important note:
@@ -118,16 +125,20 @@ Purpose:
 - single-element replay against workbook-derived hysteresis
 - solver tangent audit
 - all-layer compliance/tangent sweep
+- boundary sensitivity compare and DeepSoil DB delta ingestion
 
 Current usage:
 
 - first-stop parity diagnostics before rerunning full compare
+- boundary-first delta comparison also runs through this file
 
 Important output families:
 
 - `single_element_*`
 - `tangent_audit_*`
 - `layer_sweep_*`
+- `boundary_first_*`
+- `boundary_delta_*`
 
 ### `python/dsra1d/web`
 
@@ -188,6 +199,8 @@ Parity campaign artifact families currently expected under `output/baseline_iter
 - `mode3_*`
 - `mode4_*`
 - selective `mode4_bottom*`
+- `boundary_first_*`
+- `boundary_delta_*`
 
 Do not treat generated artifacts as the durable source of truth. The durable truth belongs in:
 

@@ -1,0 +1,428 @@
+{
+  "sweep_type": "mkz_calibration",
+  "total_candidates": 40,
+  "grid": {
+    "reload_factors": [
+      1.3,
+      1.45,
+      1.6,
+      1.8
+    ],
+    "gamma_ref_scales": [
+      1.5,
+      2.0,
+      2.5,
+      3.0,
+      3.5
+    ],
+    "damping_max_values": [
+      0.1,
+      0.12
+    ],
+    "substeps": [
+      16
+    ]
+  },
+  "cases": [
+    {
+      "sweep_id": "rf1.30_grs1.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs1.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs1.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs1.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs2.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs2.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs2.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs2.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs2.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs2.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs2.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs2.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs3.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs3.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs3.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs3.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs3.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs3.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.30_grs3.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.30_grs3.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.3,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs1.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs1.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs1.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs1.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs2.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs2.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs2.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs2.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs2.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs2.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs2.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs2.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs3.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs3.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs3.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs3.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs3.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs3.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.45_grs3.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.45_grs3.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.45,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs1.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs1.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs1.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs1.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs2.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs2.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs2.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs2.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs2.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs2.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs2.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs2.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs3.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs3.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs3.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs3.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs3.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs3.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.60_grs3.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.60_grs3.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.6,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs1.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs1.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs1.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs1.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 1.5,
+      "gamma_ref_layer0": 0.0007065375558661392,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs2.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs2.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs2.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs2.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 2.0,
+      "gamma_ref_layer0": 0.0009420500744881855,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs2.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs2.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs2.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs2.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 2.5,
+      "gamma_ref_layer0": 0.001177562593110232,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs3.00_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs3.00_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs3.00_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs3.00_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 3.0,
+      "gamma_ref_layer0": 0.0014130751117322783,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs3.50_dmax0.10_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs3.50_dmax0.10_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.1,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    },
+    {
+      "sweep_id": "rf1.80_grs3.50_dmax0.12_sub16",
+      "config_path": "output\\pdf\\validation\\deepsoil_examples\\calibration_sweep_wide\\rf1.80_grs3.50_dmax0.12_sub16\\config.yml",
+      "reload_factor": 1.8,
+      "gamma_ref_scale": 3.5,
+      "gamma_ref_layer0": 0.0016485876303543247,
+      "damping_max": 0.12,
+      "damping_min_layer0": 0.013000852218556118,
+      "nonlinear_substeps": 16
+    }
+  ]
+}

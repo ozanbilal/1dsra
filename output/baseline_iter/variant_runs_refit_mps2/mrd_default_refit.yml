@@ -1,0 +1,128 @@
+project_name: deepsoil-gqh-5layer-baseline
+profile:
+  layers:
+  - name: Layer 1
+    thickness_m: 4.0
+    unit_weight_kN_m3: 20.0
+    vs_m_s: 500.0
+    material: gqh
+    material_params:
+      gmax: 509684.0
+      tau_max: 419.514
+      damping_min: 0.0138748644731001
+      mrdf_p1: 0.82
+      mrdf_p2: 0.55
+      mrdf_p3: 20.0
+    calibration:
+      source: darendeli
+      plasticity_index: 15.0
+      ocr: 1.0
+      mean_effective_stress_kpa: 20.38
+      frequency_hz: 1.0
+      num_cycles: 10.0
+      reload_factor: 1.6
+      fit_procedure: MRD
+  - name: Layer 2
+    thickness_m: 4.0
+    unit_weight_kN_m3: 20.0
+    vs_m_s: 500.0
+    material: gqh
+    material_params:
+      gmax: 509684.0
+      tau_max: 443.046
+      damping_min: 0.0104352566254
+      mrdf_p1: 0.73
+      mrdf_p2: 0.45
+      mrdf_p3: 22.5
+    calibration:
+      source: darendeli
+      plasticity_index: 15.0
+      ocr: 1.0
+      mean_effective_stress_kpa: 61.14
+      frequency_hz: 1.0
+      num_cycles: 10.0
+      reload_factor: 1.6
+      fit_procedure: MRD
+  - name: Layer 3
+    thickness_m: 4.0
+    unit_weight_kN_m3: 20.0
+    vs_m_s: 500.0
+    material: gqh
+    material_params:
+      gmax: 509684.0
+      tau_max: 466.579
+      damping_min: 0.0090127217905
+      mrdf_p1: 0.685
+      mrdf_p2: 0.4
+      mrdf_p3: 25.0
+    calibration:
+      source: darendeli
+      plasticity_index: 15.0
+      ocr: 1.0
+      mean_effective_stress_kpa: 101.9
+      frequency_hz: 1.0
+      num_cycles: 10.0
+      reload_factor: 1.6
+      fit_procedure: MRD
+  - name: Layer 4
+    thickness_m: 4.0
+    unit_weight_kN_m3: 20.0
+    vs_m_s: 500.0
+    material: gqh
+    material_params:
+      gmax: 509684.0
+      tau_max: 490.112
+      damping_min: 0.0081630304317
+      mrdf_p1: 0.685
+      mrdf_p2: 0.4
+      mrdf_p3: 23.5
+    calibration:
+      source: darendeli
+      plasticity_index: 15.0
+      ocr: 1.0
+      mean_effective_stress_kpa: 142.66
+      frequency_hz: 1.0
+      num_cycles: 10.0
+      reload_factor: 1.6
+      fit_procedure: MRD
+  - name: Layer 5
+    thickness_m: 4.0
+    unit_weight_kN_m3: 20.0
+    vs_m_s: 500.0
+    material: gqh
+    material_params:
+      gmax: 509684.0
+      tau_max: 513.645
+      damping_min: 0.007587423921
+      mrdf_p1: 0.685
+      mrdf_p2: 0.4
+      mrdf_p3: 22.5
+    calibration:
+      source: darendeli
+      plasticity_index: 15.0
+      ocr: 1.0
+      mean_effective_stress_kpa: 183.42
+      frequency_hz: 1.0
+      num_cycles: 10.0
+      reload_factor: 1.6
+      fit_procedure: MRD
+boundary_condition: rigid
+analysis:
+  solver_backend: nonlinear
+  f_max: 25.0
+  dt: 0.005
+  damping_mode: frequency_independent
+  nonlinear_substeps: 4
+  timeout_s: 240
+  retries: 1
+motion:
+  file: ../motions/sample_motion.csv
+  units: m/s2
+  input_type: outcrop
+  baseline: remove_mean
+  scale_mode: none
+output:
+  formats:
+  - hdf5
+  - sqlite
+  - csv

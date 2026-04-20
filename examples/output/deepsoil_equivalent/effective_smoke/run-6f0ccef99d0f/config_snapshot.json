@@ -1,0 +1,76 @@
+{
+  "project_name": "deepsoil-effective-stress-reference",
+  "seed": 20260319,
+  "profile": {
+    "layers": [
+      {
+        "name": "SurfaceSand",
+        "thickness_m": 6.0,
+        "unit_weight_kN_m3": 18.5,
+        "vs_m_s": 180.0,
+        "material": "pm4sand",
+        "material_params": {
+          "Dr": 0.42,
+          "G0": 620.0,
+          "hpo": 0.55
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "DeepSilt",
+        "thickness_m": 12.0,
+        "unit_weight_kN_m3": 19.5,
+        "vs_m_s": 320.0,
+        "material": "pm4silt",
+        "material_params": {
+          "Su": 45.0,
+          "Su_Rat": 0.23,
+          "G_o": 520.0,
+          "h_po": 0.62
+        },
+        "material_optional_args": [],
+        "calibration": null
+      }
+    ]
+  },
+  "boundary_condition": "elastic_halfspace",
+  "analysis": {
+    "dt": 0.005,
+    "t_end": null,
+    "f_max": 25.0,
+    "solver_backend": "opensees",
+    "pm4_validation_profile": "basic",
+    "damping_mode": "frequency_independent",
+    "rayleigh_mode_1_hz": 1.0,
+    "rayleigh_mode_2_hz": 5.0,
+    "rayleigh_update_matrix": false,
+    "timeout_s": 180,
+    "retries": 1
+  },
+  "motion": {
+    "units": "m/s2",
+    "baseline": "remove_mean",
+    "scale_mode": "none",
+    "scale_factor": null,
+    "target_pga": null
+  },
+  "output": {
+    "write_hdf5": true,
+    "write_sqlite": true,
+    "parquet_export": false
+  },
+  "opensees": {
+    "executable": "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+    "extra_args": [],
+    "require_version_regex": null,
+    "require_binary_sha256": null,
+    "column_width_m": 1.0,
+    "thickness_m": 1.0,
+    "fluid_bulk_modulus": 2200000.0,
+    "fluid_mass_density": 1.0,
+    "h_perm": 1e-05,
+    "v_perm": 1e-05,
+    "gravity_steps": 20
+  }
+}

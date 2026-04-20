@@ -1,0 +1,57 @@
+[
+  {
+    "blend": 0.0,
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_branch_secant_sweep\\blend_0_0\\run-4d511c1cd874",
+    "surface_nrmse": 0.10920873263244059,
+    "psa_nrmse": 0.07622615132241187,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.15115796966074813,
+    "secant_nrmse": 0.1173155108532125,
+    "stress_path_nrmse": 0.3163792924440307,
+    "loop_energy_pct_diff": 146.67388396120268
+  },
+  {
+    "blend": 0.25,
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_branch_secant_sweep\\blend_0_25\\run-a1429e04cb37",
+    "surface_nrmse": 0.11491952745733029,
+    "psa_nrmse": 0.08493665248845109,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.16105181896035095,
+    "secant_nrmse": 0.11312487758898178,
+    "stress_path_nrmse": 0.30415712750389795,
+    "loop_energy_pct_diff": 161.28991523005203
+  },
+  {
+    "blend": 0.5,
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_branch_secant_sweep\\blend_0_5\\run-2141d2709b7e",
+    "surface_nrmse": 0.12153286746932737,
+    "psa_nrmse": 0.09607744472681332,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.1733602650968921,
+    "secant_nrmse": 0.10491676875351084,
+    "stress_path_nrmse": 0.3047884583255449,
+    "loop_energy_pct_diff": 175.0988901879225
+  },
+  {
+    "blend": 0.75,
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_branch_secant_sweep\\blend_0_75\\run-8046912724c6",
+    "surface_nrmse": 0.12903785387115566,
+    "psa_nrmse": 0.1097064564663206,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.1890664841041277,
+    "secant_nrmse": 0.0980575400685002,
+    "stress_path_nrmse": 0.30986825842574633,
+    "loop_energy_pct_diff": 192.5360435767317
+  },
+  {
+    "blend": 1.0,
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_branch_secant_sweep\\blend_1_0\\run-5245592c6ff1",
+    "surface_nrmse": 0.13733934800118772,
+    "psa_nrmse": 0.12639972224657925,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.20766885048519304,
+    "secant_nrmse": 0.09926854491987024,
+    "stress_path_nrmse": 0.31974495069278847,
+    "loop_energy_pct_diff": 207.45096033577533
+  }
+]

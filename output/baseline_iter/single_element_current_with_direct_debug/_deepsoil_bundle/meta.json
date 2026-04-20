@@ -1,0 +1,56 @@
+{
+  "source_workbook": "tests\\Results_profile_0_motion_Kocaeli.xlsx",
+  "sheet_map": {
+    "layer_1": "Layer 1",
+    "input_motion": "Input Motion",
+    "profile": "Profile",
+    "mobilized": "Mobilized Shear Stress"
+  },
+  "column_map": {
+    "layer_1": {
+      "time (s)": 1,
+      "acceleration (g)": 2,
+      "strain (%)": 3,
+      "shear stress ratio (shear/eff. vert.)": 4,
+      "shear stress(kpa)": 5,
+      "arias intensity (m/s)": 6,
+      "housner intensity (m/s)": 7,
+      "period (sec)": 9,
+      "psa (g)": 10,
+      "frequency (hz)": 12,
+      "fourier amplitude (g-sec)": 13,
+      "fourier amplitude ratio": 14
+    },
+    "input_motion": {
+      "time (s)": 1,
+      "acceleration (g)": 2,
+      "period (sec)": 4,
+      "psa (g)": 5,
+      "frequency (hz)": 7,
+      "fourier amplitude (g-sec)": 8
+    },
+    "profile": {
+      "effective_stress_kpa": 1,
+      "pga_g": 4,
+      "max_displacement_m": 7,
+      "max_strain_pct": 10,
+      "max_stress_ratio": 13
+    },
+    "mobilized": {
+      "layer": 1,
+      "shear strength (kpa)": 2,
+      "friction angle (deg)": 3
+    }
+  },
+  "available_artifacts": [
+    "surface.csv",
+    "input_motion.csv",
+    "psa_surface.csv",
+    "psa_input.csv",
+    "profile.csv",
+    "mobilized_strength.csv",
+    "hysteresis_layer1.csv"
+  ],
+  "warnings": [],
+  "case_kind": "primary_gqh"
+}

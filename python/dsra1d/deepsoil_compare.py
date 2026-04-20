@@ -944,7 +944,8 @@ def _load_profile_from_run(run_dir: Path) -> dict[str, np.ndarray]:
         node_depth = np.asarray(store.node_depth_m, dtype=np.float64).reshape(-1)
         disp = np.asarray(store.nodal_displacement_m, dtype=np.float64)
         if disp.shape[0] == node_depth.size and disp.shape[1] > 1 and store.dt_s > 0.0:
-            node_max_disp = np.max(np.abs(disp), axis=1)
+            rel_disp = disp - disp[-1:, :]
+            node_max_disp = np.max(np.abs(rel_disp), axis=1)
             vel = np.gradient(disp, store.dt_s, axis=1)
             acc = np.gradient(vel, store.dt_s, axis=1)
             node_pga_g = np.max(np.abs(acc), axis=1) / 9.81

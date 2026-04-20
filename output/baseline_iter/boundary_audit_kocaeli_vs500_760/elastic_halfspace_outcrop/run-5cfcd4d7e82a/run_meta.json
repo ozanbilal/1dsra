@@ -1,0 +1,20 @@
+{
+  "run_id": "run-5cfcd4d7e82a",
+  "timestamp_utc": "2026-04-17T08:07:39.962063+00:00",
+  "solver_backend": "nonlinear",
+  "nonlinear_substeps": 4,
+  "timeout_s_configured": 240,
+  "timeout_s_effective": 240,
+  "dt_s": 0.004999999999999893,
+  "delta_t_s": 0.004999999999999893,
+  "input_dt_s": 0.004999999999999893,
+  "status": "ok",
+  "message": "completed",
+  "input_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\bundle_primary\\input_motion.csv",
+  "processed_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_audit_kocaeli_vs500_760\\elastic_halfspace_outcrop\\run-5cfcd4d7e82a\\motion_processed.csv",
+  "config_snapshot": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\boundary_audit_kocaeli_vs500_760\\elastic_halfspace_outcrop\\run-5cfcd4d7e82a\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "36f78eb077f7407fa48d465717a87fcc283e4ed8a92da9dec1529d6117529ce6",
+    "results.sqlite": "c52b9b49861b996227aadb7cf1c9d7dcb16559eb7d8f94e94ce7c2814f2be460"
+  }
+}

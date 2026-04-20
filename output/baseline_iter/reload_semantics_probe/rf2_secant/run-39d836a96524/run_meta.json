@@ -1,0 +1,20 @@
+{
+  "run_id": "run-39d836a96524",
+  "timestamp_utc": "2026-04-15T10:46:22.264104+00:00",
+  "solver_backend": "nonlinear",
+  "nonlinear_substeps": 4,
+  "timeout_s_configured": 240,
+  "timeout_s_effective": 240,
+  "dt_s": 0.004999999999999893,
+  "delta_t_s": 0.004999999999999893,
+  "input_dt_s": 0.004999999999999893,
+  "status": "ok",
+  "message": "completed",
+  "input_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\out\\ui\\motions\\Kocaeli_runready_1776241730471_1.csv",
+  "processed_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_semantics_probe\\rf2_secant\\run-39d836a96524\\motion_processed.csv",
+  "config_snapshot": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\reload_semantics_probe\\rf2_secant\\run-39d836a96524\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "7afe8a22a0f8c9c037404c88dc5389233b8ccefd20f1e864d8b39b2cd43fe63b",
+    "results.sqlite": "d332f3b1f22cbd55ce4287f998e71e27d420dfc4392e7e6195340a318ac8c577"
+  }
+}

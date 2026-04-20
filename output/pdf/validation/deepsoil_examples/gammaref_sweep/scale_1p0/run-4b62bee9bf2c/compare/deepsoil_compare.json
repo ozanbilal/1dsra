@@ -1,0 +1,28 @@
+{
+  "run_id": "run-4b62bee9bf2c",
+  "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\gammaref_sweep\\scale_1p0\\run-4b62bee9bf2c",
+  "stratawave_dt_s": 0.0024999999999995026,
+  "deepsoil_dt_s": 0.019999999999999574,
+  "overlap_duration_s": 47.979999999990454,
+  "overlap_samples": 19193,
+  "stratawave_pga_m_s2": 5.704935437441588,
+  "deepsoil_pga_m_s2": 18.0524,
+  "pga_ratio": 0.3160208857238698,
+  "pga_pct_diff": -68.39791142761302,
+  "surface_rmse_m_s2": 7.877334727311708,
+  "surface_nrmse": 0.4363594164670173,
+  "surface_corrcoef": -0.0015261425203244516,
+  "psa_point_count": 80,
+  "psa_rmse_m_s2": 7.860812043783113,
+  "psa_nrmse": 0.19391844260412722,
+  "psa_max_abs_diff_m_s2": 32.953435466436076,
+  "psa_pct_diff_at_peak": -81.29285942106681,
+  "psa_peak_period_s": 0.049999999999999996,
+  "used_reference_psa_csv": true,
+  "warnings": [
+    "Time-step mismatch detected (StrataWave=0.0025s, DEEPSOIL=0.02s)."
+  ],
+  "profile": null,
+  "hysteresis": null,
+  "artifacts": null
+}

@@ -1,0 +1,119 @@
+{
+  "project_name": "compare-workbook-run",
+  "boundary_condition": "rigid",
+  "profile": {
+    "layers": [
+      {
+        "name": "Layer-1",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "reload_factor": 1.6,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0
+        }
+      },
+      {
+        "name": "Layer-2",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "reload_factor": 1.6,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0
+        }
+      },
+      {
+        "name": "Layer-3",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "reload_factor": 1.6,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0
+        }
+      },
+      {
+        "name": "Layer-4",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "reload_factor": 1.6,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0
+        }
+      },
+      {
+        "name": "Layer-5",
+        "thickness_m": 4.0,
+        "unit_weight_kN_m3": 20.0,
+        "vs_m_s": 500.0,
+        "material": "gqh",
+        "material_params": {
+          "gmax": 509684.0,
+          "tau_max": 419.514,
+          "theta1": -6.71,
+          "theta2": 1.17,
+          "theta3": 15.4881661891248,
+          "theta4": 1.0,
+          "theta5": 0.99,
+          "reload_factor": 1.6,
+          "mrdf_p1": 0.82,
+          "mrdf_p2": 0.55,
+          "mrdf_p3": 20.0
+        }
+      }
+    ]
+  },
+  "motion": {
+    "units": "m/s2",
+    "input_type": "outcrop"
+  },
+  "analysis": {
+    "solver_backend": "nonlinear",
+    "damping_mode": "frequency_independent",
+    "viscous_damping_update": false,
+    "dt": 0.004999999999999893,
+    "f_max": 25.0
+  }
+}

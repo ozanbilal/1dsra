@@ -1,0 +1,10 @@
+{
+  "source": "opensees_logs",
+  "severity": "ok",
+  "warning_count": 0,
+  "failed_converge_count": 0,
+  "analyze_failed_count": 0,
+  "divide_by_zero_count": 0,
+  "pm4_initialize_count": 76,
+  "dynamic_fallback_failed": false
+}

@@ -1,0 +1,11 @@
+{
+  "available": true,
+  "assumed_available": false,
+  "resolved": "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+  "version": "OpenSees -- Open System For Earthquake Engineering Simulation",
+  "command": [
+    "C:\\Users\\PC\\tools\\opensees\\OpenSees3.8.0-x64\\OpenSees3.8.0\\bin\\OpenSees.EXE",
+    "-version"
+  ],
+  "binary_sha256": "5aa4e9c80c410c510ca62ac3b2f1d64a8e50679f0238e140b5bebcd6d5ddbe6d"
+}

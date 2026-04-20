@@ -31,8 +31,20 @@ Current repo truth:
 
 - Excel importer is in place
 - compare pipeline is in place
-- input history and applied-input semantics are effectively closed
-- the main remaining mismatch is constitutive hysteresis parity
+- canonical `rigid/outcrop` baseline still has a constitutive multi-layer tangent-history residual
+- active boundary-first verification now uses the DeepSoil semantics pair `elastic_halfspace + outcrop` vs `rigid + within`
+- DeepSoil batch-DB boundary-delta ingestion is in place
+- boundary-first direction now matches DeepSoil for peak RS ratio, peak-period shift, surface PGA, and surface PGD
+- boundary-first work has passed the directional gate and is now in first-order magnitude closure
+- current boundary-first magnitude evidence says the remaining peak-ratio/PGA gap is driven mainly by under-amplified `rigid + within`, not by an elastic-case sign error
+- direct case-truth profile comparison now shows `rigid + within` is not simply under-excited:
+  - `gamma_max` is already close to DeepSoil (`~1.10x`)
+  - but `max_stress_ratio` is low (`~0.75x`) and PGA is low (`~0.74x`)
+  - reusable all-layer truth+tangent audit now shows the dominant mean compliance is in Layer 5 (`~0.2097`), with Layers 2-5 all carrying similar compliance while stress ratio stays low across the column
+  - derived proxy audit now shows the stress proxy is low across the full column (`~0.75x`) and the secant proxy deficit is strongest in the upper-to-mid column (`~0.52x` in Layer 1, `~0.66-0.76x` through Layers 2-4)
+  - the corrected time-history alignment now shows `mean kt / ref secant` is not low on average (`~1.74x` mean), but `min kt / ref secant` is still low (`~0.49x` mean) and `tau peak proxy` decays downward (`~1.12x` at Layer 1 to `~0.75x` at Layer 5)
+  - this points more toward cyclic stress mobilization / branch-history closure than a simple mean-tangent deficiency
+  - this points the next closure step back toward constitutive stress/tangent evolution on the rigid case
 
 ## Current Product Reality
 
@@ -79,6 +91,65 @@ Current repo truth:
   - `frequency_independent`
   - `newmark`
   - `viscous_damping_update = false`
+
+## Boundary-First Verification
+
+### Active acceptance pair
+
+Boundary-first acceptance is temporarily separate from the canonical rigid/outcrop baseline.
+
+Use this pair first:
+
+- `elastic_halfspace + outcrop`
+- `rigid + within`
+
+Do not use `rigid + outcrop` as the acceptance truth for elastic-halfspace parity.
+
+Primary DeepSoil DB surface for this work:
+
+- `C:/DEEPSOIL/Batch Output/Batch_run_22/.../deepsoilout.db3` as elastic
+- `C:/DEEPSOIL/Batch Output/Batch_run_23/.../deepsoilout.db3` as rigid
+
+Secondary/reference-only surface for now:
+
+- `deepsoilout_el.db3`
+
+### Latest DeepSoil boundary signature
+
+DeepSoil DB acceptance pair:
+
+- `surface_psa_peak_ratio_b_over_a = 0.456364862735604`
+- `surface_peak_period_shift_pct_b_vs_a = -10.80562182914802`
+- `surface_pga_ratio_b_over_a = 0.606462884870241`
+- `surface_pgd_ratio_b_over_a = 0.615220667162744`
+
+Meaning:
+
+- elastic halfspace reduces peak spectral amplification relative to rigid
+- elastic halfspace shifts the surface peak period shorter
+- elastic halfspace reduces both surface PGA and surface PGD
+
+### Latest GeoWave boundary-first signature
+
+GeoWave acceptance pair after the shared boundary-input adapter:
+
+- `surface_psa_peak_ratio_b_over_a = 0.5919061710181303`
+- `surface_peak_period_shift_pct_b_vs_a = -10.80562182914802`
+- `surface_pga_ratio_b_over_a = 0.7591068150415613`
+- `surface_pgd_ratio_b_over_a = 0.6037920132428813`
+
+Directional comparison against DeepSoil:
+
+- peak RS ratio direction: matched
+- peak-period direction: matched
+- surface PGA direction: matched
+- surface PGD direction: matched
+
+Meaning:
+
+- the old directional mismatch is now closed for spectral amplitude, peak period, PGA, and PGD
+- the boundary-first acceptance pair has passed the first hard gate
+- constitutive retuning should still stay frozen until first-order boundary magnitude closure is cleaner
 
 ### Latest measured parity signature
 
@@ -160,6 +231,7 @@ Recent falsifications add:
 - canonical Kocaeli boundary audit confirms that most `rigid+outcrop` vs `elastic_halfspace+outcrop` amplitude gap is still input-semantics-driven; once compared against `rigid+within`, the residual boundary effect is modest in PSA amplitude and clearer in peak period (`+5.703592242778525%`)
 - canonical Kocaeli elastic-halfspace force-balance audit shows the incident force and dashpot reaction nearly cancel (`dashpot_to_incident_rms_ratio ≈ 0.989`, correlation `≈ 0.994`); the residual net boundary traction RMS is only about `10.85%` of the incident-force RMS
 - canonical Kocaeli elastic-halfspace frequency audit shows that the residual net boundary traction and surface response share the same dominant frequency (`≈ 5.3667 Hz`, `T ≈ 0.1863 s`); the remaining halfspace effect is therefore frequency-selective and phase-coupled, not a bulk force amplification
+- after the relative-displacement fix, the remaining boundary-first mismatch is no longer directional in peak RS, peak period, PGA, or PGD; the next work is first-order magnitude closure
 
 ### Current mismatch interpretation
 
@@ -302,17 +374,23 @@ Interpretation:
 
 The next work is decision-complete and should proceed in this order:
 
-1. add multi-layer path targeting diagnostics
-   - compare per-layer `gamma_max`, secant proxy, stress-path signal, and compliance contribution together
-   - stop treating Layer 1 replay improvement as a sufficient proxy for column parity
-2. revisit mode 4 as the best non-accepting baseline
-   - use new multi-layer diagnostics to target constitutive changes where they matter system-wide
-3. revisit `F_mrdf evolution / branch-progress` or translated-branch curvature only if coupled to the multi-layer target
-   - do not reopen standalone mode 5, 6, or 7 as primary strategies
-4. revisit previous-cycle memory only if new multi-layer data supports it
-   - do not reopen generic replay work without evidence
-5. rerun full primary compare against `tests/Results_profile_0_motion_Kocaeli.xlsx`
-6. only after meaningful primary improvement, rerun the secondary workbook cross-check
+1. close the remaining first-order boundary magnitude gap
+   - keep the acceptance pair at `elastic_halfspace + outcrop` vs `rigid + within`
+   - keep using `deepsoilout.db3` as the primary DeepSoil truth surface
+2. use the reusable rigid-within all-layer case-truth + layer-sweep audit as the main closure tool
+   - keep reading `gamma_max`, profile PGA, max displacement, max strain, and max stress ratio against DeepSoil on the same depth grid
+   - use the paired layer-sweep summary to see where active tangent and compliance stay too soft
+3. target rigid-case constitutive stress/tangent evolution under the already-locked boundary semantics
+   - do not reopen boundary semantic rewrites unless the rigid-within audit produces contradictory evidence
+4. rerun the DeepSoil DB delta comparison after rigid-case magnitude changes
+   - the directional gate is already passed; now judge first-order magnitude
+5. only after boundary-first closure, reopen constitutive multi-layer targeting
+   - use mode 4 as the best current non-accepting constitutive reference
+6. only then resume workbook-driven rigid/outcrop baseline closure
+   - `F_mrdf evolution`
+   - `branch-progress`
+   - `previous-cycle memory`
+   should remain subordinate to the multi-layer target and should not be reopened as standalone families
 
 ## Legacy Context
 

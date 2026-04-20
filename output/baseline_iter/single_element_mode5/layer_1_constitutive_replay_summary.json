@@ -1,0 +1,37 @@
+{
+  "config_path": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\examples\\native\\deepsoil_gqh_5layer_baseline.yml",
+  "layer_index": 0,
+  "material": "gqh",
+  "g0_kpa": 509684.0,
+  "mrdf_reference_mode_code": 5.0,
+  "artifacts": {
+    "output_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\single_element_mode5",
+    "replay_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\single_element_mode5\\layer_1_constitutive_replay.csv",
+    "summary_json": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\single_element_mode5\\layer_1_constitutive_replay_summary.json",
+    "reference_hysteresis_csv": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\baseline_iter\\single_element_mode5\\_deepsoil_bundle\\hysteresis_layer1.csv"
+  },
+  "summary": {
+    "point_count": 6000,
+    "stress_path_nrmse": 0.015088039604454448,
+    "secant_path_nrmse": 0.011210464172541816,
+    "secant_envelope_nrmse": 0.13957040121532724,
+    "tau_peak_pct_diff": -9.271762692278104,
+    "gamma_peak_pct_diff": 0.0,
+    "loop_energy_pct_diff": 48.93282270680512,
+    "branch_switch_count": 0,
+    "max_branch_id": null,
+    "reason_counts": {
+      "0": 1,
+      "1": 5999,
+      "2": 0
+    },
+    "branch_kind_counts": {
+      "backbone": 1,
+      "translated_local_progressive_f_bridge": 5999
+    },
+    "final_gamma_m_global": 2.9259805780019977e-05,
+    "max_gamma_m_global": 2.9259805780019977e-05,
+    "f_mrdf_min": 0.8199999999999985,
+    "f_mrdf_max": 0.9999999999999989
+  }
+}

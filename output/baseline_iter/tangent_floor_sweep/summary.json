@@ -1,0 +1,68 @@
+[
+  {
+    "name": "baseline_current",
+    "surface_nrmse": 0.10631705106653967,
+    "psa_nrmse": 0.06875857976400573,
+    "pga_pct_diff": -13.223347349399262,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.22049347894916005,
+    "secant_nrmse": 0.08429554217766436,
+    "stress_path_nrmse": 0.2898775748310826,
+    "loop_energy_pct_diff": 37.37401178563119
+  },
+  {
+    "name": "tan_020_e10",
+    "surface_nrmse": 0.1081121422714019,
+    "psa_nrmse": 0.0736531707237969,
+    "pga_pct_diff": -8.024211279739134,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.18686482659795445,
+    "secant_nrmse": 0.1380273005857874,
+    "stress_path_nrmse": 0.29391058303242756,
+    "loop_energy_pct_diff": 63.72402431566899
+  },
+  {
+    "name": "tan_035_e10",
+    "surface_nrmse": 0.10860465006053166,
+    "psa_nrmse": 0.07168610187496721,
+    "pga_pct_diff": -8.989409069535565,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.22719535610575872,
+    "secant_nrmse": 0.08686689917565142,
+    "stress_path_nrmse": 0.3108408486574193,
+    "loop_energy_pct_diff": 19.29176841033617
+  },
+  {
+    "name": "tan_050_e10",
+    "surface_nrmse": 0.10860429961471084,
+    "psa_nrmse": 0.07168498278266643,
+    "pga_pct_diff": -9.00412711233819,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.22715747468730882,
+    "secant_nrmse": 0.08686228662836695,
+    "stress_path_nrmse": 0.3110584038267685,
+    "loop_energy_pct_diff": 19.8460916695428
+  },
+  {
+    "name": "tan_035_e05",
+    "surface_nrmse": 0.10536917914408143,
+    "psa_nrmse": 0.06915634171246535,
+    "pga_pct_diff": -11.092245509584853,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.19090947946923204,
+    "secant_nrmse": 0.09176418701180115,
+    "stress_path_nrmse": 0.31374103589747987,
+    "loop_energy_pct_diff": 45.847348660115514
+  },
+  {
+    "name": "tan_020_currsec",
+    "surface_nrmse": 0.10758189016923349,
+    "psa_nrmse": 0.06975825742430453,
+    "pga_pct_diff": -13.703748759140002,
+    "peak_period_diff_pct": 11.732494130275942,
+    "gamma_max_nrmse": 0.14821958198039809,
+    "secant_nrmse": 0.12169143210908094,
+    "stress_path_nrmse": 0.30825484835422917,
+    "loop_energy_pct_diff": 62.828946394996166
+  }
+]

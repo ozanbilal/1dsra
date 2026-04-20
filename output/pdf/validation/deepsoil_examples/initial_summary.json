@@ -1,0 +1,24 @@
+{
+  "linear_1b": {
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\linear_1b\\stratawave\\run-cb31ddd5aa1d",
+    "deepsoil_dir": "C:\\Temp\\deepsoil_examples_batch\\Example_1B_DS-TL0",
+    "surface_corrcoef": -0.011953468272116808,
+    "surface_nrmse": 0.4571820520046391,
+    "pga_ratio": 0.7685768525180732,
+    "pga_pct_diff": -23.14231474819268,
+    "psa_nrmse": 0.23462514926287464,
+    "psa_peak_period_s": 0.1790746775265234,
+    "warnings": []
+  },
+  "nonlinear_5a": {
+    "run_dir": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\nonlinear_5a\\stratawave\\run-fc407a0743fc",
+    "deepsoil_dir": "C:\\Temp\\deepsoil_examples_batch\\Example_5A_DS-NL1_DC",
+    "surface_corrcoef": 0.013145723537358994,
+    "surface_nrmse": 5.0994786078186225,
+    "pga_ratio": 6.23976104011686,
+    "pga_pct_diff": 523.976104011686,
+    "psa_nrmse": 3.748601918923039,
+    "psa_peak_period_s": 0.049999999999999996,
+    "warnings": []
+  }
+}

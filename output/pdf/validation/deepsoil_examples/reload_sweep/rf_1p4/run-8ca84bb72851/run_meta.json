@@ -1,0 +1,20 @@
+{
+  "run_id": "run-8ca84bb72851",
+  "timestamp_utc": "2026-03-23T13:19:07.867760+00:00",
+  "solver_backend": "nonlinear",
+  "timeout_s_configured": 180,
+  "timeout_s_effective": 180,
+  "dt_s": 0.0024999999999995026,
+  "delta_t_s": 0.0024999999999995026,
+  "status": "ok",
+  "message": "completed",
+  "opensees_command": [],
+  "input_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\kobe_motion_dt0025.csv",
+  "processed_motion": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\reload_sweep\\rf_1p4\\run-8ca84bb72851\\motion_processed.csv",
+  "model_tcl": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\reload_sweep\\rf_1p4\\run-8ca84bb72851\\model.tcl",
+  "config_snapshot": "H:\\Drive'\u0131m\\GitHub_Repo\\Deepsoil\\1DSRA\\output\\pdf\\validation\\deepsoil_examples\\reload_sweep\\rf_1p4\\run-8ca84bb72851\\config_snapshot.json",
+  "checksums": {
+    "results.h5": "519b1004a6f75bc600153e3884cc8f0565bb2da4b2a8a973c0bad7d79fefd057",
+    "results.sqlite": "bb9be4670564aa839ca0340f3ba50325ee3be1d04c24eb03beb274c8a265fbb9"
+  }
+}

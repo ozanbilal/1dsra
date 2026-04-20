@@ -341,6 +341,95 @@
     "next_if_any": "If halfspace parity must be closed further, compare the residual traction frequency content against the rigid-within reference and then decide whether the remaining work belongs in boundary implementation or constitutive parity."
   },
   {
+    "id": "exp_boundary_first_semantic_locking",
+    "date": "2026-04-17",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "shared boundary-input semantics plus DeepSoil DB delta comparison",
+    "hypothesis": "Locking rigid and elastic paths to the same incident-wave meaning should fix the directional boundary mismatch before any new constitutive retuning.",
+    "change_summary": "Added a shared boundary-input semantic adapter, switched rigid-within and elastic-outcrop loading onto that contract, added reconstructed-vs-assembled boundary-force audit fields, ingested DeepSoil batch DB boundary surfaces, compared GeoWave and DeepSoil deltas in the same report shape, and added case-local surface/input amplification audit fields to isolate the remaining magnitude gap.",
+    "artifacts": [
+      "output/baseline_iter/boundary_first_geowave_acceptance/boundary_sensitivity_compare.json",
+      "output/baseline_iter/boundary_first_geowave_ui_secondary/boundary_sensitivity_compare.json",
+      "output/baseline_iter/boundary_first_deepsoil_acceptance/boundary_sensitivity_compare.json",
+      "output/baseline_iter/boundary_first_delta_compare/boundary_delta_comparison.json"
+    ],
+    "metrics": {
+      "deepsoil_surface_psa_peak_ratio_b_over_a": 0.456364862735604,
+      "deepsoil_surface_peak_period_shift_pct_b_vs_a": -10.80562182914802,
+      "deepsoil_surface_pga_ratio_b_over_a": 0.606462884870241,
+      "deepsoil_surface_pgd_ratio_b_over_a": 0.615220667162744,
+      "geowave_surface_psa_peak_ratio_b_over_a": 0.5919061710181303,
+      "geowave_surface_peak_period_shift_pct_b_vs_a": -10.80562182914802,
+      "geowave_surface_pga_ratio_b_over_a": 0.7591068150415613,
+      "geowave_surface_pgd_ratio_b_over_a": 0.6037920132428813,
+      "deepsoil_surface_to_input_peak_psa_amp_a": 3.4046941515170963,
+      "deepsoil_surface_to_input_peak_psa_amp_b": 1.5537827791138135,
+      "geowave_surface_to_input_peak_psa_amp_a": 2.318165168819558,
+      "geowave_surface_to_input_peak_psa_amp_b": 1.372136268863582,
+      "deepsoil_surface_to_input_pga_amp_a": 2.316633296406254,
+      "deepsoil_surface_to_input_pga_amp_b": 1.4049521121249928,
+      "geowave_surface_to_input_pga_amp_a": 1.7373773369063576,
+      "geowave_surface_to_input_pga_amp_b": 1.3188549767443747,
+      "direction_match_peak_ratio": true,
+      "direction_match_peak_period": true,
+      "direction_match_surface_pga": true,
+      "direction_match_surface_pgd": true,
+      "rigid_within_gamma_max_geo_over_deepsoil_mean_ratio": 1.103045917398213,
+      "rigid_within_max_stress_ratio_geo_over_deepsoil_mean_ratio": 0.7489411133727373,
+      "rigid_within_pga_profile_geo_over_deepsoil_mean_ratio": 0.7416565178676163,
+      "elastic_outcrop_gamma_max_geo_over_deepsoil_mean_ratio": 1.4437734767642518,
+      "elastic_outcrop_max_stress_ratio_geo_over_deepsoil_mean_ratio": 0.9183818593744384,
+      "elastic_outcrop_pga_profile_geo_over_deepsoil_mean_ratio": 0.8245147491808718
+    },
+    "verdict": "improved_non_accepting",
+    "do_not_repeat": "Do not use rigid+outcrop vs elastic_halfspace+outcrop as the acceptance pair, and do not reopen new constitutive mode3/4/5/6/7 tuning before the boundary-first magnitude gap is cleaner.",
+    "next_if_any": "Keep the acceptance pair at elastic_halfspace+outcrop vs rigid+within, prioritize rigid-within stress/tangent audit next, and only then reopen broad constitutive family work."
+  },
+  {
+    "id": "exp_boundary_case_truth_profile_compare",
+    "date": "2026-04-17",
+    "status": "completed",
+    "baseline_case": "examples/native/deepsoil_gqh_5layer_baseline.yml",
+    "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
+    "family": "case-by-case GeoWave vs DeepSoil profile truth audit under locked boundary semantics",
+    "hypothesis": "After the directional gate passes, per-case profile truth comparison can separate pure boundary magnitude issues from constitutive stress/tangent issues.",
+    "change_summary": "Compared GeoWave rigid-within and elastic-outcrop acceptance cases directly against the matching DeepSoil DB cases at surface-metric and profile-metric level, including gamma_max, profile PGA, displacement, and max stress ratio.",
+    "artifacts": [
+      "output/baseline_iter/boundary_case_truth_rigid_within/case_truth_compare.json",
+      "output/baseline_iter/boundary_case_truth_rigid_within/case_truth_compare.md",
+      "output/baseline_iter/boundary_case_truth_elastic_outcrop/case_truth_compare.json",
+      "output/baseline_iter/boundary_case_truth_elastic_outcrop/case_truth_compare.md",
+      "output/baseline_iter/rigid_within_case_truth_layer_audit/case_truth_compare.json",
+      "output/baseline_iter/rigid_within_case_truth_layer_audit/case_truth_compare.md"
+    ],
+    "metrics": {
+      "rigid_within_surface_to_input_peak_psa_amp_geowave": 2.318165168819558,
+      "rigid_within_surface_to_input_peak_psa_amp_deepsoil": 3.4046941515170963,
+        "rigid_within_gamma_max_geo_over_deepsoil_mean_ratio": 1.103045917398213,
+        "rigid_within_max_stress_ratio_geo_over_deepsoil_mean_ratio": 0.7489411133727373,
+        "rigid_within_pga_profile_geo_over_deepsoil_mean_ratio": 0.7416565178676163,
+        "rigid_within_stress_proxy_geo_over_deepsoil_mean_ratio": 0.7489411133727373,
+        "rigid_within_secant_proxy_geo_over_deepsoil_mean_ratio": 0.6965078269431846,
+        "rigid_within_secant_proxy_layer1_geo_over_deepsoil_ratio": 0.5181312162796244,
+        "rigid_within_tau_peak_proxy_geo_over_deepsoil_mean_ratio": 0.8663915835067861,
+        "rigid_within_mean_kt_to_ref_secant_mean_ratio": 1.743687950024621,
+        "rigid_within_min_kt_to_ref_secant_mean_ratio": 0.49244083260211385,
+        "rigid_within_worst_layer_by_mean_kt_to_ref_secant": 1,
+        "rigid_within_dominant_layer_by_mean_compliance": 5,
+        "rigid_within_dominant_layer_mean_compliance": 0.20965163157805458,
+      "elastic_outcrop_surface_to_input_peak_psa_amp_geowave": 1.372136268863582,
+      "elastic_outcrop_surface_to_input_peak_psa_amp_deepsoil": 1.5537827791138135,
+      "elastic_outcrop_gamma_max_geo_over_deepsoil_mean_ratio": 1.4437734767642518,
+      "elastic_outcrop_max_stress_ratio_geo_over_deepsoil_mean_ratio": 0.9183818593744384,
+      "elastic_outcrop_pga_profile_geo_over_deepsoil_mean_ratio": 0.8245147491808718
+    },
+    "verdict": "diagnostic_only",
+      "do_not_repeat": "Do not assume the remaining boundary-first magnitude gap is purely an input-scaling problem, purely deepest-layer compliance, or simply low average stiffness once case-truth profile and proxy metrics are available.",
+      "next_if_any": "Use the reusable rigid-within all-layer stress-path and tangent-history audit against DeepSoil as the main closure loop, now reading derived stress/secant proxies, tau-peak proxy, and low-end tangent ratios before opening another broad constitutive family or rewriting boundary semantics again."
+  },
+  {
     "id": "exp_multilayer_path_targeting_rule",
     "date": "2026-04-16",
     "status": "planned",
@@ -348,7 +437,7 @@
     "reference_workbook": "tests/Results_profile_0_motion_Kocaeli.xlsx",
     "family": "multi-layer response-path targeting",
     "hypothesis": "The remaining residual is more likely driven by how constitutive evolution distributes across layers than by any isolated Layer 1 branch-shape improvement.",
-    "change_summary": "Planned next experiment family. No implementation yet.",
+    "change_summary": "Constitutive multi-layer target family defined, but currently paused while the boundary-first first-order magnitude gap is being closed.",
     "artifacts": [
       "output/baseline_iter/"
     ],
@@ -358,7 +447,7 @@
       "guard_no_material_regression_in_psa_nrmse": true
     },
     "verdict": "diagnostic_only",
-    "do_not_repeat": "Do not skip straight back to new branch-law families before this multi-layer target is defined.",
-    "next_if_any": "Implement per-layer gamma/secant/stress-path targeting, then revisit the best system-level baseline."
+    "do_not_repeat": "Do not skip straight back to new branch-law families before this multi-layer target is defined or while boundary-first magnitude closure is still open.",
+    "next_if_any": "Return to this family only after the elastic-vs-rigid boundary acceptance pair is directionally and materially cleaner."
   }
 ]

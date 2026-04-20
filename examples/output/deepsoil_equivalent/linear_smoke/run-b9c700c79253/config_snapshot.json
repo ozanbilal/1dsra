@@ -1,0 +1,71 @@
+{
+  "project_name": "deepsoil-linear-reference",
+  "seed": 20260319,
+  "profile": {
+    "layers": [
+      {
+        "name": "ElasticTop",
+        "thickness_m": 6.0,
+        "unit_weight_kN_m3": 18.0,
+        "vs_m_s": 180.0,
+        "material": "elastic",
+        "material_params": {
+          "nu": 0.3
+        },
+        "material_optional_args": [],
+        "calibration": null
+      },
+      {
+        "name": "ElasticBottom",
+        "thickness_m": 12.0,
+        "unit_weight_kN_m3": 19.0,
+        "vs_m_s": 320.0,
+        "material": "elastic",
+        "material_params": {
+          "nu": 0.3
+        },
+        "material_optional_args": [],
+        "calibration": null
+      }
+    ]
+  },
+  "boundary_condition": "elastic_halfspace",
+  "analysis": {
+    "dt": 0.005,
+    "t_end": null,
+    "f_max": 25.0,
+    "solver_backend": "linear",
+    "pm4_validation_profile": "basic",
+    "damping_mode": "frequency_independent",
+    "rayleigh_mode_1_hz": 1.0,
+    "rayleigh_mode_2_hz": 5.0,
+    "rayleigh_update_matrix": false,
+    "timeout_s": 120,
+    "retries": 1
+  },
+  "motion": {
+    "units": "m/s2",
+    "baseline": "remove_mean",
+    "scale_mode": "none",
+    "scale_factor": null,
+    "target_pga": null
+  },
+  "output": {
+    "write_hdf5": true,
+    "write_sqlite": true,
+    "parquet_export": false
+  },
+  "opensees": {
+    "executable": "OpenSees",
+    "extra_args": [],
+    "require_version_regex": null,
+    "require_binary_sha256": null,
+    "column_width_m": 1.0,
+    "thickness_m": 1.0,
+    "fluid_bulk_modulus": 2200000.0,
+    "fluid_mass_density": 1.0,
+    "h_perm": 1e-05,
+    "v_perm": 1e-05,
+    "gravity_steps": 20
+  }
+}

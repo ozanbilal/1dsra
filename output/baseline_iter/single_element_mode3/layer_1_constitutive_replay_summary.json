@@ -1,0 +1,37 @@
+{
+  "config_path": "examples\\native\\deepsoil_gqh_5layer_baseline.yml",
+  "layer_index": 0,
+  "material": "gqh",
+  "g0_kpa": 509684.0,
+  "mrdf_reference_mode_code": 3.0,
+  "artifacts": {
+    "output_dir": "output\\baseline_iter\\single_element_mode3",
+    "replay_csv": "output\\baseline_iter\\single_element_mode3\\layer_1_constitutive_replay.csv",
+    "summary_json": "output\\baseline_iter\\single_element_mode3\\layer_1_constitutive_replay_summary.json",
+    "reference_hysteresis_csv": "output\\baseline_iter\\single_element_mode3\\_deepsoil_bundle\\hysteresis_layer1.csv"
+  },
+  "summary": {
+    "point_count": 6000,
+    "stress_path_nrmse": 0.03868166454105839,
+    "secant_path_nrmse": 0.031393935013354225,
+    "secant_envelope_nrmse": 0.408112824163333,
+    "tau_peak_pct_diff": -9.72237139862373,
+    "gamma_peak_pct_diff": 0.0,
+    "loop_energy_pct_diff": 39.39043271636329,
+    "branch_switch_count": 1241,
+    "max_branch_id": 876,
+    "reason_counts": {
+      "0": 1,
+      "1": 5999,
+      "2": 0
+    },
+    "branch_kind_counts": {
+      "backbone": 1,
+      "reversal_tangent_preserving": 5999
+    },
+    "final_gamma_m_global": 2.9259805780019977e-05,
+    "max_gamma_m_global": 2.9259805780019977e-05,
+    "f_mrdf_min": 0.8199999999999985,
+    "f_mrdf_max": 0.82
+  }
+}

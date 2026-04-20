@@ -1,0 +1,22 @@
+{
+  "defaults": {
+    "surface_corrcoef_min": 0.95,
+    "surface_nrmse_max": 0.2,
+    "psa_nrmse_max": 0.2,
+    "pga_pct_diff_abs_max": 20.0,
+    "profile_nrmse_max": 0.25,
+    "hysteresis_stress_nrmse_max": 0.25,
+    "hysteresis_energy_pct_diff_abs_max": 25.0
+  },
+  "cases": [
+    {
+      "name": "release-mkz-gqh-darendeli-case01",
+      "run": "../../out/release-signoff/core-hyst/case01/run-xxxxxxxxxxxx",
+      "surface_csv": "../../references/deepsoil/release_case01_surface.csv",
+      "psa_csv": "../../references/deepsoil/release_case01_psa.csv",
+      "profile_csv": "../../references/deepsoil/release_case01_profile.csv",
+      "hysteresis_csv": "../../references/deepsoil/release_case01_hysteresis_layer1.csv",
+      "hysteresis_layer": 0
+    }
+  ]
+}

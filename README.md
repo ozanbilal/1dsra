@@ -19,6 +19,7 @@ Important:
 - the status doc is more authoritative than older roadmap language elsewhere in this README
 - the parity research + memory docs are more authoritative than dated one-off research reports
 - current engineering focus is native `linear + eql + nonlinear` baseline parity, not broad feature expansion
+- the active elastic-vs-rigid verification path is boundary-first and now uses the DeepSoil batch `deepsoilout.db3` pair as the primary truth surface
 
 Canonical parity references:
 
